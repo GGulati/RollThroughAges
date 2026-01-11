@@ -1,7 +1,7 @@
-export * from './model/game';
-export * from './model/construction';
-export * from './model/disaster';
-export * from './model/goods';
-export * from './model/dice';
-export * from './model/gameDefinitionConsts';
+export * from './game';
+export * from './construction';
+export * from './disaster';
+export * from './goods';
+export * from './dice';
+export * from './gameDefinitionConsts';
 
