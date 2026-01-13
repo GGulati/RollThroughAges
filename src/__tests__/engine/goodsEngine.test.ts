@@ -10,10 +10,13 @@ import {
   getGoodsLimit,
   calculateGoodsOverflow,
   hasGoodsOverflow,
-  discardOverflowGoods,
+  validateKeepGoods,
+  applyKeepGoods,
   clearAllGoods,
   getTotalGoodsQuantity,
-  spendGoodsForCoins,
+  calculateSpendValue,
+  validateSpendGoods,
+  spendGoods,
 } from '../../game/engine/goodsEngine';
 import {
   createTestSettings,
@@ -129,68 +132,131 @@ describe('goodsEngine', () => {
   });
 
   describe('calculateGoodsOverflow', () => {
-    it('detects overflow goods', () => {
+    it('returns total overflow amount across all goods', () => {
       let player = createTestPlayer('p1', settings);
-      player = setPlayerGoods(player, 'Wood', 8, settings); // Over limit of 6
+      // Total: 4 + 3 + 1 = 8, limit is 6, overflow is 2
+      player = setPlayerGoods(player, 'Wood', 4, settings);
+      player = setPlayerGoods(player, 'Stone', 3, settings);
+      player = setPlayerGoods(player, 'Ceramic', 1, settings);
 
       const overflow = calculateGoodsOverflow(player.goods, player, settings);
-      const wood = settings.goodsTypes.find((g) => g.name === 'Wood')!;
-
-      expect(overflow.get(wood)).toBe(2);
+      expect(overflow).toBe(2);
     });
 
-    it('returns empty map when no overflow', () => {
-      const player = createTestPlayer('p1', settings);
+    it('returns 0 when at or under limit', () => {
+      let player = createTestPlayer('p1', settings);
+      player = setPlayerGoods(player, 'Wood', 3, settings);
+      player = setPlayerGoods(player, 'Stone', 3, settings);
+
       const overflow = calculateGoodsOverflow(player.goods, player, settings);
-
-      expect(overflow.size).toBe(0);
+      expect(overflow).toBe(0);
     });
 
-    it('returns empty map with Caravans', () => {
+    it('returns 0 with Caravans (no limit)', () => {
       let player = createTestPlayer('p1', settings, { developments: ['caravans'] });
       player = setPlayerGoods(player, 'Wood', 100, settings);
 
       const overflow = calculateGoodsOverflow(player.goods, player, settings);
-      expect(overflow.size).toBe(0);
+      expect(overflow).toBe(0);
     });
   });
 
   describe('hasGoodsOverflow', () => {
-    it('returns true when overflow exists', () => {
+    it('returns true when total exceeds limit', () => {
       let player = createTestPlayer('p1', settings);
-      player = setPlayerGoods(player, 'Wood', 10, settings);
+      player = setPlayerGoods(player, 'Wood', 4, settings);
+      player = setPlayerGoods(player, 'Stone', 3, settings);
 
       expect(hasGoodsOverflow(player.goods, player, settings)).toBe(true);
     });
 
-    it('returns false when no overflow', () => {
-      const player = createTestPlayer('p1', settings);
+    it('returns false when at or under limit', () => {
+      let player = createTestPlayer('p1', settings);
+      player = setPlayerGoods(player, 'Wood', 3, settings);
+      player = setPlayerGoods(player, 'Stone', 3, settings);
+
       expect(hasGoodsOverflow(player.goods, player, settings)).toBe(false);
     });
   });
 
-  describe('discardOverflowGoods', () => {
-    it('reduces goods to limit', () => {
+  describe('validateKeepGoods', () => {
+    it('valid when keeping goods at limit', () => {
       let player = createTestPlayer('p1', settings);
-      player = setPlayerGoods(player, 'Wood', 10, settings);
-      player = setPlayerGoods(player, 'Stone', 8, settings);
+      player = setPlayerGoods(player, 'Wood', 5, settings);
+      player = setPlayerGoods(player, 'Stone', 3, settings);
 
-      const newGoods = discardOverflowGoods(player.goods, player, settings);
       const wood = settings.goodsTypes.find((g) => g.name === 'Wood')!;
       const stone = settings.goodsTypes.find((g) => g.name === 'Stone')!;
 
-      expect(newGoods.get(wood)).toBe(6);
-      expect(newGoods.get(stone)).toBe(6);
+      const goodsToKeep = new Map([
+        [wood, 4],
+        [stone, 2],
+      ]);
+
+      const result = validateKeepGoods(player.goods, goodsToKeep, player, settings);
+      expect(result.valid).toBe(true);
     });
 
-    it('does not change goods under limit', () => {
+    it('invalid when keeping more than owned', () => {
       let player = createTestPlayer('p1', settings);
-      player = setPlayerGoods(player, 'Wood', 3, settings);
+      player = setPlayerGoods(player, 'Wood', 2, settings);
 
-      const newGoods = discardOverflowGoods(player.goods, player, settings);
       const wood = settings.goodsTypes.find((g) => g.name === 'Wood')!;
+      const goodsToKeep = new Map([[wood, 5]]);
+
+      const result = validateKeepGoods(player.goods, goodsToKeep, player, settings);
+      expect(result.valid).toBe(false);
+      expect(result).toHaveProperty('reason');
+    });
+
+    it('invalid when keeping more than limit', () => {
+      let player = createTestPlayer('p1', settings);
+      player = setPlayerGoods(player, 'Wood', 10, settings);
+
+      const wood = settings.goodsTypes.find((g) => g.name === 'Wood')!;
+      const goodsToKeep = new Map([[wood, 8]]);
+
+      const result = validateKeepGoods(player.goods, goodsToKeep, player, settings);
+      expect(result.valid).toBe(false);
+      expect(result).toHaveProperty('reason');
+    });
+  });
+
+  describe('applyKeepGoods', () => {
+    it('sets goods to kept amounts', () => {
+      let player = createTestPlayer('p1', settings);
+      player = setPlayerGoods(player, 'Wood', 5, settings);
+      player = setPlayerGoods(player, 'Stone', 4, settings);
+
+      const wood = settings.goodsTypes.find((g) => g.name === 'Wood')!;
+      const stone = settings.goodsTypes.find((g) => g.name === 'Stone')!;
+
+      const goodsToKeep = new Map([
+        [wood, 3],
+        [stone, 2],
+      ]);
+
+      const newGoods = applyKeepGoods(player.goods, goodsToKeep);
 
       expect(newGoods.get(wood)).toBe(3);
+      expect(newGoods.get(stone)).toBe(2);
+    });
+
+    it('sets unspecified goods to 0', () => {
+      let player = createTestPlayer('p1', settings);
+      player = setPlayerGoods(player, 'Wood', 5, settings);
+      player = setPlayerGoods(player, 'Stone', 4, settings);
+
+      const wood = settings.goodsTypes.find((g) => g.name === 'Wood')!;
+      const stone = settings.goodsTypes.find((g) => g.name === 'Stone')!;
+
+      // Only specify wood, stone should become 0
+      const goodsToKeep = new Map([[wood, 3]]);
+
+      const newGoods = applyKeepGoods(player.goods, goodsToKeep);
+
+      expect(newGoods.get(wood)).toBe(3);
+      expect(newGoods.get(stone)).toBe(0);
     });
   });
 
@@ -219,36 +285,89 @@ describe('goodsEngine', () => {
     });
   });
 
-  describe('spendGoodsForCoins', () => {
-    it('spends goods to meet coin requirement', () => {
+  describe('calculateSpendValue', () => {
+    it('calculates total value of spending entire goods types', () => {
+      let player = createTestPlayer('p1', settings);
+      player = setPlayerGoods(player, 'Wood', 3, settings); // Value: 6
+
+      const wood = settings.goodsTypes.find((g) => g.name === 'Wood')!;
+
+      expect(calculateSpendValue(player.goods, [wood])).toBe(6);
+    });
+
+    it('calculates total value for multiple goods types', () => {
+      let player = createTestPlayer('p1', settings);
+      player = setPlayerGoods(player, 'Wood', 2, settings); // Value: 3
+      player = setPlayerGoods(player, 'Stone', 1, settings); // Value: 2
+
+      const wood = settings.goodsTypes.find((g) => g.name === 'Wood')!;
+      const stone = settings.goodsTypes.find((g) => g.name === 'Stone')!;
+
+      expect(calculateSpendValue(player.goods, [wood, stone])).toBe(5);
+    });
+  });
+
+  describe('validateSpendGoods', () => {
+    it('valid when spend value meets requirement', () => {
       let player = createTestPlayer('p1', settings);
       player = setPlayerGoods(player, 'Spearhead', 2, settings); // Value: 15
 
-      const result = spendGoodsForCoins(player.goods, 10);
-      expect(result).not.toBeNull();
-
       const spearhead = settings.goodsTypes.find((g) => g.name === 'Spearhead')!;
-      expect(result!.get(spearhead)).toBe(1); // Spent 1 Spearhead (10 coins)
+
+      const result = validateSpendGoods(player.goods, [spearhead], 15);
+      expect(result.valid).toBe(true);
     });
 
-    it('returns null when insufficient goods', () => {
-      const player = createTestPlayer('p1', settings);
-      const result = spendGoodsForCoins(player.goods, 100);
+    it('invalid when spend value is insufficient', () => {
+      let player = createTestPlayer('p1', settings);
+      player = setPlayerGoods(player, 'Wood', 2, settings); // Value: 3
 
-      expect(result).toBeNull();
+      const wood = settings.goodsTypes.find((g) => g.name === 'Wood')!;
+
+      const result = validateSpendGoods(player.goods, [wood], 10);
+      expect(result.valid).toBe(false);
+      expect(result).toHaveProperty('reason');
     });
 
-    it('prefers higher value goods', () => {
+    it('valid when combining multiple goods types', () => {
       let player = createTestPlayer('p1', settings);
       player = setPlayerGoods(player, 'Wood', 3, settings); // Value: 6
-      player = setPlayerGoods(player, 'Spearhead', 1, settings); // Value: 5
+      player = setPlayerGoods(player, 'Stone', 2, settings); // Value: 6
 
-      const result = spendGoodsForCoins(player.goods, 5);
-      expect(result).not.toBeNull();
+      const wood = settings.goodsTypes.find((g) => g.name === 'Wood')!;
+      const stone = settings.goodsTypes.find((g) => g.name === 'Stone')!;
 
-      // Should spend Spearhead first (higher per-item value)
-      const spearhead = settings.goodsTypes.find((g) => g.name === 'Spearhead')!;
-      expect(result!.get(spearhead)).toBe(0);
+      const result = validateSpendGoods(player.goods, [wood, stone], 12);
+      expect(result.valid).toBe(true);
+    });
+  });
+
+  describe('spendGoods', () => {
+    it('spends entire quantity of selected goods types', () => {
+      let player = createTestPlayer('p1', settings);
+      player = setPlayerGoods(player, 'Wood', 5, settings);
+      player = setPlayerGoods(player, 'Stone', 3, settings);
+      player = setPlayerGoods(player, 'Ceramic', 2, settings);
+
+      const wood = settings.goodsTypes.find((g) => g.name === 'Wood')!;
+      const stone = settings.goodsTypes.find((g) => g.name === 'Stone')!;
+      const ceramic = settings.goodsTypes.find((g) => g.name === 'Ceramic')!;
+
+      const newGoods = spendGoods(player.goods, [wood, stone]);
+
+      expect(newGoods.get(wood)).toBe(0);
+      expect(newGoods.get(stone)).toBe(0);
+      expect(newGoods.get(ceramic)).toBe(2); // Unchanged
+    });
+
+    it('handles spending goods with zero quantity', () => {
+      const player = createTestPlayer('p1', settings);
+
+      const wood = settings.goodsTypes.find((g) => g.name === 'Wood')!;
+
+      const newGoods = spendGoods(player.goods, [wood]);
+
+      expect(newGoods.get(wood)).toBe(0);
     });
   });
 });

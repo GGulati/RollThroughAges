@@ -101,33 +101,6 @@ describe('scoreEngine', () => {
     });
   });
 
-  describe('calculateScore', () => {
-    it('returns 0 for new player', () => {
-      const players = [createTestPlayer('p1', settings)];
-      expect(calculateScore(players[0], players, settings)).toBe(0);
-    });
-
-    it('sums monument, development, and bonus points', () => {
-      const players = [createTestPlayer('p1', settings)];
-      const monument = settings.monumentDefinitions[0];
-      const dev = settings.developmentDefinitions[0];
-
-      players[0].monuments[monument.id] = { workersCommitted: 10, completed: true };
-      players[0].developments.push(dev.id);
-
-      const score = calculateScore(players[0], players, settings);
-      expect(score).toBeGreaterThanOrEqual(monument.firstPoints + dev.points);
-    });
-
-    it('subtracts disaster penalties', () => {
-      const players = [createTestPlayer('p1', settings)];
-      players[0].disasterPenalties = 5;
-
-      const score = calculateScore(players[0], players, settings);
-      expect(score).toBe(-5);
-    });
-  });
-
   describe('updateAllScores', () => {
     it('updates scores for all players', () => {
       const players = [
@@ -145,6 +118,30 @@ describe('scoreEngine', () => {
   });
 
   describe('getScoreBreakdown', () => {
+    it('returns 0 for new player', () => {
+      const players = [createTestPlayer('p1', settings)];
+      expect(getScoreBreakdown(players[0], players, settings).total).toBe(0);
+    });
+
+    it('sums monument, development, and bonus points', () => {
+      const players = [createTestPlayer('p1', settings)];
+      const monument = settings.monumentDefinitions[0];
+      const dev = settings.developmentDefinitions[0];
+
+      players[0].monuments[monument.id] = { workersCommitted: 10, completed: true };
+      players[0].developments.push(dev.id);
+
+      const score = getScoreBreakdown(players[0], players, settings).total;
+      expect(score).toBeGreaterThanOrEqual(monument.firstPoints + dev.points);
+    });
+
+    it('subtracts disaster penalties', () => {
+      const players = [createTestPlayer('p1', settings)];
+      players[0].disasterPenalties = 5;
+
+      const score = getScoreBreakdown(players[0], players, settings).total;
+      expect(score).toBe(-5);
+    });
     it('returns detailed breakdown', () => {
       const players = [createTestPlayer('p1', settings)];
       const monument = settings.monumentDefinitions[0];

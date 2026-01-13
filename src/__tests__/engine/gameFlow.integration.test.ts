@@ -260,15 +260,17 @@ describe('Game Flow Integration Tests', () => {
 
       const cheapDev = game.settings.developmentDefinitions.find((d) => d.cost <= 20);
       if (cheapDev) {
+        // No goods needed when coins cover the cost
         const result = purchaseDevelopment(
           game.state.players[0],
           game.state.turn,
           cheapDev.id,
+          [],
           game.settings
         );
 
-        expect(result).not.toBeNull();
-        expect(result!.player.developments).toContain(cheapDev.id);
+        expect(result).not.toHaveProperty('error');
+        expect((result as { player: any }).player.developments).toContain(cheapDev.id);
       }
     });
   });

@@ -1,6 +1,7 @@
 import { DevelopmentDefinition, SpecialEffect } from '../construction';
 import { PlayerState, TurnState, GameSettings } from '../game';
-import { calculateGoodsValue, spendGoodsForCoins } from './goodsEngine';
+import { GoodsType } from '../goods';
+import { calculateGoodsValue, validateSpendGoods, spendGoods, GoodsValidationResult } from './goodsEngine';
 
 /**
  * Get a development definition by ID.
@@ -53,19 +54,53 @@ export function canAffordDevelopment(
 }
 
 /**
+ * Validate a development purchase with the player's choice of goods types to spend.
+ * When goods types are selected, the entire quantity of each type is spent.
+ */
+export function validateDevelopmentPurchase(
+  player: PlayerState,
+  turn: TurnState,
+  developmentId: string,
+  goodsTypesToSpend: GoodsType[],
+  settings: GameSettings
+): GoodsValidationResult {
+  const development = getDevelopment(developmentId, settings);
+  if (!development) {
+    return { valid: false, reason: `Development ${developmentId} not found` };
+  }
+  if (hasDevelopment(player, developmentId)) {
+    return { valid: false, reason: `Already have ${development.name}` };
+  }
+
+  // Calculate remaining cost after spending coins
+  const coinsToSpend = Math.min(turn.turnProduction.coins, development.cost);
+  const remainingCost = development.cost - coinsToSpend;
+
+  if (remainingCost <= 0) {
+    return { valid: true };
+  }
+
+  return validateSpendGoods(player.goods, goodsTypesToSpend, remainingCost);
+}
+
+/**
  * Purchase a development.
- * Spends coins first, then goods if needed.
- * Returns updated player and turn, or null if purchase fails.
+ * Spends coins first, then the entire quantity of specified goods types if needed.
+ * Returns updated player and turn, or an error message if purchase fails.
  */
 export function purchaseDevelopment(
   player: PlayerState,
   turn: TurnState,
   developmentId: string,
+  goodsTypesToSpend: GoodsType[],
   settings: GameSettings
-): { player: PlayerState; turn: TurnState } | null {
-  const development = getDevelopment(developmentId, settings);
-  if (!development) return null;
-  if (hasDevelopment(player, developmentId)) return null;
+): { player: PlayerState; turn: TurnState } | { error: string } {
+  const validation = validateDevelopmentPurchase(player, turn, developmentId, goodsTypesToSpend, settings);
+  if (!validation.valid) {
+    return { error: validation.reason };
+  }
+
+  const development = getDevelopment(developmentId, settings)!;
 
   let remainingCost = development.cost;
   let newTurn = { ...turn };
@@ -84,12 +119,9 @@ export function purchaseDevelopment(
     remainingCost -= coinsToSpend;
   }
 
-  // Spend goods if needed
+  // Spend goods if needed (entire quantities of chosen types)
   if (remainingCost > 0) {
-    const newGoods = spendGoodsForCoins(player.goods, remainingCost);
-    if (!newGoods) return null;
-
-    newPlayer = { ...newPlayer, goods: newGoods };
+    newPlayer = { ...newPlayer, goods: spendGoods(player.goods, goodsTypesToSpend) };
   }
 
   // Add development to player

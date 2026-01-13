@@ -79,25 +79,21 @@ export function getGoodsLimit(player: PlayerState, settings: GameSettings): numb
 }
 
 /**
- * Calculate overflow goods that must be discarded.
- * Returns a map of goods type to amount over the limit.
+ * Calculate total goods overflow amount.
+ * The goods limit applies to the total quantity across all goods types.
+ * Returns the number of goods that must be discarded.
  */
 export function calculateGoodsOverflow(
   goods: GoodsTrack,
   player: PlayerState,
   settings: GameSettings
-): Map<GoodsType, number> {
-  const overflow = new Map<GoodsType, number>();
+): number {
   const limit = getGoodsLimit(player, settings);
 
-  if (limit === Infinity) return overflow;
+  if (limit === Infinity) return 0;
 
-  for (const [goodsType, quantity] of goods.entries()) {
-    if (quantity > limit) {
-      overflow.set(goodsType, quantity - limit);
-    }
-  }
-  return overflow;
+  const total = getTotalGoodsQuantity(goods);
+  return Math.max(0, total - limit);
 }
 
 /**
@@ -108,27 +104,64 @@ export function hasGoodsOverflow(
   player: PlayerState,
   settings: GameSettings
 ): boolean {
-  const overflow = calculateGoodsOverflow(goods, player, settings);
-  return overflow.size > 0;
+  return calculateGoodsOverflow(goods, player, settings) > 0;
 }
 
 /**
- * Discard goods down to the limit.
+ * Validation result for goods operations.
  */
-export function discardOverflowGoods(
+export type GoodsValidationResult =
+  | { valid: true }
+  | { valid: false; reason: string };
+
+/**
+ * Validate a player's choice of goods to keep when over the limit.
+ * Checks that:
+ * 1. Player has enough of each goods type to keep the requested amount
+ * 2. Total kept goods is at or under the limit
+ */
+export function validateKeepGoods(
   goods: GoodsTrack,
+  goodsToKeep: GoodsTrack,
   player: PlayerState,
   settings: GameSettings
-): GoodsTrack {
+): GoodsValidationResult {
   const limit = getGoodsLimit(player, settings);
-  if (limit === Infinity) return goods;
 
-  const newGoods = new Map(goods);
-  for (const [goodsType, quantity] of newGoods.entries()) {
-    if (quantity > limit) {
-      newGoods.set(goodsType, limit);
+  let totalKeeping = 0;
+  for (const [goodsType, keepAmount] of goodsToKeep.entries()) {
+    if (keepAmount < 0) {
+      return { valid: false, reason: `Cannot keep negative ${goodsType.name}` };
     }
+    const owned = goods.get(goodsType) ?? 0;
+    if (keepAmount > owned) {
+      return { valid: false, reason: `Cannot keep ${keepAmount} ${goodsType.name}, only have ${owned}` };
+    }
+    totalKeeping += keepAmount;
   }
+
+  if (totalKeeping > limit) {
+    return { valid: false, reason: `Cannot keep ${totalKeeping} goods, limit is ${limit}` };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Apply the player's choice of goods to keep.
+ * The goodsToKeep map specifies how many of each type to keep.
+ */
+export function applyKeepGoods(
+  goods: GoodsTrack,
+  goodsToKeep: GoodsTrack
+): GoodsTrack {
+  const newGoods = new Map(goods);
+
+  for (const [goodsType] of newGoods.entries()) {
+    const keepAmount = goodsToKeep.get(goodsType) ?? 0;
+    newGoods.set(goodsType, keepAmount);
+  }
+
   return newGoods;
 }
 
@@ -162,45 +195,48 @@ export function getTotalGoodsQuantity(goods: GoodsTrack): number {
 }
 
 /**
- * Spend goods to pay for a development.
- * Returns the new goods track after spending, or null if insufficient.
- * Goods are spent from most valuable to least valuable.
+ * Calculate the coin value of spending entire goods types.
+ * When a goods type is selected to spend, the full quantity is spent.
  */
-export function spendGoodsForCoins(goods: GoodsTrack, coinsNeeded: number): GoodsTrack | null {
-  // Sort goods by value per item (descending) to optimize spending
-  const entries = Array.from(goods.entries()).sort((a, b) => {
-    const valueA = a[0].values[0] ?? 0;
-    const valueB = b[0].values[0] ?? 0;
-    return valueB - valueA;
-  });
+export function calculateSpendValue(goods: GoodsTrack, goodsTypesToSpend: GoodsType[]): number {
+  let totalValue = 0;
 
-  let remaining = coinsNeeded;
-  const newGoods = new Map(goods);
-
-  for (const [goodsType, quantity] of entries) {
-    if (remaining <= 0) break;
-    if (quantity <= 0) continue;
-
-    // Spend one at a time to get exact value
-    let toSpend = quantity;
-    while (toSpend > 0 && remaining > 0) {
-      const currentQty = newGoods.get(goodsType) ?? 0;
-      const valueIfSpent = getGoodsValue(goodsType, currentQty);
-      const valueAfter = getGoodsValue(goodsType, currentQty - 1);
-      const valueGained = valueIfSpent - valueAfter;
-
-      if (valueGained > 0) {
-        newGoods.set(goodsType, currentQty - 1);
-        remaining -= valueGained;
-        toSpend--;
-      } else {
-        break;
-      }
-    }
+  for (const goodsType of goodsTypesToSpend) {
+    const quantity = goods.get(goodsType) ?? 0;
+    totalValue += getGoodsValue(goodsType, quantity);
   }
 
-  if (remaining > 0) {
-    return null;
+  return totalValue;
+}
+
+/**
+ * Validate a player's choice of goods types to spend for coins.
+ * When spending, the entire quantity of each chosen type is spent.
+ * Checks that total value meets or exceeds the required coins.
+ */
+export function validateSpendGoods(
+  goods: GoodsTrack,
+  goodsTypesToSpend: GoodsType[],
+  coinsNeeded: number
+): GoodsValidationResult {
+  // Check total value meets requirement
+  const totalValue = calculateSpendValue(goods, goodsTypesToSpend);
+  if (totalValue < coinsNeeded) {
+    return { valid: false, reason: `Goods value ${totalValue} is less than required ${coinsNeeded}` };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Spend entire quantities of selected goods types.
+ * When a goods type is chosen to spend, all of it is spent.
+ */
+export function spendGoods(goods: GoodsTrack, goodsTypesToSpend: GoodsType[]): GoodsTrack {
+  const newGoods = new Map(goods);
+
+  for (const goodsType of goodsTypesToSpend) {
+    newGoods.set(goodsType, 0);
   }
 
   return newGoods;

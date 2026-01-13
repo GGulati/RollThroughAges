@@ -48,28 +48,12 @@ export function calculateBonusPoints(player: PlayerState, settings: GameSettings
 }
 
 /**
- * Calculate total score for a player.
- */
-export function calculateScore(
-  player: PlayerState,
-  allPlayers: PlayerState[],
-  settings: GameSettings
-): number {
-  const monumentPoints = calculateMonumentPoints(player, allPlayers, settings);
-  const developmentPoints = getDevelopmentPoints(player, settings);
-  const bonusPoints = calculateBonusPoints(player, settings);
-  const disasterPenalties = player.disasterPenalties;
-
-  return monumentPoints + developmentPoints + bonusPoints - disasterPenalties;
-}
-
-/**
  * Update scores for all players.
  */
 export function updateAllScores(players: PlayerState[], settings: GameSettings): PlayerState[] {
   return players.map((player) => ({
     ...player,
-    score: calculateScore(player, players, settings),
+    score: getScoreBreakdown(player, players, settings).total,
   }));
 }
 

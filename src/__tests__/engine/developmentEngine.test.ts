@@ -123,7 +123,7 @@ describe('developmentEngine', () => {
   });
 
   describe('purchaseDevelopment', () => {
-    it('purchases development with coins', () => {
+    it('purchases development with coins only', () => {
       const player = createTestPlayer('p1', settings);
       const cheapDev = settings.developmentDefinitions.find((d) => d.cost <= 10);
       if (!cheapDev) return;
@@ -132,50 +132,52 @@ describe('developmentEngine', () => {
         turnProduction: { goods: 0, food: 0, workers: 0, coins: cheapDev.cost + 5, skulls: 0 },
       });
 
-      const result = purchaseDevelopment(player, turn, cheapDev.id, settings);
-      expect(result).not.toBeNull();
-      expect(result!.player.developments).toContain(cheapDev.id);
-      expect(result!.turn.turnProduction.coins).toBe(5);
+      // No goods needed when coins cover the cost
+      const result = purchaseDevelopment(player, turn, cheapDev.id, [], settings);
+      expect(result).not.toHaveProperty('error');
+      expect((result as { player: any; turn: any }).player.developments).toContain(cheapDev.id);
+      expect((result as { player: any; turn: any }).turn.turnProduction.coins).toBe(5);
     });
 
     it('spends goods when coins insufficient', () => {
       let player = createTestPlayer('p1', settings);
-      // Add expensive goods
-      player = setPlayerGoods(player, 'Spearhead', 3, settings); // High value
+      const spearhead = settings.goodsTypes.find((g) => g.name === 'Spearhead')!;
+      player = setPlayerGoods(player, 'Spearhead', 3, settings); // Value: 30
 
-      const dev = getDevelopment('agriculture', settings)!;
+      const dev = getDevelopment('agriculture', settings)!; // Cost: 15
       const turn = createTestTurn('p1', {
         turnProduction: { goods: 0, food: 0, workers: 0, coins: 5, skulls: 0 },
       });
 
-      const result = purchaseDevelopment(player, turn, dev.id, settings);
+      // Need 10 more after coins, spearhead x3 is worth 30
+      const result = purchaseDevelopment(player, turn, dev.id, [spearhead], settings);
 
-      if (result) {
-        expect(result.player.developments).toContain(dev.id);
-        // Coins should be spent first
-        expect(result.turn.turnProduction.coins).toBeLessThanOrEqual(5);
-      }
+      expect(result).not.toHaveProperty('error');
+      const success = result as { player: any; turn: any };
+      expect(success.player.developments).toContain(dev.id);
+      expect(success.turn.turnProduction.coins).toBe(0); // All coins spent
+      expect(success.player.goods.get(spearhead)).toBe(0); // All spearheads spent
     });
 
-    it('returns null for unknown development', () => {
+    it('returns error for unknown development', () => {
       const player = createTestPlayer('p1', settings);
       const turn = createTestTurn('p1');
 
-      const result = purchaseDevelopment(player, turn, 'unknown', settings);
-      expect(result).toBeNull();
+      const result = purchaseDevelopment(player, turn, 'unknown', [], settings);
+      expect(result).toHaveProperty('error');
     });
 
-    it('returns null for already owned development', () => {
+    it('returns error for already owned development', () => {
       const player = createTestPlayer('p1', settings, { developments: ['agriculture'] });
       const turn = createTestTurn('p1', {
         turnProduction: { goods: 0, food: 0, workers: 0, coins: 100, skulls: 0 },
       });
 
-      const result = purchaseDevelopment(player, turn, 'agriculture', settings);
-      expect(result).toBeNull();
+      const result = purchaseDevelopment(player, turn, 'agriculture', [], settings);
+      expect(result).toHaveProperty('error');
     });
 
-    it('returns null when cannot afford', () => {
+    it('returns error when cannot afford', () => {
       const player = createTestPlayer('p1', settings);
       const expensiveDev = settings.developmentDefinitions.find((d) => d.cost > 100);
       if (!expensiveDev) return;
@@ -184,8 +186,8 @@ describe('developmentEngine', () => {
         turnProduction: { goods: 0, food: 0, workers: 0, coins: 0, skulls: 0 },
       });
 
-      const result = purchaseDevelopment(player, turn, expensiveDev.id, settings);
-      expect(result).toBeNull();
+      const result = purchaseDevelopment(player, turn, expensiveDev.id, [], settings);
+      expect(result).toHaveProperty('error');
     });
   });
 

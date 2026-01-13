@@ -22,7 +22,8 @@ import {
   emptyProduction,
   areAllDiceLocked,
 } from './diceEngine';
-import { hasGoodsOverflow, discardOverflowGoods } from './goodsEngine';
+import { hasGoodsOverflow, validateKeepGoods, applyKeepGoods, GoodsValidationResult } from './goodsEngine';
+import { GoodsTrack } from '../goods';
 import { updateAllScores } from './scoreEngine';
 import { getDevelopmentCount } from './developmentEngine';
 import { getCompletedMonumentCount } from './buildEngine';
@@ -178,6 +179,39 @@ export function isDecidePhaseComplete(turn: TurnState, settings: GameSettings): 
 }
 
 /**
+ * Resolve the DiscardGoods phase with the player's choice of goods to keep.
+ * Returns the updated game state, or an error if the choice is invalid.
+ */
+export function resolveDiscardGoods(
+  game: GameState,
+  goodsToKeep: GoodsTrack
+): GameState | { error: string } {
+  const { state, settings } = game;
+  const activePlayer = state.players[state.activePlayerIndex];
+
+  const validation = validateKeepGoods(activePlayer.goods, goodsToKeep, activePlayer, settings);
+  if (!validation.valid) {
+    return { error: validation.reason };
+  }
+
+  const newGoods = applyKeepGoods(activePlayer.goods, goodsToKeep);
+  const updatedPlayer = { ...activePlayer, goods: newGoods };
+  const players = [
+    ...state.players.slice(0, state.activePlayerIndex),
+    updatedPlayer,
+    ...state.players.slice(state.activePlayerIndex + 1),
+  ];
+
+  const newState: GameStateSnapshot = {
+    ...state,
+    players,
+    phase: GamePhase.EndTurn,
+  };
+
+  return { ...game, state: newState };
+}
+
+/**
  * End the current player's turn and move to the next player.
  */
 export function endTurn(game: GameState): GameState {
@@ -185,14 +219,6 @@ export function endTurn(game: GameState): GameState {
   const totalPlayers = settings.players.length;
 
   let players = [...state.players];
-  const activePlayer = players[state.activePlayerIndex];
-  if (hasGoodsOverflow(activePlayer.goods, activePlayer, settings)) {
-    players = [
-      ...players.slice(0, state.activePlayerIndex),
-      { ...activePlayer, goods: discardOverflowGoods(activePlayer.goods, activePlayer, settings) },
-      ...players.slice(state.activePlayerIndex + 1),
-    ];
-  }
 
   players = updateAllScores(players, settings);
 
