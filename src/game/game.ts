@@ -1,7 +1,7 @@
-import { MonumentDefinition, ConstructionRequirements, ConstructionProgress } from './construction';
+import { MonumentDefinition, ConstructionRequirements, ConstructionProgress, DevelopmentDefinition } from './construction';
 import { DisasterDefinition } from './disaster';
 import { GoodsTrack, GoodsType } from './goods';
-import { DieState } from './dice';
+import { DieState, DiceFaceDefinition } from './dice';
 import { ResourceProduction } from './dice';
 
 /**
@@ -22,6 +22,16 @@ export enum GamePhase {
   DiscardGoods = 'discardGoods',
   EndTurn = 'endTurn',
 }
+
+export const GAME_PHASE_ORDER: GamePhase[] = [
+  GamePhase.RollDice,
+  GamePhase.DecideDice,
+  GamePhase.ResolveProduction,
+  GamePhase.Build,
+  GamePhase.Development,
+  GamePhase.DiscardGoods,
+  GamePhase.EndTurn,
+];
 
 export interface GameStateSnapshot {
   players: PlayerState[];
@@ -49,10 +59,19 @@ export interface GameSettings {
 
   endCondition: EndCondition;
 
+  diceFaces: DiceFaceDefinition[];
   goodsTypes: GoodsType[];
   monumentDefinitions: MonumentDefinition[];
   cityDefinitions: ConstructionRequirements[];
+  developmentDefinitions: DevelopmentDefinition[];
   disasterDefinitions: DisasterDefinition[];
+
+  maxDiceRolls: number;
+  maxFood: number;
+  maxGoods: number;
+  startingFood: number;
+  startingCities: number;
+  maxCities: number;
 }
 
 export type EndCondition = {

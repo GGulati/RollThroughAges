@@ -8,7 +8,7 @@ import { GameSettings } from './game';
 import { PlayerConfig } from './game';
 import { PlayerId } from './game';
 import { PlayerState } from './game';
-import { DevelopmentDefinition, SpecialEffect } from './construction';
+import { DevelopmentDefinition } from './construction';
 import { DisasterDefinition } from './disaster';
 
 export const STARTING_FOOD = 3;
@@ -37,7 +37,7 @@ export const DICE_FACES: DiceFaceDefinition[] = [
   },
   {
     label: '2 Goods + Skull',
-    production: [{ goods: 2, food: 0, workers: 0, coins: 0, skulls: 0 }, { skulls: 1, food: 0, workers: 0, coins: 0, goods: 0 }],
+    production: [{ goods: 2, food: 0, workers: 0, coins: 0, skulls: 1 }],
   },
   {
     label: '2 Food OR 2 Workers',
@@ -107,14 +107,19 @@ export const MONUMENTS: MonumentDefinition[] = [
 
 export const MONUMENT_IDS = MONUMENTS.map((monument) => monument.id);
 
-export const createEmptyMonumentProgress = (): Record<string, ConstructionProgress> =>
-  MONUMENT_IDS.reduce(
-    (acc, id) => {
-      acc[id] = { workersCommitted: 0, completed: false };
+export const createEmptyMonumentProgress = (
+  monuments: MonumentDefinition[] = MONUMENTS
+): Record<string, ConstructionProgress> =>
+  monuments.reduce(
+    (acc, monument) => {
+      acc[monument.id] = { workersCommitted: 0, completed: false };
       return acc;
     },
     {} as Record<string, ConstructionProgress>,
   );
+
+export const createEmptyGoodsTrack = (goodsTypes: GoodsType[] = GOODS_TYPES): GoodsTrack =>
+  new Map(goodsTypes.map((goodsType) => [goodsType, 0]));
 
 export const CITY_DEFINITIONS: ConstructionRequirements[] = [
     {
@@ -135,19 +140,27 @@ export const CITY_DEFINITIONS: ConstructionRequirements[] = [
     },
 ];
 
-export const CreatePlayerState = (id: PlayerId): PlayerState => ({
-  id,
-  cities: [
-    ...Array.from({ length: STARTING_CITIES }, () => ({ workersCommitted: 0, completed: true })),
-    ...Array.from({ length: (MAX_CITIES - STARTING_CITIES) }, () => ({ workersCommitted: 0, completed: false }))
-  ],
-  food: STARTING_FOOD,
-  goods: { ...EMPTY_GOODS_TRACK },
-  developments: [],
-  monuments: createEmptyMonumentProgress(),
-  disasterPenalties: 0,
-  score: 0,
-});
+export const CreatePlayerState = (id: PlayerId, settings: GameSettings): PlayerState => {
+  const startingCities = settings.startingCities;
+  const maxCities = settings.maxCities;
+  const startingFood = settings.startingFood;
+  const goodsTypes = settings.goodsTypes;
+  const monuments = settings.monumentDefinitions;
+
+  return {
+    id,
+    cities: [
+      ...Array.from({ length: startingCities }, () => ({ workersCommitted: 0, completed: true })),
+      ...Array.from({ length: maxCities - startingCities }, () => ({ workersCommitted: 0, completed: false }))
+    ],
+    food: startingFood,
+    goods: createEmptyGoodsTrack(goodsTypes),
+    developments: [],
+    monuments: createEmptyMonumentProgress(monuments),
+    disasterPenalties: 0,
+    score: 0,
+  };
+};
 
 export const DEVELOPMENTS: DevelopmentDefinition[] = [
   {
@@ -172,7 +185,7 @@ export const DEVELOPMENTS: DevelopmentDefinition[] = [
     cost: 15,
     points: 3,
     effectDescription: '+1 Food per food die',
-    specialEffect: { type: 'productionBonus', resource: 'food', bonus: 1 },
+    specialEffect: { type: 'resourceProductionBonus', resourceBonus: { goods: 0, food: 1, workers: 0, coins: 0, skulls: 0 } },
   },
   {
     id: 'quarrying',
@@ -180,7 +193,7 @@ export const DEVELOPMENTS: DevelopmentDefinition[] = [
     cost: 15,
     points: 3,
     effectDescription: '+1 Stone when producing stone',
-    specialEffect: { type: 'productionBonus', resource: 'stone', bonus: 1 },
+    specialEffect: { type: 'goodsProductionBonus', goodsType: GOODS_TYPES.find((v, _) => v.name == 'Stone')!, 'bonus': 1 },
   },
   {
     id: 'medicine',
@@ -195,8 +208,8 @@ export const DEVELOPMENTS: DevelopmentDefinition[] = [
     name: 'Coinage',
     cost: 20,
     points: 4,
-    effectDescription: 'Money die worth 12 coins',
-    specialEffect: { type: 'coinageValue', amount: 12 },
+    effectDescription: 'Money die is worth +5',
+    specialEffect: { type: 'resourceProductionBonus', resourceBonus: { goods: 0, food: 0, workers: 0, coins: 5, skulls: 0 } },
   },
   {
     id: 'caravans',
@@ -212,7 +225,7 @@ export const DEVELOPMENTS: DevelopmentDefinition[] = [
     cost: 25,
     points: 7,
     effectDescription: 'Revolt affects opponents',
-    specialEffect: { type: 'revoltAffectsOpponents' },
+    specialEffect: { type: 'rewriteDisasterTargeting', disasterId: 'revolt', targetPlayers: 'opponents' },
   },
   {
     id: 'granaries',
@@ -228,7 +241,7 @@ export const DEVELOPMENTS: DevelopmentDefinition[] = [
     cost: 30,
     points: 6,
     effectDescription: '+1 Worker per worker die',
-    specialEffect: { type: 'productionBonus', resource: 'workers', bonus: 1 },
+    specialEffect: { type: 'resourceProductionBonus', resourceBonus: { goods: 0, food: 0, workers: 1, coins: 0, skulls: 0 } },
   },
   {
     id: 'engineering',
@@ -298,8 +311,17 @@ export const CreateGameSettings = (players: PlayerConfig[]): GameSettings => ({
     numMonuments: 7,
     numRounds: 10,
   },
+  diceFaces: DICE_FACES,
   goodsTypes: GOODS_TYPES,
+  developmentDefinitions: DEVELOPMENTS,
   monumentDefinitions: MONUMENTS,
   cityDefinitions: CITY_DEFINITIONS,
   disasterDefinitions: DISASTERS,
+
+  maxDiceRolls: MAX_DICE_ROLLS,
+  maxFood: MAX_FOOD,
+  maxGoods: MAX_GOODS,
+  startingFood: STARTING_FOOD,
+  startingCities: STARTING_CITIES,
+  maxCities: MAX_CITIES,
 });

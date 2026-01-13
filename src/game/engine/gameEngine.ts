@@ -1,0 +1,340 @@
+import {
+  GameState,
+  GameStateSnapshot,
+  GamePhase,
+  GameSettings,
+  PlayerState,
+  TurnState,
+  PlayerConfig,
+  HistoryEntry,
+  GAME_PHASE_ORDER,
+} from '../game';
+import {
+  CreatePlayerState,
+  CreateGameSettings,
+} from '../gameDefinitionConsts';
+import {
+  createInitialDice,
+  rollUnlockedDice,
+  getDiceCount,
+  canRoll,
+  countPendingChoices,
+  emptyProduction,
+  areAllDiceLocked,
+} from './diceEngine';
+import { hasGoodsOverflow, discardOverflowGoods } from './goodsEngine';
+import { updateAllScores } from './scoreEngine';
+import { getDevelopmentCount } from './developmentEngine';
+import { getCompletedMonumentCount } from './buildEngine';
+
+/**
+ * Create initial game state for a new game.
+ */
+export function createGame(playerConfigs: PlayerConfig[]): GameState {
+  const settings = CreateGameSettings(playerConfigs);
+  const players = playerConfigs.map((config) => CreatePlayerState(config.id, settings));
+
+  const initialSnapshot: GameStateSnapshot = {
+    players,
+    activePlayerIndex: 0,
+    round: 1,
+    phase: GamePhase.RollDice,
+    turn: createInitialTurn(players[0].id, players[0], settings),
+  };
+
+  return {
+    settings,
+    state: initialSnapshot,
+    history: [],
+    future: [],
+  };
+}
+
+/**
+ * Create initial turn state for a player.
+ */
+export function createInitialTurn(
+  playerId: string,
+  player: PlayerState,
+  settings: GameSettings
+): TurnState {
+  const diceCount = getDiceCount(player);
+  return {
+    activePlayerId: playerId,
+    rollsUsed: 0,
+    dice: createInitialDice(diceCount, settings),
+    pendingChoices: 0,
+    turnProduction: emptyProduction(),
+  };
+}
+
+/**
+ * Save current state to history before making changes.
+ */
+export function saveToHistory(game: GameState): GameState {
+  const historyEntry: HistoryEntry = {
+    snapshot: JSON.parse(JSON.stringify(game.state)) as GameStateSnapshot,
+  };
+
+  return {
+    ...game,
+    history: [...game.history, historyEntry],
+    future: [],
+  };
+}
+
+/**
+ * Undo the last action.
+ */
+export function undo(game: GameState): GameState | null {
+  if (game.history.length === 0) return null;
+
+  const previousHistory = [...game.history];
+  const lastEntry = previousHistory.pop()!;
+
+  return {
+    ...game,
+    state: lastEntry.snapshot,
+    history: previousHistory,
+    future: [{ snapshot: game.state }, ...game.future],
+  };
+}
+
+/**
+ * Redo a previously undone action.
+ */
+export function redo(game: GameState): GameState | null {
+  if (game.future.length === 0) return null;
+
+  const [nextEntry, ...remainingFuture] = game.future;
+
+  return {
+    ...game,
+    state: nextEntry.snapshot,
+    history: [...game.history, { snapshot: game.state }],
+    future: remainingFuture,
+  };
+}
+
+/**
+ * Get the next phase in the turn sequence.
+ */
+export function getNextPhase(currentPhase: GamePhase): GamePhase {
+  const currentIndex = GAME_PHASE_ORDER.indexOf(currentPhase);
+  if (currentIndex === -1 || currentIndex === GAME_PHASE_ORDER.length - 1) {
+    return GamePhase.RollDice;
+  }
+
+  return GAME_PHASE_ORDER[currentIndex + 1];
+}
+
+/**
+ * Advance to the next phase.
+ */
+export function advancePhase(game: GameState): GameState {
+  const { state, settings } = game;
+  const nextPhase = getNextPhase(state.phase);
+
+  const newState = {
+    ...state,
+    phase: nextPhase,
+  };
+
+  switch (nextPhase) {
+    case GamePhase.RollDice:
+      newState.turn = {
+        ...newState.turn,
+        rollsUsed: 1,
+      };
+      break;
+
+    case GamePhase.DiscardGoods: {
+      const activePlayer = newState.players[newState.activePlayerIndex];
+      if (!hasGoodsOverflow(activePlayer.goods, activePlayer, settings)) {
+        newState.phase = GamePhase.EndTurn;
+      }
+      break;
+    }
+
+    case GamePhase.EndTurn:
+      break;
+  }
+
+  return { ...game, state: newState };
+}
+
+/**
+ * Check if dice rolling phase is complete.
+ */
+export function isDicePhaseComplete(turn: TurnState, settings: GameSettings): boolean {
+  return !canRoll(turn, settings);
+}
+
+/**
+ * Check if dice decisions are complete.
+ */
+export function isDecidePhaseComplete(turn: TurnState, settings: GameSettings): boolean {
+  return countPendingChoices(turn.dice, settings) === 0;
+}
+
+/**
+ * End the current player's turn and move to the next player.
+ */
+export function endTurn(game: GameState): GameState {
+  const { state, settings } = game;
+  const totalPlayers = settings.players.length;
+
+  let players = [...state.players];
+  const activePlayer = players[state.activePlayerIndex];
+  if (hasGoodsOverflow(activePlayer.goods, activePlayer, settings)) {
+    players = [
+      ...players.slice(0, state.activePlayerIndex),
+      { ...activePlayer, goods: discardOverflowGoods(activePlayer.goods, activePlayer, settings) },
+      ...players.slice(state.activePlayerIndex + 1),
+    ];
+  }
+
+  players = updateAllScores(players, settings);
+
+  const nextPlayerIndex = (state.activePlayerIndex + 1) % totalPlayers;
+  const isNewRound = nextPlayerIndex === 0;
+  const newRound = isNewRound ? state.round + 1 : state.round;
+
+  const nextPlayer = players[nextPlayerIndex];
+  const newTurn = createInitialTurn(nextPlayer.id, nextPlayer, settings);
+
+  const newState: GameStateSnapshot = {
+    players,
+    activePlayerIndex: nextPlayerIndex,
+    round: newRound,
+    phase: GamePhase.RollDice,
+    turn: {
+      ...newTurn,
+      rollsUsed: 1,
+    },
+  };
+
+  return { ...game, state: newState };
+}
+
+/**
+ * Check if the game has ended.
+ */
+export function isGameOver(game: GameState): boolean {
+  if (game.settings.endCondition.numRounds && game.state.round > game.settings.endCondition.numRounds) {
+    return true;
+  }
+
+  for (const player of game.state.players) {
+    if (
+      game.settings.endCondition.numDevelopments &&
+      getDevelopmentCount(player) >= game.settings.endCondition.numDevelopments
+    ) {
+      return true;
+    }
+
+    if (game.settings.endCondition.numMonuments) {
+      const totalMonuments = getCompletedMonumentCount(player);
+      if (totalMonuments >= game.settings.endCondition.numMonuments) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Get the active player.
+ */
+export function getActivePlayer(game: GameState): PlayerState {
+  return game.state.players[game.state.activePlayerIndex];
+}
+
+/**
+ * Update the active player.
+ */
+export function updateActivePlayer(
+  game: GameState,
+  updater: (player: PlayerState) => PlayerState
+): GameState {
+  const players = [...game.state.players];
+  players[game.state.activePlayerIndex] = updater(players[game.state.activePlayerIndex]);
+
+  return {
+    ...game,
+    state: {
+      ...game.state,
+      players,
+    },
+  };
+}
+
+/**
+ * Update the turn state.
+ */
+export function updateTurn(
+  game: GameState,
+  updater: (turn: TurnState) => TurnState
+): GameState {
+  return {
+    ...game,
+    state: {
+      ...game.state,
+      turn: updater(game.state.turn),
+    },
+  };
+}
+
+/**
+ * Perform a dice roll action.
+ */
+export function performRoll(game: GameState): GameState {
+  const { state, settings } = game;
+
+  if (!canRoll(state.turn, settings)) {
+    return game;
+  }
+
+  const newDice = rollUnlockedDice(state.turn.dice, settings);
+  const newTurn: TurnState = {
+    ...state.turn,
+    dice: newDice,
+    rollsUsed: state.turn.rollsUsed + 1,
+  };
+
+  const shouldAutoAdvance = areAllDiceLocked(newDice) || newTurn.rollsUsed >= settings.maxDiceRolls;
+
+  let newPhase = state.phase;
+  if (shouldAutoAdvance) {
+    newPhase = GamePhase.DecideDice;
+  }
+
+  return {
+    ...game,
+    state: {
+      ...state,
+      turn: newTurn,
+      phase: newPhase,
+    },
+  };
+}
+
+/**
+ * Get current game status summary.
+ */
+export function getGameStatus(game: GameState): {
+  round: number;
+  phase: GamePhase;
+  activePlayerIndex: number;
+  activePlayerId: string;
+  isGameOver: boolean;
+} {
+  return {
+    round: game.state.round,
+    phase: game.state.phase,
+    activePlayerIndex: game.state.activePlayerIndex,
+    activePlayerId: game.state.turn.activePlayerId,
+    isGameOver: isGameOver(game),
+  };
+}

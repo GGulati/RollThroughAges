@@ -1,3 +1,7 @@
+import { ImpactedPlayers } from './disaster';
+import { ResourceProduction } from './dice';
+import { GoodsType } from './goods';
+
 export type ConstructionRequirements = {
   name: string;
   workerCost: number;
@@ -16,14 +20,16 @@ export type SpecialEffect =
   | { type: 'diceReroll'; count: number }
   // Immunity to a specific disaster (references DisasterDefinition.id)
   | { type: 'disasterImmunity'; disasterId: string }
-  // Bonus production for a resource (references GoodsType.name or base resource like 'food', 'workers')
-  | { type: 'productionBonus'; resource: string; bonus: number }
+  // Bonus production for a resource where at least 1 is produced this turn
+  | { type: 'resourceProductionBonus'; resourceBonus: ResourceProduction }
+  // Bonus production for a resource where at least 1 is produced this turn
+  | { type: 'goodsProductionBonus'; goodsType: GoodsType, bonus: number }
   // Modified coin value for money dice
   | { type: 'coinageValue'; amount: number }
   // Remove the goods storage limit
   | { type: 'noGoodsLimit' }
-  // Redirect revolt disaster to opponents
-  | { type: 'revoltAffectsOpponents' }
+  // Rewrite disaster targeting for a specific disaster
+  | { type: 'rewriteDisasterTargeting'; disasterId: string; targetPlayers: ImpactedPlayers }
   // Exchange one resource for another at a given rate
   | { type: 'exchange'; from: string; to: string; rate: number }
   // Bonus points per completed entity at end of game
