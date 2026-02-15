@@ -12,38 +12,45 @@ body,
 }
 
 .app-shell {
-  display: flex;
   min-height: 100vh;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
+  padding: 1rem;
+}
+
+.app-layout {
+  width: min(1080px, 100%);
+  margin: 0 auto;
+  display: grid;
+  gap: 1rem;
+}
+
+.board-grid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.actions-log-grid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 1rem;
 }
 
 .app-panel {
-  width: min(640px, 100%);
   background: #ffffff;
   border-radius: 0.75rem;
-  padding: 2rem;
-  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1),
-    0 8px 10px -6px rgb(0 0 0 / 0.1);
+  padding: 1rem;
+  box-shadow: 0 8px 12px -4px rgb(0 0 0 / 0.12);
 }
 
 .app-panel h1 {
   margin-top: 0;
 }
 
-.app-panel ul {
-  padding-left: 1.25rem;
+.app-panel h2 {
+  margin-top: 0;
 }
 
-.status-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.5rem 1rem;
-  margin: 1rem 0 1.5rem;
-}
-
-.status-grid p {
+.app-panel p {
   margin: 0;
 }
 
@@ -63,6 +70,11 @@ body,
   cursor: pointer;
 }
 
+.log-list {
+  margin: 0;
+  padding-left: 1rem;
+}
+
 .actions button:disabled {
   cursor: not-allowed;
   opacity: 0.6;
@@ -76,5 +88,19 @@ body,
 .hint-text {
   margin: 0.5rem 0 0;
   color: #4b5563;
+}
+
+@media (min-width: 768px) {
+  .app-shell {
+    padding: 2rem;
+  }
+
+  .board-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .actions-log-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
