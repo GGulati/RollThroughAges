@@ -31,14 +31,14 @@ describe('gameSlice', () => {
     const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.4);
     let state = reduce(undefined, startGame({ players: PLAYERS }));
 
-    state = reduce(state, rollDice());
-    state = reduce(state, rollDice());
+    state = reduce(state, endTurn());
     state = reduce(state, undo());
 
     expect(state.game).not.toBeNull();
     expect(state.game!.future.length).toBeGreaterThan(0);
 
-    state = reduce(state, endTurn());
+    // Random mutations should also clear redo history.
+    state = reduce(state, rollDice());
     expect(state.game!.future).toHaveLength(0);
 
     randomSpy.mockRestore();
@@ -65,6 +65,24 @@ describe('gameSlice', () => {
 
     expect(state.game!.state.round).toBe(roundAfterEndTurn);
     expect(state.game!.state.turn.activePlayerId).toBe(playerAfterEndTurn);
+
+    randomSpy.mockRestore();
+  });
+
+  it('does not create undo history for random roll actions', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.3);
+    let state = reduce(undefined, startGame({ players: PLAYERS }));
+
+    state = reduce(state, rollDice());
+
+    expect(state.game).not.toBeNull();
+    expect(state.game!.history).toHaveLength(0);
+
+    state = reduce(state, undo());
+    expect(state.lastError).toEqual({
+      code: 'UNDO_NOT_AVAILABLE',
+      message: 'There are no moves to undo.',
+    });
 
     randomSpy.mockRestore();
   });

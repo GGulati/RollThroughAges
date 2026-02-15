@@ -83,6 +83,22 @@ function applyMutationWithHistory(
   };
 }
 
+function applyMutationWithoutHistory(
+  game: GameState,
+  mutator: (current: GameState) => GameState,
+): GameState | null {
+  const mutated = mutator(game);
+  if (mutated === game) {
+    return null;
+  }
+
+  return {
+    ...mutated,
+    history: game.history,
+    future: [],
+  };
+}
+
 const gameSlice = createSlice({
   name: 'game',
   initialState,
@@ -97,7 +113,8 @@ const gameSlice = createSlice({
         return;
       }
 
-      const nextGame = applyMutationWithHistory(state.game, performRoll);
+      // Random outcomes are intentionally non-undoable.
+      const nextGame = applyMutationWithoutHistory(state.game, performRoll);
       if (!nextGame) {
         setError(state, 'ROLL_NOT_ALLOWED', 'No roll is available right now.');
         return;

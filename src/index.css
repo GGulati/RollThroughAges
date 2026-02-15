@@ -36,3 +36,45 @@ body,
   padding-left: 1.25rem;
 }
 
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 1rem;
+  margin: 1rem 0 1.5rem;
+}
+
+.status-grid p {
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.actions button {
+  border: 1px solid #d1d5db;
+  background: #f9fafb;
+  color: #111827;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.error-text {
+  margin: 1rem 0 0;
+  color: #b91c1c;
+}
+
+.hint-text {
+  margin: 0.5rem 0 0;
+  color: #4b5563;
+}
+
