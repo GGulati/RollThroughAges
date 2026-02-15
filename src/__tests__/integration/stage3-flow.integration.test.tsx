@@ -76,7 +76,7 @@ describe('stage3 flow integration', () => {
 
     const cityButtons = within(buildSection)
       .getAllByRole('button')
-      .filter((button) => (button.textContent ?? '').startsWith('City '));
+      .filter((button) => (button.textContent ?? '').startsWith('Build City'));
     expect(cityButtons.length).toBeGreaterThan(0);
 
     await user.click(cityButtons[0]);

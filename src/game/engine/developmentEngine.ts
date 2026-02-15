@@ -1,7 +1,13 @@
 import { DevelopmentDefinition, SpecialEffect } from '../construction';
 import { PlayerState, TurnState, GameSettings } from '../game';
 import { GoodsType } from '../goods';
-import { calculateGoodsValue, validateSpendGoods, spendGoods, GoodsValidationResult } from './goodsEngine';
+import {
+  calculateGoodsValue,
+  validateSpendGoods,
+  spendGoods,
+  GoodsValidationResult,
+  getGoodsValue,
+} from './goodsEngine';
 
 /**
  * Get a development definition by ID.
@@ -85,7 +91,7 @@ export function validateDevelopmentPurchase(
 
 /**
  * Purchase a development.
- * Spends coins first, then the entire quantity of specified goods types if needed.
+ * Spends coins first, then the minimum number of selected whole goods types needed.
  * Returns updated player and turn, or an error message if purchase fails.
  */
 export function purchaseDevelopment(
@@ -119,9 +125,28 @@ export function purchaseDevelopment(
     remainingCost -= coinsToSpend;
   }
 
-  // Spend goods if needed (entire quantities of chosen types)
+  // Spend goods if needed (entire quantities of selected types, but only as many as required).
   if (remainingCost > 0) {
-    newPlayer = { ...newPlayer, goods: spendGoods(player.goods, goodsTypesToSpend) };
+    let covered = 0;
+    const goodsTypesActuallySpent: GoodsType[] = [];
+    for (const goodsType of goodsTypesToSpend) {
+      const quantity = player.goods.get(goodsType) ?? 0;
+      if (quantity <= 0) {
+        continue;
+      }
+
+      goodsTypesActuallySpent.push(goodsType);
+      covered += getGoodsValue(goodsType, quantity);
+      if (covered >= remainingCost) {
+        break;
+      }
+    }
+
+    if (covered < remainingCost) {
+      return { error: `Goods value ${covered} is less than required ${remainingCost}` };
+    }
+
+    newPlayer = { ...newPlayer, goods: spendGoods(player.goods, goodsTypesActuallySpent) };
   }
 
   // Add development to player

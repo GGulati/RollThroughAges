@@ -1,4 +1,5 @@
 ﻿import { useMemo, useState } from 'react';
+import { GamePhase } from '@/game';
 import './index.css';
 import {
   buildCity,
@@ -30,6 +31,16 @@ const DEFAULT_PLAYERS = [
   { id: 'p2', name: 'Player 2', controller: 'human' as const },
 ];
 
+type ConstructionSection = 'cities' | 'monuments' | 'developments';
+
+type SectionPreferences = Record<ConstructionSection, boolean>;
+
+const DEFAULT_SECTION_PREFERENCES: SectionPreferences = {
+  cities: true,
+  monuments: true,
+  developments: true,
+};
+
 function App() {
   const dispatch = useAppDispatch();
   const turnStatus = useAppSelector(selectTurnStatus);
@@ -42,6 +53,9 @@ function App() {
   const canUndo = useAppSelector(selectCanUndo);
   const canRedo = useAppSelector(selectCanRedo);
   const [selectedGoodsToSpend, setSelectedGoodsToSpend] = useState<string[]>([]);
+  const [sectionPreferencesByPlayer, setSectionPreferencesByPlayer] = useState<
+    Record<string, SectionPreferences>
+  >({});
 
   const rerollEmoji =
     dicePanel.rerollsRemaining > 0
@@ -71,6 +85,15 @@ function App() {
   );
   const effectiveCoinsAvailable =
     developmentPanel.coinsAvailable + selectedGoodsCoins;
+  const activePlayerKey = turnStatus.activePlayerId ?? 'no-game';
+  const activePlayerPreferences =
+    sectionPreferencesByPlayer[activePlayerKey] ?? DEFAULT_SECTION_PREFERENCES;
+  const isBuildStep = turnStatus.phase === GamePhase.Build;
+  const isDevelopmentStep = turnStatus.phase === GamePhase.Development;
+  const isCitiesExpanded = isBuildStep || activePlayerPreferences.cities;
+  const isMonumentsExpanded = isBuildStep || activePlayerPreferences.monuments;
+  const isDevelopmentsExpanded =
+    isDevelopmentStep || activePlayerPreferences.developments;
 
   const toggleGoodsSpend = (goodsType: string) => {
     setSelectedGoodsToSpend((current) =>
@@ -78,6 +101,19 @@ function App() {
         ? current.filter((entry) => entry !== goodsType)
         : [...current, goodsType],
     );
+  };
+  const toggleConstructionSection = (section: ConstructionSection) => {
+    setSectionPreferencesByPlayer((current) => {
+      const existing =
+        current[activePlayerKey] ?? DEFAULT_SECTION_PREFERENCES;
+      return {
+        ...current,
+        [activePlayerKey]: {
+          ...existing,
+          [section]: !existing[section],
+        },
+      };
+    });
   };
 
   return (
@@ -171,133 +207,175 @@ function App() {
             </div>
           </section>
 
-          <section className="app-panel">
-            <h2>Build Panel</h2>
-            <p>
-              {buildPanel.canBuild
-                ? 'Build targets available.'
-                : buildPanel.reason ?? 'Build flow ready.'}
-            </p>
-            <p>Workers: {buildPanel.workersAvailable}</p>
-            <p>Stored goods:</p>
-            <div className="goods-list">
-              {buildPanel.goodsStoredSummary.map((entry) => (
-                <p key={entry.goodsType} className="goods-row">
-                  {entry.goodsType}: {entry.quantity}
-                </p>
-              ))}
-            </div>
-            <div className="build-targets">
-              <p className="choice-label">City Targets:</p>
-              <div className="panel-actions">
-                {buildPanel.cityTargets.length === 0 ? (
-                  <span className="inline-note">No city targets</span>
-                ) : (
-                  buildPanel.cityTargets.map((target) => (
-                    <button
-                      key={`city-${target.cityIndex}`}
-                      type="button"
-                      onClick={() =>
-                        dispatch(buildCity({ cityIndex: target.cityIndex }))
-                      }
-                      disabled={!buildPanel.canBuild}
-                    >
-                      {target.label} ({target.workersCommitted}/{target.workerCost})
-                    </button>
-                  ))
-                )}
-              </div>
-              <p className="choice-label">Monument Targets:</p>
-              <div className="panel-actions">
-                {buildPanel.monumentTargets.length === 0 ? (
-                  <span className="inline-note">No monument targets</span>
-                ) : (
-                  buildPanel.monumentTargets.map((target) => (
-                    <button
-                      key={`monument-${target.monumentId}`}
-                      type="button"
-                      onClick={() =>
-                        dispatch(buildMonument({ monumentId: target.monumentId }))
-                      }
-                      disabled={!buildPanel.canBuild}
-                    >
-                      {target.label} ({target.workersCommitted}/{target.workerCost})
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
-          </section>
-
-          <section className="app-panel">
-            <h2>Development Panel</h2>
-            <p>{developmentPanel.reason ?? 'Choose a development to purchase.'}</p>
-            <p>Coins available: {effectiveCoinsAvailable}</p>
-            <p className="inline-note">
-              Base coins: {developmentPanel.coinsAvailable}
-              {selectedGoodsCoins > 0 ? ` + goods value ${selectedGoodsCoins}` : ''}
-            </p>
-            <p>Total purchasing power: {developmentPanel.totalPurchasingPower}</p>
-            <p className="choice-label">Goods To Spend</p>
-            <p>
-              Selected:{' '}
-              {selectedGoodsToSpend.length > 0
-                ? selectedGoodsToSpend.join(', ')
-                : 'none'}
-            </p>
-            <div className="panel-actions">
-              {developmentPanel.goodsSpendOptions.map((option) => (
-                <button
-                  key={option.goodsType}
-                  type="button"
-                  onClick={() => toggleGoodsSpend(option.goodsType)}
-                  disabled={option.quantity <= 0 || !developmentPanel.isActionAllowed}
-                >
-                  {selectedGoodsLookup.has(option.goodsType) ? '✅ ' : ''}
-                  {option.goodsType} ({option.quantity})
-                </button>
-              ))}
-            </div>
-            <p className="choice-label">Development Options</p>
-            <div className="development-list">
-              {developmentPanel.developmentCatalog.map((development) => {
-                const canAffordWithSelection =
-                  effectiveCoinsAvailable >= development.cost;
-                return (
-                  <article key={development.id} className="development-card">
-                  <p className="development-title">
-                    {development.name} ({development.cost}🪙, +{development.points} VP)
-                    {development.purchased ? ' • Purchased' : ''}
+          <section className="panel-pair">
+            <section className="app-panel">
+              <h2>Build Panel</h2>
+              <p>
+                {buildPanel.canBuild
+                  ? 'Build targets available.'
+                  : buildPanel.reason ?? 'Build flow ready.'}
+              </p>
+              <p>Workers: {buildPanel.workersAvailable}</p>
+              <p>Stored goods:</p>
+              <div className="goods-list">
+                {buildPanel.goodsStoredSummary.map((entry) => (
+                  <p key={entry.goodsType} className="goods-row">
+                    {entry.goodsType}: {entry.quantity}
                   </p>
-                  <p className="development-effect">{development.effectDescription}</p>
+                ))}
+              </div>
+              <div className="build-targets">
+                <div className="collapsible-header">
+                  <p className="choice-label">Cities</p>
                   <button
                     type="button"
-                    onClick={() =>
-                      dispatch(
-                        buyDevelopment({
-                          developmentId: development.id,
-                          goodsTypeNames: selectedGoodsToSpend,
-                        }),
-                      )
-                    }
-                    disabled={
-                      !developmentPanel.isActionAllowed ||
-                      development.purchased ||
-                      !canAffordWithSelection
-                    }
+                    className="section-toggle"
+                    onClick={() => toggleConstructionSection('cities')}
                   >
-                    {development.purchased ? 'Purchased' : 'Buy Development'}
+                    {isCitiesExpanded ? 'Collapse' : 'Expand'}
                   </button>
-                  </article>
-                );
-              })}
-            </div>
-            <p>
-              Owned:{' '}
-              {developmentPanel.ownedDevelopments.length > 0
-                ? developmentPanel.ownedDevelopments.join(', ')
-                : 'none'}
-            </p>
+                </div>
+                {isCitiesExpanded ? (
+                  <div className="development-list">
+                    {buildPanel.cityCatalog.map((city) => (
+                      <article key={`city-card-${city.cityIndex}`} className="development-card">
+                        <p className="development-title">
+                          {city.label} ({city.workersCommitted}/{city.workerCost})
+                          {city.completed ? ' • Built' : ''}
+                        </p>
+                        <p className="development-effect">
+                          {city.workerCost > 0
+                            ? `Adds 1 die when built. Cost ${city.workerCost} workers.`
+                            : 'Starting city.'}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            dispatch(buildCity({ cityIndex: city.cityIndex }))
+                          }
+                          disabled={!city.canBuild}
+                        >
+                          {city.completed ? 'Built' : 'Build City'}
+                        </button>
+                      </article>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="collapsible-header">
+                  <p className="choice-label">Monuments</p>
+                  <button
+                    type="button"
+                    className="section-toggle"
+                    onClick={() => toggleConstructionSection('monuments')}
+                  >
+                    {isMonumentsExpanded ? 'Collapse' : 'Expand'}
+                  </button>
+                </div>
+                {isMonumentsExpanded ? (
+                  <div className="development-list">
+                    {buildPanel.monumentCatalog.map((monument) => (
+                      <article
+                        key={`monument-card-${monument.monumentId}`}
+                        className="development-card"
+                      >
+                        <p className="development-title">
+                          {monument.label} ({monument.workersCommitted}/{monument.workerCost})
+                          {monument.completed ? ' • Completed' : ''}
+                        </p>
+                        <p className="development-effect">
+                          Points: {monument.pointsText} (first/later completion)
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            dispatch(buildMonument({ monumentId: monument.monumentId }))
+                          }
+                          disabled={!monument.canBuild}
+                        >
+                          {monument.completed ? 'Completed' : 'Build Monument'}
+                        </button>
+                      </article>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </section>
+
+            <section className="app-panel">
+              <h2>Development Panel</h2>
+              <p>{developmentPanel.reason ?? 'Choose a development to purchase.'}</p>
+              <p>Coins available: {effectiveCoinsAvailable}</p>
+              <p className="inline-note">
+                Base coins: {developmentPanel.coinsAvailable}
+                {selectedGoodsCoins > 0 ? ` + goods value ${selectedGoodsCoins}` : ''}
+              </p>
+              <p>Total purchasing power: {developmentPanel.totalPurchasingPower}</p>
+              <p className="choice-label">Goods To Spend</p>
+              <p>
+                Selected:{' '}
+                {selectedGoodsToSpend.length > 0
+                  ? selectedGoodsToSpend.join(', ')
+                  : 'none'}
+              </p>
+              <div className="panel-actions">
+                {developmentPanel.goodsSpendOptions.map((option) => (
+                  <button
+                    key={option.goodsType}
+                    type="button"
+                    onClick={() => toggleGoodsSpend(option.goodsType)}
+                    disabled={option.quantity <= 0 || !developmentPanel.isActionAllowed}
+                  >
+                    {selectedGoodsLookup.has(option.goodsType) ? '✅ ' : ''}
+                    {option.goodsType} ({option.quantity})
+                  </button>
+                ))}
+              </div>
+              <div className="collapsible-header">
+                <p className="choice-label">Development Options</p>
+                <button
+                  type="button"
+                  className="section-toggle"
+                  onClick={() => toggleConstructionSection('developments')}
+                >
+                  {isDevelopmentsExpanded ? 'Collapse' : 'Expand'}
+                </button>
+              </div>
+              {isDevelopmentsExpanded ? (
+                <div className="development-list">
+                  {developmentPanel.developmentCatalog.map((development) => {
+                    const canAffordWithSelection =
+                      effectiveCoinsAvailable >= development.cost;
+                    return (
+                      <article key={development.id} className="development-card">
+                      <p className="development-title">
+                        {development.name} ({development.cost}🪙, +{development.points} VP)
+                        {development.purchased ? ' • Purchased' : ''}
+                      </p>
+                      <p className="development-effect">{development.effectDescription}</p>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          dispatch(
+                            buyDevelopment({
+                              developmentId: development.id,
+                              goodsTypeNames: selectedGoodsToSpend,
+                            }),
+                          )
+                        }
+                        disabled={
+                          !developmentPanel.isActionAllowed ||
+                          development.purchased ||
+                          !canAffordWithSelection
+                        }
+                      >
+                        {development.purchased ? 'Purchased' : 'Buy Development'}
+                      </button>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </section>
           </section>
 
           <section className="app-panel">
@@ -368,3 +446,4 @@ function App() {
 }
 
 export default App;
+

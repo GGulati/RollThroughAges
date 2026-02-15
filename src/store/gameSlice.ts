@@ -5,6 +5,7 @@ import { GamePhase, PlayerConfig } from '@/game/game';
 import {
   allocateWorkersToCity,
   allocateWorkersToMonument,
+  canAffordDevelopment,
   getBuildOptions,
   areAllDiceLocked,
   countPendingChoices,
@@ -111,19 +112,45 @@ function applyMutationWithoutHistory(
   };
 }
 
+function getNextDevelopmentPhase(
+  game: GameState,
+  activePlayer = game.state.players[game.state.activePlayerIndex],
+  turn = game.state.turn,
+): GamePhase {
+  const canAffordAnyDevelopment = getAvailableDevelopments(
+    activePlayer,
+    game.settings,
+  ).some((development) =>
+    canAffordDevelopment(activePlayer, turn, development.id, game.settings),
+  );
+  return canAffordAnyDevelopment ? GamePhase.Development : GamePhase.DiscardGoods;
+}
+
 function resolveProductionMutation(game: GameState): GameState {
   const resolved = resolveProductionEngine(
     game.state,
     game.state.players,
     game.settings,
   );
+  const nextPhase =
+    resolved.turnProduction.workers > 0
+      ? GamePhase.Build
+      : getNextDevelopmentPhase(
+          game,
+          resolved.players[game.state.activePlayerIndex],
+          {
+            ...game.state.turn,
+            pendingChoices: 0,
+            turnProduction: resolved.turnProduction,
+          },
+        );
 
   return {
     ...game,
     state: {
       ...game.state,
       players: resolved.players,
-      phase: GamePhase.Build,
+      phase: nextPhase,
       turn: {
         ...game.state.turn,
         pendingChoices: 0,
@@ -430,11 +457,16 @@ const gameSlice = createSlice({
         const players = [...game.state.players];
         players[activeIndex] = player;
         const turn = spendWorkers(game.state.turn, workersUsed);
+        const phase =
+          turn.turnProduction.workers > 0
+            ? game.state.phase
+            : getNextDevelopmentPhase(game, player, turn);
 
         return {
           ...game,
           state: {
             ...game.state,
+            phase,
             players,
             turn,
           },
@@ -503,11 +535,16 @@ const gameSlice = createSlice({
         const players = [...game.state.players];
         players[activeIndex] = player;
         const turn = spendWorkers(game.state.turn, workersUsed);
+        const phase =
+          turn.turnProduction.workers > 0
+            ? game.state.phase
+            : getNextDevelopmentPhase(game, player, turn);
 
         return {
           ...game,
           state: {
             ...game.state,
+            phase,
             players,
             turn,
           },
@@ -592,7 +629,7 @@ const gameSlice = createSlice({
           ...game,
           state: {
             ...game.state,
-            phase: GamePhase.Development,
+            phase: getNextDevelopmentPhase(game, result.player, result.turn),
             players,
             turn: result.turn,
           },

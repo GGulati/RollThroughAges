@@ -39,9 +39,9 @@ describe('stage4 development integration', () => {
 
     const coinsAfter = store.getState().game.game?.state.turn.turnProduction.coins ?? 0;
     expect(coinsAfter).toBeLessThan(coinsBefore);
-    expect(screen.getByText(/Owned:/).textContent?.toLowerCase()).toContain(
-      'leadership',
-    );
+    expect(
+      screen.getByText(/Leadership \(10🪙, \+2 VP\) • Purchased/i),
+    ).not.toBeNull();
 
     randomSpy.mockRestore();
   });

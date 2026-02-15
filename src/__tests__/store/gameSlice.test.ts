@@ -121,7 +121,7 @@ describe('gameSlice', () => {
     state = reduce(state, keepDie({ dieIndex: 1 }));
     state = reduce(state, keepDie({ dieIndex: 2 }));
 
-    expect(state.game!.state.phase).toBe('build');
+    expect(state.game!.state.phase).toBe('discardGoods');
     expect(state.game!.state.turn.turnProduction.goods).toBe(0);
 
     const activePlayer = state.game!.state.players[0];
@@ -242,6 +242,41 @@ describe('gameSlice', () => {
       code: 'INVALID_PHASE',
       message: 'Developments can only be purchased during build/development.',
     });
+  });
+
+  it('auto-skips build phase when production yields no workers', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.01); // 1 good
+    let state = reduce(undefined, startGame({ players: PLAYERS }));
+
+    state = reduce(state, keepDie({ dieIndex: 0 }));
+    state = reduce(state, keepDie({ dieIndex: 1 }));
+    state = reduce(state, keepDie({ dieIndex: 2 }));
+
+    expect(state.game!.state.turn.turnProduction.workers).toBe(0);
+    expect(state.game!.state.phase).toBe('discardGoods');
+    randomSpy.mockRestore();
+  });
+
+  it('auto-ends development when no further purchases are affordable', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.67); // 7 coins
+    let state = reduce(undefined, startGame({ players: PLAYERS }));
+
+    state = reduce(state, keepDie({ dieIndex: 0 }));
+    state = reduce(state, keepDie({ dieIndex: 1 }));
+    state = reduce(state, keepDie({ dieIndex: 2 }));
+
+    // Buy affordable developments until no more can be afforded.
+    state = reduce(
+      state,
+      buyDevelopment({ developmentId: 'leadership', goodsTypeNames: [] }),
+    );
+    state = reduce(
+      state,
+      buyDevelopment({ developmentId: 'irrigation', goodsTypeNames: [] }),
+    );
+
+    expect(state.game!.state.phase).toBe('discardGoods');
+    randomSpy.mockRestore();
   });
 
   it('buys a development using selected goods types when coins are insufficient', () => {

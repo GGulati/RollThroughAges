@@ -29,6 +29,12 @@ body,
   gap: 1rem;
 }
 
+.panel-pair {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 1rem;
+}
+
 .actions-log-grid {
   display: grid;
   grid-template-columns: repeat(1, minmax(0, 1fr));
@@ -137,6 +143,24 @@ body,
   margin-top: 0.5rem;
 }
 
+.collapsible-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.5rem;
+  gap: 0.5rem;
+}
+
+.section-toggle {
+  border: 1px solid #d1d5db;
+  background: #f9fafb;
+  color: #111827;
+  border-radius: 0.5rem;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
 .choice-label {
   font-size: 0.85rem;
   color: #4b5563;
@@ -192,6 +216,11 @@ body,
 
   .board-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .panel-pair {
+    grid-column: span 3;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .actions-log-grid {

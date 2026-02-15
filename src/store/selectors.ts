@@ -199,6 +199,23 @@ export const selectBuildPanelModel = createSelector(selectGame, (game) => {
         workerCost: number;
         workersCommitted: number;
       }>,
+      cityCatalog: [] as Array<{
+        cityIndex: number;
+        label: string;
+        workerCost: number;
+        workersCommitted: number;
+        completed: boolean;
+        canBuild: boolean;
+      }>,
+      monumentCatalog: [] as Array<{
+        monumentId: string;
+        label: string;
+        workerCost: number;
+        workersCommitted: number;
+        completed: boolean;
+        pointsText: string;
+        canBuild: boolean;
+      }>,
     };
   }
 
@@ -253,6 +270,37 @@ export const selectBuildPanelModel = createSelector(selectGame, (game) => {
       : workersAvailable <= 0
         ? 'No workers are available for building.'
         : null;
+  const cityCatalog = activePlayer.cities.map((city, cityIndex) => {
+    const workerCost = getCityWorkerCost(cityIndex, game.settings);
+    const workersCommitted = city.completed
+      ? workerCost
+      : Math.max(0, workerCost - getRemainingCityWorkers(activePlayer, cityIndex, game.settings));
+    return {
+      cityIndex,
+      label: `City ${cityIndex + 1}`,
+      workerCost,
+      workersCommitted,
+      completed: city.completed,
+      canBuild: canBuild && cityTargets.some((target) => target.cityIndex === cityIndex),
+    };
+  });
+  const monumentCatalog = game.settings.monumentDefinitions.map((monument) => {
+    const progress = activePlayer.monuments[monument.id];
+    const workersCommitted = progress?.completed
+      ? monument.requirements.workerCost
+      : monument.requirements.workerCost -
+        getRemainingMonumentWorkers(activePlayer, monument.id, game.settings);
+    return {
+      monumentId: monument.id,
+      label: monument.requirements.name,
+      workerCost: monument.requirements.workerCost,
+      workersCommitted,
+      completed: Boolean(progress?.completed),
+      pointsText: `${monument.firstPoints}/${monument.laterPoints} VP`,
+      canBuild:
+        canBuild && monumentTargets.some((target) => target.monumentId === monument.id),
+    };
+  });
 
   return {
     isActionAllowed: Boolean(game),
@@ -262,6 +310,8 @@ export const selectBuildPanelModel = createSelector(selectGame, (game) => {
     canBuild,
     cityTargets,
     monumentTargets,
+    cityCatalog,
+    monumentCatalog,
   };
 });
 

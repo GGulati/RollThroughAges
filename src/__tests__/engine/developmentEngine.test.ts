@@ -194,6 +194,35 @@ describe('developmentEngine', () => {
       const result = purchaseDevelopment(player, turn, expensiveDev.id, [], settings);
       expect(result).toHaveProperty('error');
     });
+
+    it('only spends selected goods types needed to cover remaining cost', () => {
+      let player = createTestPlayer('p1', settings);
+      player = setPlayerGoods(player, 'Stone', 3, settings); // value 12
+      player = setPlayerGoods(player, 'Spearhead', 3, settings); // value 30
+
+      const agriculture = getDevelopment('agriculture', settings)!; // cost 15
+      const turn = createTestTurn('p1', {
+        turnProduction: { goods: 0, food: 0, workers: 0, coins: 5, skulls: 0 },
+      });
+
+      const stone = settings.goodsTypes.find((g) => g.name === 'Stone')!;
+      const spearhead = settings.goodsTypes.find((g) => g.name === 'Spearhead')!;
+      const result = purchaseDevelopment(
+        player,
+        turn,
+        agriculture.id,
+        [stone, spearhead],
+        settings,
+      );
+
+      expect(result).not.toHaveProperty('error');
+      if ('error' in result) {
+        throw new Error(`Expected purchase success, got error: ${result.error}`);
+      }
+
+      expect(result.player.goods.get(stone)).toBe(0);
+      expect(result.player.goods.get(spearhead)).toBe(3);
+    });
   });
 
   describe('getActiveEffects', () => {

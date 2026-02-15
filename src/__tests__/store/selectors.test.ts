@@ -150,6 +150,8 @@ describe('store selectors', () => {
     expect(buildPanel.canBuild).toBe(true);
     expect(buildPanel.cityTargets.length).toBeGreaterThan(0);
     expect(buildPanel.monumentTargets.length).toBeGreaterThan(0);
+    expect(buildPanel.cityCatalog.length).toBeGreaterThan(0);
+    expect(buildPanel.monumentCatalog.length).toBeGreaterThan(0);
 
     randomSpy.mockRestore();
   });
@@ -162,7 +164,7 @@ describe('store selectors', () => {
     store.dispatch(keepDie({ dieIndex: 1 }));
     store.dispatch(keepDie({ dieIndex: 2 }));
     const beforeResolve = store.getState().game.game!;
-    expect(beforeResolve.state.phase).toBe('build');
+    expect(beforeResolve.state.phase).toBe('discardGoods');
     expect(
       calculateDiceProduction(
         beforeResolve.state.turn.dice,
