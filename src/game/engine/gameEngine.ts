@@ -23,7 +23,7 @@ import {
   areAllDiceLocked,
   getMaxRollsAllowed,
 } from './diceEngine';
-import { hasGoodsOverflow, validateKeepGoods, applyKeepGoods, GoodsValidationResult } from './goodsEngine';
+import { hasGoodsOverflow, validateKeepGoods, applyKeepGoods } from './goodsEngine';
 import { GoodsTrack } from '../goods';
 import { updateAllScores } from './scoreEngine';
 import { getDevelopmentCount } from './developmentEngine';

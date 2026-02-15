@@ -304,7 +304,10 @@ describe('Game Flow Integration Tests', () => {
         );
 
         expect(result).not.toHaveProperty('error');
-        expect((result as { player: any }).player.developments).toContain(cheapDev.id);
+        if ('error' in result) {
+          throw new Error(`Expected purchase success, got error: ${result.error}`);
+        }
+        expect(result.player.developments).toContain(cheapDev.id);
       }
     });
   });

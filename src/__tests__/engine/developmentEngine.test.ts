@@ -135,8 +135,11 @@ describe('developmentEngine', () => {
       // No goods needed when coins cover the cost
       const result = purchaseDevelopment(player, turn, cheapDev.id, [], settings);
       expect(result).not.toHaveProperty('error');
-      expect((result as { player: any; turn: any }).player.developments).toContain(cheapDev.id);
-      expect((result as { player: any; turn: any }).turn.turnProduction.coins).toBe(5);
+      if ('error' in result) {
+        throw new Error(`Expected purchase success, got error: ${result.error}`);
+      }
+      expect(result.player.developments).toContain(cheapDev.id);
+      expect(result.turn.turnProduction.coins).toBe(5);
     });
 
     it('spends goods when coins insufficient', () => {
@@ -153,10 +156,12 @@ describe('developmentEngine', () => {
       const result = purchaseDevelopment(player, turn, dev.id, [spearhead], settings);
 
       expect(result).not.toHaveProperty('error');
-      const success = result as { player: any; turn: any };
-      expect(success.player.developments).toContain(dev.id);
-      expect(success.turn.turnProduction.coins).toBe(0); // All coins spent
-      expect(success.player.goods.get(spearhead)).toBe(0); // All spearheads spent
+      if ('error' in result) {
+        throw new Error(`Expected purchase success, got error: ${result.error}`);
+      }
+      expect(result.player.developments).toContain(dev.id);
+      expect(result.turn.turnProduction.coins).toBe(0); // All coins spent
+      expect(result.player.goods.get(spearhead)).toBe(0); // All spearheads spent
     });
 
     it('returns error for unknown development', () => {
