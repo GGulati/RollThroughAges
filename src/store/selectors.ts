@@ -11,6 +11,7 @@ import {
   countPendingChoices,
   findGoodsTypeByName,
   getMaxRollsAllowed,
+  getScoreBreakdown,
   isGameOver,
 } from '@/game/engine';
 import { RootState } from './store';
@@ -62,6 +63,19 @@ export const selectTurnStatus = createSelector(
         activePlayerId: null,
         activePlayerName: null,
         rollsUsed: 0,
+        activePlayerPoints: 0,
+        playerPoints: [] as Array<{
+          playerId: string;
+          playerName: string;
+          points: number;
+          breakdown: {
+            monuments: number;
+            developments: number;
+            bonuses: number;
+            penalties: number;
+            total: number;
+          };
+        }>,
         errorMessage: lastError?.message ?? null,
       };
     }
@@ -71,6 +85,20 @@ export const selectTurnStatus = createSelector(
       (player) => player.id === activePlayer.id,
     );
 
+    const playerPoints = game.state.players.map((player) => {
+      const config = game.settings.players.find((entry) => entry.id === player.id);
+      const breakdown = getScoreBreakdown(player, game.state.players, game.settings);
+      const points = breakdown.total;
+      return {
+        playerId: player.id,
+        playerName: config?.name ?? player.id,
+        points,
+        breakdown,
+      };
+    });
+    const activePlayerPoints =
+      playerPoints.find((entry) => entry.playerId === activePlayer.id)?.points ?? 0;
+
     return {
       isGameActive: true,
       round: game.state.round,
@@ -78,6 +106,8 @@ export const selectTurnStatus = createSelector(
       activePlayerId: activePlayer.id,
       activePlayerName: playerConfig?.name ?? activePlayer.id,
       rollsUsed: game.state.turn.rollsUsed,
+      activePlayerPoints,
+      playerPoints,
       errorMessage: lastError?.message ?? null,
     };
   },

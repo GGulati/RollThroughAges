@@ -150,6 +150,25 @@ function App() {
             <p>
               <strong>Game Over:</strong> {endgameStatus.isGameOver ? 'Yes' : 'No'}
             </p>
+            <p>
+              <strong>Current Points:</strong> {turnStatus.activePlayerPoints}
+            </p>
+            {turnStatus.playerPoints.length > 0 ? (
+              <div className="scoreboard-list">
+                {turnStatus.playerPoints.map((entry) => (
+                  <article key={entry.playerId} className="scoreboard-card">
+                    <p className="development-title">
+                      {entry.playerName} {entry.playerId === turnStatus.activePlayerId ? '• Active' : ''}
+                    </p>
+                    <p className="scoreboard-row">Monuments: {entry.breakdown.monuments}</p>
+                    <p className="scoreboard-row">Developments: {entry.breakdown.developments}</p>
+                    <p className="scoreboard-row">Bonuses: {entry.breakdown.bonuses}</p>
+                    <p className="scoreboard-row">Penalties: -{entry.breakdown.penalties}</p>
+                    <p className="scoreboard-row"><strong>Total: {entry.breakdown.total}</strong></p>
+                  </article>
+                ))}
+              </div>
+            ) : null}
           </section>
 
           <section className="app-panel">
