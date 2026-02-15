@@ -3,6 +3,7 @@ import {
   buyDevelopment,
   buildCity,
   buildMonument,
+  discardGoods,
   endTurn,
   gameReducer,
   keepDie,
@@ -12,6 +13,7 @@ import {
   startGame,
   undo,
 } from '@/store/gameSlice';
+import { GamePhase } from '@/game';
 import { GameSliceState } from '@/store/gameState';
 import { PlayerConfig } from '@/game';
 
@@ -121,7 +123,7 @@ describe('gameSlice', () => {
     state = reduce(state, keepDie({ dieIndex: 1 }));
     state = reduce(state, keepDie({ dieIndex: 2 }));
 
-    expect(state.game!.state.phase).toBe('discardGoods');
+    expect(state.game!.state.phase).toBe('endTurn');
     expect(state.game!.state.turn.turnProduction.goods).toBe(0);
 
     const activePlayer = state.game!.state.players[0];
@@ -253,7 +255,7 @@ describe('gameSlice', () => {
     state = reduce(state, keepDie({ dieIndex: 2 }));
 
     expect(state.game!.state.turn.turnProduction.workers).toBe(0);
-    expect(state.game!.state.phase).toBe('discardGoods');
+    expect(state.game!.state.phase).toBe('endTurn');
     randomSpy.mockRestore();
   });
 
@@ -275,7 +277,7 @@ describe('gameSlice', () => {
       buyDevelopment({ developmentId: 'irrigation', goodsTypeNames: [] }),
     );
 
-    expect(state.game!.state.phase).toBe('discardGoods');
+    expect(state.game!.state.phase).toBe('endTurn');
     randomSpy.mockRestore();
   });
 
@@ -304,5 +306,74 @@ describe('gameSlice', () => {
     expect(state.lastError).toBeNull();
     expect(state.game!.state.players[0].developments).toContain('agriculture');
     randomSpy.mockRestore();
+  });
+
+  it('blocks end turn when discard overflow is unresolved', () => {
+    let state = reduce(undefined, startGame({ players: PLAYERS }));
+    const game = state.game!;
+    const activeIndex = game.state.activePlayerIndex;
+    const activePlayer = game.state.players[activeIndex];
+    const wood = game.settings.goodsTypes.find((g) => g.name === 'Wood')!;
+    const overflowGoods = new Map(activePlayer.goods);
+    overflowGoods.set(wood, game.settings.maxGoods + 2);
+    state = {
+      ...state,
+      game: {
+        ...game,
+        state: {
+          ...game.state,
+          phase: GamePhase.DiscardGoods,
+          players: game.state.players.map((player, index) =>
+            index === activeIndex ? { ...player, goods: overflowGoods } : player,
+          ),
+        },
+      },
+    };
+
+    state = reduce(state, endTurn());
+
+    expect(state.lastError).toEqual({
+      code: 'INVALID_PHASE',
+      message: 'Discard goods before ending the turn.',
+    });
+  });
+
+  it('applies discard selection and advances discard phase to end-turn', () => {
+    let state = reduce(undefined, startGame({ players: PLAYERS }));
+    const game = state.game!;
+    const activeIndex = game.state.activePlayerIndex;
+    const activePlayer = game.state.players[activeIndex];
+    const wood = game.settings.goodsTypes.find((g) => g.name === 'Wood')!;
+    const stone = game.settings.goodsTypes.find((g) => g.name === 'Stone')!;
+    const overflowGoods = new Map(activePlayer.goods);
+    overflowGoods.set(wood, game.settings.maxGoods);
+    overflowGoods.set(stone, 2);
+    state = {
+      ...state,
+      game: {
+        ...game,
+        state: {
+          ...game.state,
+          phase: GamePhase.DiscardGoods,
+          players: game.state.players.map((player, index) =>
+            index === activeIndex ? { ...player, goods: overflowGoods } : player,
+          ),
+        },
+      },
+    };
+
+    state = reduce(
+      state,
+      discardGoods({
+        goodsToKeepByType: {
+          Wood: game.settings.maxGoods,
+          Stone: 0,
+        },
+      }),
+    );
+
+    expect(state.lastError).toBeNull();
+    expect(state.game!.state.phase).toBe('endTurn');
+    expect(state.game!.state.players[0].goods.get(stone)).toBe(0);
   });
 });

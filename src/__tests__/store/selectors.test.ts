@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PlayerConfig } from '@/game';
+import { GamePhase, PlayerConfig } from '@/game';
 import { calculateDiceProduction } from '@/game/engine';
 import {
   buyDevelopment,
@@ -75,6 +75,7 @@ describe('store selectors', () => {
     expect(selectDiscardPanelModel(state).reason).toBe(
       'Start a game to discard goods.',
     );
+    expect(selectDiscardPanelModel(state).canEndTurn).toBe(false);
     expect(selectDisasterPanelModel(state).disasters).toEqual([]);
     expect(selectCanUndo(state)).toBe(false);
     expect(selectCanRedo(state)).toBe(false);
@@ -191,7 +192,7 @@ describe('store selectors', () => {
     store.dispatch(keepDie({ dieIndex: 1 }));
     store.dispatch(keepDie({ dieIndex: 2 }));
     const beforeResolve = store.getState().game.game!;
-    expect(beforeResolve.state.phase).toBe('discardGoods');
+    expect(beforeResolve.state.phase).toBe('endTurn');
     expect(
       calculateDiceProduction(
         beforeResolve.state.turn.dice,
@@ -304,4 +305,37 @@ describe('store selectors', () => {
     randomSpy.mockRestore();
   });
 
+  it('exposes discard overflow context and blocks end-turn when overflow exists', () => {
+    const store = createTestStore();
+    store.dispatch(startGame({ players: PLAYERS }));
+    const root = store.getState();
+    const game = root.game.game!;
+    const activeIndex = game.state.activePlayerIndex;
+    const activePlayer = game.state.players[activeIndex];
+    const wood = game.settings.goodsTypes.find((g) => g.name === 'Wood')!;
+    const nextGoods = new Map(activePlayer.goods);
+    nextGoods.set(wood, game.settings.maxGoods + 1);
+    const stateWithOverflow = {
+      ...root,
+      game: {
+        ...root.game,
+        game: {
+          ...game,
+          state: {
+            ...game.state,
+            phase: GamePhase.DiscardGoods,
+            players: game.state.players.map((player, index) =>
+              index === activeIndex ? { ...player, goods: nextGoods } : player,
+            ),
+          },
+        },
+      },
+    };
+
+    const discardPanel = selectDiscardPanelModel(stateWithOverflow);
+    expect(discardPanel.overflow).toBeGreaterThan(0);
+    expect(discardPanel.isActionAllowed).toBe(true);
+    expect(discardPanel.canEndTurn).toBe(false);
+    expect(discardPanel.endTurnReason).toBe('Discard goods before ending the turn.');
+  });
 });

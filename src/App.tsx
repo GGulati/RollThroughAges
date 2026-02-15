@@ -1,10 +1,11 @@
-﻿import { useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { GamePhase } from '@/game';
 import './index.css';
 import {
   buildCity,
   buildMonument,
   buyDevelopment,
+  discardGoods,
   endTurn,
   keepDie,
   redo,
@@ -57,6 +58,9 @@ function App() {
   const canUndo = useAppSelector(selectCanUndo);
   const canRedo = useAppSelector(selectCanRedo);
   const [selectedGoodsToSpend, setSelectedGoodsToSpend] = useState<string[]>([]);
+  const [goodsToKeepByType, setGoodsToKeepByType] = useState<Record<string, number>>(
+    {},
+  );
   const [sectionPreferencesByPlayer, setSectionPreferencesByPlayer] = useState<
     Record<string, SectionPreferences>
   >({});
@@ -108,6 +112,25 @@ function App() {
         : [...current, goodsType],
     );
   };
+  useEffect(() => {
+    setGoodsToKeepByType((current) => {
+      const next: Record<string, number> = {};
+      discardPanel.goodsOptions.forEach((option) => {
+        next[option.goodsType] = current[option.goodsType] ?? option.quantity;
+      });
+      return next;
+    });
+  }, [discardPanel.goodsOptions]);
+
+  const updateGoodsToKeep = (goodsType: string, value: string) => {
+    const parsed = Number(value);
+    const sanitized = Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
+    setGoodsToKeepByType((current) => ({
+      ...current,
+      [goodsType]: sanitized,
+    }));
+  };
+
   const toggleConstructionSection = (section: ConstructionSection) => {
     setSectionPreferencesByPlayer((current) => {
       const existing =
@@ -232,7 +255,7 @@ function App() {
                             }
                             disabled={!die.canChooseOption}
                           >
-                            {optionIndex === die.selectedOption ? '✅ ' : ''}
+                            {optionIndex === die.selectedOption ? '? ' : ''}
                             {die.optionSummaries[optionIndex]}
                           </button>
                         ))}
@@ -389,7 +412,7 @@ function App() {
                     onClick={() => toggleGoodsSpend(option.goodsType)}
                     disabled={option.quantity <= 0 || !developmentPanel.isActionAllowed}
                   >
-                    {selectedGoodsLookup.has(option.goodsType) ? '✅ ' : ''}
+                    {selectedGoodsLookup.has(option.goodsType) ? '? ' : ''}
                     {option.goodsType} ({option.quantity})
                   </button>
                 ))}
@@ -444,11 +467,44 @@ function App() {
 
           <section className="app-panel">
             <h2>Discard Panel</h2>
+            <p>{discardPanel.reason ?? 'Choose goods to keep and apply discard.'}</p>
             <p>
-              {discardPanel.isActionAllowed
-                ? 'Discard flow ready.'
-                : discardPanel.reason}
+              Goods limit:{' '}
+              {discardPanel.goodsLimit === Infinity ? 'No limit' : discardPanel.goodsLimit}
             </p>
+            <p>Total goods: {discardPanel.totalGoods}</p>
+            <p>Overflow: {discardPanel.overflow}</p>
+            {discardPanel.isActionAllowed ? (
+              <div className="development-list">
+                {discardPanel.goodsOptions.map((option) => (
+                  <article key={`discard-${option.goodsType}`} className="development-card">
+                    <p className="development-title">
+                      {option.goodsType} (owned: {option.quantity})
+                    </p>
+                    <label className="choice-label" htmlFor={`keep-${option.goodsType}`}>
+                      Keep quantity
+                    </label>
+                    <input
+                      id={`keep-${option.goodsType}`}
+                      type="number"
+                      min={0}
+                      max={option.quantity}
+                      value={goodsToKeepByType[option.goodsType] ?? option.quantity}
+                      onChange={(event) =>
+                        updateGoodsToKeep(option.goodsType, event.target.value)
+                      }
+                    />
+                  </article>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => dispatch(discardGoods({ goodsToKeepByType }))}
+                  disabled={!discardPanel.isActionAllowed}
+                >
+                  Apply Discard
+                </button>
+              </div>
+            ) : null}
           </section>
         </div>
 
@@ -465,10 +521,13 @@ function App() {
               <button
                 type="button"
                 onClick={() => dispatch(endTurn())}
-                disabled={!turnStatus.isGameActive}
+                disabled={!discardPanel.canEndTurn}
               >
                 End Turn
               </button>
+              {!discardPanel.canEndTurn && discardPanel.endTurnReason ? (
+                <p className="hint-text">{discardPanel.endTurnReason}</p>
+              ) : null}
               <button
                 type="button"
                 onClick={() => dispatch(undo())}
@@ -510,4 +569,6 @@ function App() {
 }
 
 export default App;
+
+
 

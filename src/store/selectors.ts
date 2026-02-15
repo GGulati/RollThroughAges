@@ -16,6 +16,8 @@ import {
   getDisasterPreview,
   getMaxRollsAllowed,
   getRewrittenDisasterTargeting,
+  getGoodsLimit,
+  getTotalGoodsQuantity,
   hasDisasterImmunity,
   getScoreBreakdown,
   isGameOver,
@@ -545,10 +547,52 @@ export const selectDevelopmentPanelModel = createSelector(selectGame, (game) => 
   };
 });
 
-export const selectDiscardPanelModel = createSelector(selectGame, (game) => ({
-  isActionAllowed: Boolean(game),
-  reason: game ? null : 'Start a game to discard goods.',
-}));
+export const selectDiscardPanelModel = createSelector(selectGame, (game) => {
+  if (!game) {
+    return {
+      isActionAllowed: false,
+      reason: 'Start a game to discard goods.',
+      overflow: 0,
+      goodsLimit: 0,
+      totalGoods: 0,
+      goodsOptions: [] as Array<{ goodsType: string; quantity: number }>,
+      canEndTurn: false,
+      endTurnReason: 'Start a game to end turn.',
+    };
+  }
+
+  const activePlayer = game.state.players[game.state.activePlayerIndex];
+  const goodsLimit = getGoodsLimit(activePlayer, game.settings);
+  const totalGoods = getTotalGoodsQuantity(activePlayer.goods);
+  const overflow =
+    goodsLimit === Infinity ? 0 : Math.max(0, totalGoods - goodsLimit);
+  const goodsOptions = game.settings.goodsTypes.map((goodsType) => ({
+    goodsType: goodsType.name,
+    quantity: activePlayer.goods.get(goodsType) ?? 0,
+  }));
+  const isDiscardPhase = game.state.phase === GamePhase.DiscardGoods;
+  const isActionAllowed = isDiscardPhase && overflow > 0;
+  const reason = !isDiscardPhase
+    ? 'Discard actions are only available during the discard phase.'
+    : overflow > 0
+      ? null
+      : 'No discard is required right now.';
+  const canEndTurn = !isDiscardPhase || overflow <= 0;
+  const endTurnReason = canEndTurn
+    ? null
+    : 'Discard goods before ending the turn.';
+
+  return {
+    isActionAllowed,
+    reason,
+    overflow,
+    goodsLimit,
+    totalGoods,
+    goodsOptions,
+    canEndTurn,
+    endTurnReason,
+  };
+});
 
 export const selectDisasterPanelModel = createSelector(selectGame, (game) => {
   if (!game) {

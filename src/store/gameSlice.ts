@@ -5,6 +5,7 @@ import { GamePhase, PlayerConfig } from '@/game/game';
 import {
   allocateWorkersToCity,
   allocateWorkersToMonument,
+  calculateGoodsOverflow,
   canAffordDevelopment,
   getBuildOptions,
   areAllDiceLocked,
@@ -17,6 +18,7 @@ import {
   performRoll,
   purchaseDevelopment,
   redo as redoEngine,
+  resolveDiscardGoods,
   resolveProduction as resolveProductionEngine,
   spendWorkers,
   selectProduction as selectProductionEngine,
@@ -112,7 +114,7 @@ function applyMutationWithoutHistory(
   };
 }
 
-function getNextDevelopmentPhase(
+function getNextPostDevelopmentPhase(
   game: GameState,
   activePlayer = game.state.players[game.state.activePlayerIndex],
   turn = game.state.turn,
@@ -123,7 +125,16 @@ function getNextDevelopmentPhase(
   ).some((development) =>
     canAffordDevelopment(activePlayer, turn, development.id, game.settings),
   );
-  return canAffordAnyDevelopment ? GamePhase.Development : GamePhase.DiscardGoods;
+  if (canAffordAnyDevelopment) {
+    return GamePhase.Development;
+  }
+
+  const overflow = calculateGoodsOverflow(
+    activePlayer.goods,
+    activePlayer,
+    game.settings,
+  );
+  return overflow > 0 ? GamePhase.DiscardGoods : GamePhase.EndTurn;
 }
 
 function resolveProductionMutation(game: GameState): GameState {
@@ -135,7 +146,7 @@ function resolveProductionMutation(game: GameState): GameState {
   const nextPhase =
     resolved.turnProduction.workers > 0
       ? GamePhase.Build
-      : getNextDevelopmentPhase(
+      : getNextPostDevelopmentPhase(
           game,
           resolved.players[game.state.activePlayerIndex],
           {
@@ -218,7 +229,88 @@ const gameSlice = createSlice({
         return;
       }
 
+      const activePlayer = state.game.state.players[state.game.state.activePlayerIndex];
+      const overflow = calculateGoodsOverflow(
+        activePlayer.goods,
+        activePlayer,
+        state.game.settings,
+      );
+      const isBlockedByOverflow =
+        state.game.state.phase === GamePhase.DiscardGoods && overflow > 0;
+      if (isBlockedByOverflow) {
+        setError(
+          state,
+          'INVALID_PHASE',
+          'Discard goods before ending the turn.',
+        );
+        return;
+      }
+
       state.game = applyMutationWithHistory(state.game, endTurnEngine);
+      state.lastError = null;
+    },
+    discardGoods: (
+      state,
+      action: PayloadAction<{ goodsToKeepByType: Record<string, number> }>,
+    ) => {
+      if (!state.game) {
+        setError(state, 'NO_GAME', 'Start a game before discarding goods.');
+        return;
+      }
+      if (state.game.state.phase !== GamePhase.DiscardGoods) {
+        setError(
+          state,
+          'INVALID_PHASE',
+          'Goods can only be discarded during the discard phase.',
+        );
+        return;
+      }
+
+      const activePlayer = state.game.state.players[state.game.state.activePlayerIndex];
+      const overflow = calculateGoodsOverflow(
+        activePlayer.goods,
+        activePlayer,
+        state.game.settings,
+      );
+      if (overflow <= 0) {
+        setError(state, 'NO_PENDING_GOODS', 'No discard is required right now.');
+        return;
+      }
+
+      const validGoodsNames = new Set(
+        state.game.settings.goodsTypes.map((goodsType) => goodsType.name),
+      );
+      const hasUnknownType = Object.keys(action.payload.goodsToKeepByType).some(
+        (name) => !validGoodsNames.has(name),
+      );
+      if (hasUnknownType) {
+        setError(state, 'UNKNOWN_GOOD', 'One or more goods types are invalid.');
+        return;
+      }
+
+      let failureMessage = 'Unable to apply goods discard selection.';
+      const nextGame = applyMutationWithHistory(state.game, (game) => {
+        const player = game.state.players[game.state.activePlayerIndex];
+        const goodsToKeep = new Map(
+          Array.from(player.goods.keys()).map((goodsType) => [
+            goodsType,
+            action.payload.goodsToKeepByType[goodsType.name] ?? 0,
+          ]),
+        );
+        const result = resolveDiscardGoods(game, goodsToKeep);
+        if ('error' in result) {
+          failureMessage = result.error;
+          return game;
+        }
+        return result;
+      });
+
+      if (!nextGame) {
+        setError(state, 'NO_PENDING_GOODS', failureMessage);
+        return;
+      }
+
+      state.game = nextGame;
       state.lastError = null;
     },
     keepDie: (state, action: PayloadAction<{ dieIndex: number }>) => {
@@ -460,7 +552,7 @@ const gameSlice = createSlice({
         const phase =
           turn.turnProduction.workers > 0
             ? game.state.phase
-            : getNextDevelopmentPhase(game, player, turn);
+            : getNextPostDevelopmentPhase(game, player, turn);
 
         return {
           ...game,
@@ -538,7 +630,7 @@ const gameSlice = createSlice({
         const phase =
           turn.turnProduction.workers > 0
             ? game.state.phase
-            : getNextDevelopmentPhase(game, player, turn);
+            : getNextPostDevelopmentPhase(game, player, turn);
 
         return {
           ...game,
@@ -629,7 +721,7 @@ const gameSlice = createSlice({
           ...game,
           state: {
             ...game.state,
-            phase: getNextDevelopmentPhase(game, result.player, result.turn),
+            phase: getNextPostDevelopmentPhase(game, result.player, result.turn),
             players,
             turn: result.turn,
           },
@@ -687,6 +779,7 @@ export const {
   buildCity,
   buildMonument,
   buyDevelopment,
+  discardGoods,
   undo,
   redo,
 } = gameSlice.actions;
