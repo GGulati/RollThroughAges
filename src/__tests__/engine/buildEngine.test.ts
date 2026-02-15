@@ -150,7 +150,7 @@ describe('buildEngine', () => {
       expect(canBuildMonument(monumentId, players[0], players)).toBe(true);
     });
 
-    it('returns false when another player completed the monument', () => {
+    it('returns true when another player completed the monument', () => {
       const players = [
         createTestPlayer('p1', settings),
         createTestPlayer('p2', settings),
@@ -159,6 +159,15 @@ describe('buildEngine', () => {
 
       // Player 2 completed the monument
       players[1].monuments[monumentId] = { workersCommitted: 10, completed: true };
+
+      expect(canBuildMonument(monumentId, players[0], players)).toBe(true);
+    });
+
+    it('returns false when the same player already completed the monument', () => {
+      const players = [createTestPlayer('p1', settings)];
+      const monumentId = settings.monumentDefinitions[0].id;
+
+      players[0].monuments[monumentId] = { workersCommitted: 10, completed: true };
 
       expect(canBuildMonument(monumentId, players[0], players)).toBe(false);
     });
@@ -243,7 +252,7 @@ describe('buildEngine', () => {
       expect(newPlayer.monuments[monument.id].completed).toBe(true);
     });
 
-    it('refuses if another player completed the monument', () => {
+    it('allows shared build if another player already completed the monument', () => {
       const players = [
         createTestPlayer('p1', settings),
         createTestPlayer('p2', settings),
@@ -259,8 +268,8 @@ describe('buildEngine', () => {
         settings
       );
 
-      expect(workersUsed).toBe(0);
-      expect(newPlayer).toEqual(players[0]);
+      expect(workersUsed).toBe(Math.min(5, monument.requirements.workerCost));
+      expect(newPlayer.monuments[monument.id].workersCommitted).toBe(Math.min(5, monument.requirements.workerCost));
     });
   });
 
@@ -347,7 +356,7 @@ describe('buildEngine', () => {
       expect(options.monuments.length).toBeGreaterThan(0);
     });
 
-    it('excludes completed monuments from other players', () => {
+    it('includes monuments completed by opponents when workers are sufficient', () => {
       const players = [
         createTestPlayer('p1', settings),
         createTestPlayer('p2', settings),
@@ -356,7 +365,21 @@ describe('buildEngine', () => {
       players[1].monuments[monument.id] = { workersCommitted: 10, completed: true };
 
       const options = getBuildOptions(players[0], players, 10, settings);
-      expect(options.monuments).not.toContain(monument.id);
+      expect(options.monuments).toContain(monument.id);
+    });
+
+    it('returns no build options when no workers are available', () => {
+      const players = [createTestPlayer('p1', settings)];
+      const options = getBuildOptions(players[0], players, 0, settings);
+      expect(options.cities).toEqual([]);
+      expect(options.monuments).toEqual([]);
+    });
+
+    it('filters out options that exceed workers available', () => {
+      const players = [createTestPlayer('p1', settings)];
+      const options = getBuildOptions(players[0], players, 2, settings);
+      expect(options.cities).toEqual([]);
+      expect(options.monuments).toEqual([]);
     });
   });
 

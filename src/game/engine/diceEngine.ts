@@ -17,12 +17,14 @@ export function rollSingleDie(diceFaces: DiceFaceDefinition[]): number {
 }
 
 export function createDie(settings: GameSettings): DieState {
-  const result = rollSingleDie(settings.diceFaces)
+  const result = rollSingleDie(settings.diceFaces);
+  const face = settings.diceFaces[result];
   const hasSkull = settings.diceFaces[result].production.some(p => p.skulls > 0);
+  const needsChoice = face.production.length > 1;
 
   return {
     diceFaceIndex: result,
-    productionIndex: 0,
+    productionIndex: needsChoice ? -1 : 0,
     lockDecision: hasSkull ? 'skull' as DiceLockDecision : 'unlocked' as DiceLockDecision,
   };
 }
@@ -31,11 +33,15 @@ export function createDie(settings: GameSettings): DieState {
  * Create initial dice state for a turn.
  */
 export function createInitialDice(count: number, settings: GameSettings): DieState[] {
-  return Array.from({ length: count }, () => ({
-    diceFaceIndex: rollSingleDie(settings.diceFaces),
-    productionIndex: 0,
-    lockDecision: 'unlocked' as DiceLockDecision,
-  }));
+  return Array.from({ length: count }, () => {
+    const faceIndex = rollSingleDie(settings.diceFaces);
+    const face = settings.diceFaces[faceIndex];
+    return {
+      diceFaceIndex: faceIndex,
+      productionIndex: face.production.length > 1 ? -1 : 0,
+      lockDecision: 'unlocked' as DiceLockDecision,
+    };
+  });
 }
 
 /**
@@ -56,7 +62,11 @@ export function rollUnlockedDice(dice: DieState[], settings: GameSettings): DieS
  * Count skulls in the current dice state.
  */
 export function countSkulls(dice: DieState[], settings: GameSettings): number {
-  return dice.reduce((acc, die) => acc + (settings.diceFaces[die.diceFaceIndex].production[die.productionIndex].skulls), 0);
+  return dice.reduce((acc, die) => {
+    const face = settings.diceFaces[die.diceFaceIndex];
+    const productionIndex = die.productionIndex >= 0 ? die.productionIndex : 0;
+    return acc + (face.production[productionIndex]?.skulls ?? 0);
+  }, 0);
 }
 
 /**
@@ -113,8 +123,8 @@ export function requiresChoice(dieState: DieState, settings: GameSettings): bool
 export function countPendingChoices(dice: DieState[], settings: GameSettings): number {
   return dice.filter((die) => {
     const face = settings.diceFaces[die.diceFaceIndex];
-    // Needs choice if multiple production options
-    return face.production.length > 1;
+    if (face.production.length <= 1) return false;
+    return die.productionIndex < 0 || die.productionIndex >= face.production.length;
   }).length;
 }
 
@@ -160,8 +170,9 @@ export function calculateDiceProduction(
 
   for (const die of dice) {
     const face = settings.diceFaces[die.diceFaceIndex];
+    const productionIndex = die.productionIndex >= 0 ? die.productionIndex : 0;
 
-    const baseProduction = {...face.production[die.productionIndex]};
+    const baseProduction = {...face.production[productionIndex]};
     const production = applyBonuses(baseProduction, player, settings);
     
     total.goods += production.goods;

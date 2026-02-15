@@ -87,14 +87,9 @@ export function getAvailableMonuments(
 export function canBuildMonument(
   monumentId: string,
   player: PlayerState,
-  allPlayers: PlayerState[]
+  _allPlayers: PlayerState[]
 ): boolean {
-  for (const p of allPlayers) {
-    if (p.monuments[monumentId]?.completed) {
-      return false;
-    }
-  }
-  return true;
+  return !player.monuments[monumentId]?.completed;
 }
 
 /**
@@ -218,13 +213,16 @@ export function getBuildOptions(
 ): { cities: number[]; monuments: string[] } {
   const cities: number[] = [];
   const monuments: string[] = [];
+  if (workersAvailable <= 0) {
+    return { cities, monuments };
+  }
 
   // Check cities
   for (let i = 0; i < player.cities.length; i++) {
     const city = player.cities[i];
     if (!city.completed) {
       const remaining = getRemainingCityWorkers(player, i, settings);
-      if (remaining > 0) {
+      if (remaining > 0 && remaining <= workersAvailable) {
         cities.push(i);
       }
     }
@@ -235,8 +233,8 @@ export function getBuildOptions(
   const availableMonuments = getAvailableMonuments(playerCount, settings);
   for (const monument of availableMonuments) {
     if (canBuildMonument(monument.id, player, allPlayers)) {
-      const progress = player.monuments[monument.id];
-      if (!progress?.completed) {
+      const remaining = getRemainingMonumentWorkers(player, monument.id, settings);
+      if (remaining > 0 && remaining <= workersAvailable) {
         monuments.push(monument.id);
       }
     }

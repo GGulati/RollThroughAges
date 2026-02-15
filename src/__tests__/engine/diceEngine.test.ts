@@ -70,6 +70,13 @@ describe('diceEngine', () => {
         expect(die.diceFaceIndex).toBeLessThan(settings.diceFaces.length);
       });
     });
+
+    it('marks choice dice as unresolved', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.4); // FOOD_OR_WORKERS
+      const dice = createInitialDice(1, settings);
+      expect(dice[0].productionIndex).toBe(-1);
+      vi.restoreAllMocks();
+    });
   });
 
   describe('rollUnlockedDice', () => {
@@ -172,16 +179,23 @@ describe('diceEngine', () => {
 
   describe('countPendingChoices', () => {
     it('counts dice needing production choice', () => {
-      const dice = createTestDice([
-        DICE_FACE.FOOD_OR_WORKERS,
-        DICE_FACE.FOOD_OR_WORKERS,
-        DICE_FACE.THREE_WORKERS,
-      ]);
+      const dice = [
+        { diceFaceIndex: DICE_FACE.FOOD_OR_WORKERS, productionIndex: -1, lockDecision: 'kept' as const },
+        { diceFaceIndex: DICE_FACE.FOOD_OR_WORKERS, productionIndex: -1, lockDecision: 'kept' as const },
+        { diceFaceIndex: DICE_FACE.THREE_WORKERS, productionIndex: 0, lockDecision: 'kept' as const },
+      ];
       expect(countPendingChoices(dice, settings)).toBe(2);
     });
 
     it('does not count skull face as needing choice', () => {
       const dice = createTestDice([DICE_FACE.TWO_GOODS_SKULL]);
+      expect(countPendingChoices(dice, settings)).toBe(0);
+    });
+
+    it('does not count resolved choice dice', () => {
+      const dice = [
+        { diceFaceIndex: DICE_FACE.FOOD_OR_WORKERS, productionIndex: 1, lockDecision: 'kept' as const },
+      ];
       expect(countPendingChoices(dice, settings)).toBe(0);
     });
   });

@@ -57,6 +57,26 @@ describe('Game Flow Integration Tests', () => {
       // Could be DiscardGoods or EndTurn depending on goods
       expect([GamePhase.DiscardGoods, GamePhase.EndTurn]).toContain(game.state.phase);
     });
+
+    it('does not increment rolls when phase cycles to roll dice', () => {
+      let game = createGame([
+        { id: 'p1', name: 'Player 1', controller: 'human' },
+        { id: 'p2', name: 'Player 2', controller: 'human' },
+      ]);
+
+      game = advancePhase(game); // DecideDice
+      game = advancePhase(game); // ResolveProduction
+      game = advancePhase(game); // Build
+      game = advancePhase(game); // Development
+      game = advancePhase(game); // DiscardGoods/EndTurn
+      if (game.state.phase === GamePhase.DiscardGoods) {
+        game = advancePhase(game); // EndTurn
+      }
+      game = advancePhase(game); // RollDice
+
+      expect(game.state.phase).toBe(GamePhase.RollDice);
+      expect(game.state.turn.rollsUsed).toBe(0);
+    });
   });
 
   describe('Two-Player Turn Cycle', () => {
@@ -92,6 +112,19 @@ describe('Game Flow Integration Tests', () => {
 
       game = endTurn(game); // Back to P1, new round
       expect(game.state.round).toBe(2);
+    });
+
+    it('starts each new turn with zero rolls used', () => {
+      let game = createGame([
+        { id: 'p1', name: 'Player 1', controller: 'human' },
+        { id: 'p2', name: 'Player 2', controller: 'human' },
+      ]);
+
+      game = performRoll(game);
+      expect(game.state.turn.rollsUsed).toBe(1);
+
+      game = endTurn(game);
+      expect(game.state.turn.rollsUsed).toBe(0);
     });
   });
 

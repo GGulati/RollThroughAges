@@ -142,13 +142,6 @@ export function advancePhase(game: GameState): GameState {
   };
 
   switch (nextPhase) {
-    case GamePhase.RollDice:
-      newState.turn = {
-        ...newState.turn,
-        rollsUsed: 1,
-      };
-      break;
-
     case GamePhase.DiscardGoods: {
       const activePlayer = newState.players[newState.activePlayerIndex];
       if (!hasGoodsOverflow(activePlayer.goods, activePlayer, settings)) {
@@ -234,10 +227,7 @@ export function endTurn(game: GameState): GameState {
     activePlayerIndex: nextPlayerIndex,
     round: newRound,
     phase: GamePhase.RollDice,
-    turn: {
-      ...newTurn,
-      rollsUsed: 1,
-    },
+    turn: newTurn,
   };
 
   return { ...game, state: newState };
