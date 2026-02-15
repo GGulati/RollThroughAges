@@ -16,6 +16,7 @@
 - **S3.2 Slice B (dice decision + production)**: Implement `keepDie`, `selectProduction`, `resolveProduction`, `allocateGood` with corresponding panels and inline validation.
 - **S3.3 Slice C (build loop)**: Implement `buildCity` and `buildMonument` actions with build panel and legality feedback.
 - **S3.4 Stage gate**: Add integration tests for roll -> decide -> production -> build handoff and invalid-action prevention.
+- **Detailed breakdown**: See `planning/stage3-implementation-breakdown.md`.
 
 ### Stage 4 - Full Turn Completion and UX Hardening (E2E slices)
 - **S4.1 Slice D (development purchase)**: Wire development purchase flow including coin/goods spending decisions and reducer-level validation.

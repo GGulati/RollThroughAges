@@ -16,3 +16,7 @@
 - **No mock-only phase completion**: a phase panel is only complete when it drives real Redux transitions.
 - **Continuous playable baseline**: maintain a canonical integration flow that completes at least one full turn and verifies undo/redo behavior.
 
+### Execution References
+- **Stage 2 detailed steps**: `planning/stage2-implementation-breakdown.md`
+- **Stage 3 detailed steps**: `planning/stage3-implementation-breakdown.md`
+
