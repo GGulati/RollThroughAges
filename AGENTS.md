@@ -33,6 +33,23 @@ Run from repo root:
 - Test files use `*.test.ts`; integration tests may use names like `gameFlow.integration.test.ts`.
 - Add/update tests for all rules changes.
 - Before PR: run `npm test`, `npm run lint:strict`, `npm run typecheck`.
+- For UI-impacting work, run a browser smoke test with Playwright CLI and capture artifacts.
+
+### Playwright E2E Smoke Steps
+1. Start app:
+   - `npm run dev -- --host 127.0.0.1 --port 4173`
+2. Open browser (separate shell):
+   - `cmd /c npx --yes --package @playwright/cli playwright-cli open http://127.0.0.1:4173 --headed`
+3. Capture validation artifacts:
+   - `cmd /c npx --yes --package @playwright/cli playwright-cli snapshot`
+   - `cmd /c npx --yes --package @playwright/cli playwright-cli console`
+   - `cmd /c npx --yes --package @playwright/cli playwright-cli resize 1440 900`
+   - `cmd /c npx --yes --package @playwright/cli playwright-cli screenshot`
+   - `cmd /c npx --yes --package @playwright/cli playwright-cli resize 390 844`
+   - `cmd /c npx --yes --package @playwright/cli playwright-cli screenshot`
+4. Close browser session:
+   - `cmd /c npx --yes --package @playwright/cli playwright-cli close-all`
+5. Copy final artifacts from `.playwright-cli/` into `output/playwright/` for review.
 
 ## Commit & Pull Request Guidelines
 - Follow existing commit style: short imperative subject lines (for example, `Fix engine bugs`).
@@ -95,6 +112,7 @@ Use this workflow for every non-trivial change:
   - `npm test -- --run`
   - `npm run lint:strict`
   - `npm run typecheck`
+- For UI changes, also run Playwright E2E smoke steps and include screenshot/console artifacts in PR context.
 
 4. **Review diff quality**
 - Ensure no unrelated file churn.

@@ -9,9 +9,15 @@ export const defaultRandomSource: RandomSource = {
 };
 
 export interface GameActionError {
-  code: string;
+  code: GameActionErrorCode;
   message: string;
 }
+
+export type GameActionErrorCode =
+  | 'NO_GAME'
+  | 'ROLL_NOT_ALLOWED'
+  | 'UNDO_NOT_AVAILABLE'
+  | 'REDO_NOT_AVAILABLE';
 
 export interface GameSliceState {
   game: GameState | null;
