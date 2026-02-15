@@ -41,6 +41,22 @@ export function getGoodsQuantity(goods: GoodsTrack, name: string): number {
 }
 
 /**
+ * Resolve the goods-type key stored in a GoodsTrack by name.
+ * This avoids reference-mismatch issues when call sites only have the name.
+ */
+export function findGoodsTypeByName(
+  goods: GoodsTrack,
+  name: string
+): GoodsType | undefined {
+  for (const goodsType of goods.keys()) {
+    if (goodsType.name === name) {
+      return goodsType;
+    }
+  }
+  return undefined;
+}
+
+/**
  * Set the quantity of a specific good by name.
  */
 export function setGoodsQuantity(goods: GoodsTrack, name: string, quantity: number): GoodsTrack {

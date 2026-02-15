@@ -2,11 +2,14 @@ import { createSelector } from '@reduxjs/toolkit';
 import { GamePhase } from '@/game';
 import {
   getBuildOptions,
+  getAvailableDevelopments,
+  getTotalPurchasingPower,
   getCityWorkerCost,
   getRemainingCityWorkers,
   getRemainingMonumentWorkers,
   canRoll,
   countPendingChoices,
+  findGoodsTypeByName,
   getMaxRollsAllowed,
   isGameOver,
 } from '@/game/engine';
@@ -262,11 +265,97 @@ export const selectBuildPanelModel = createSelector(selectGame, (game) => {
   };
 });
 
-export const selectDevelopmentPanelModel = createSelector(selectGame, (game) => ({
-  isActionAllowed: Boolean(game),
-  reason: game ? null : 'Start a game to purchase developments.',
-  coinsAvailable: game ? game.state.turn.turnProduction.coins : 0,
-}));
+export const selectDevelopmentPanelModel = createSelector(selectGame, (game) => {
+  if (!game) {
+    return {
+      isActionAllowed: false,
+      reason: 'Start a game to purchase developments.',
+      canPurchase: false,
+      coinsAvailable: 0,
+      totalPurchasingPower: 0,
+      goodsSpendOptions: [] as Array<{
+        goodsType: string;
+        quantity: number;
+        spendValue: number;
+      }>,
+      availableDevelopments: [] as Array<{
+        id: string;
+        name: string;
+        cost: number;
+        points: number;
+        effectDescription: string;
+        purchased: boolean;
+        canAfford: boolean;
+      }>,
+      developmentCatalog: [] as Array<{
+        id: string;
+        name: string;
+        cost: number;
+        points: number;
+        effectDescription: string;
+        purchased: boolean;
+        canAfford: boolean;
+      }>,
+      ownedDevelopments: [] as string[],
+    };
+  }
+
+  const activePlayer = game.state.players[game.state.activePlayerIndex];
+  const isActionAllowed =
+    game.state.phase === GamePhase.Build || game.state.phase === GamePhase.Development;
+  const availableDevelopments = getAvailableDevelopments(activePlayer, game.settings).map(
+    (development) => ({
+      id: development.id,
+      name: development.name,
+      cost: development.cost,
+      points: development.points,
+      effectDescription: development.effectDescription,
+      canAfford: getTotalPurchasingPower(activePlayer, game.state.turn) >= development.cost,
+    }),
+  );
+  const developmentCatalog = game.settings.developmentDefinitions.map((development) => ({
+    id: development.id,
+    name: development.name,
+    cost: development.cost,
+    points: development.points,
+    effectDescription: development.effectDescription,
+    purchased: activePlayer.developments.includes(development.id),
+    canAfford:
+      !activePlayer.developments.includes(development.id) &&
+      getTotalPurchasingPower(activePlayer, game.state.turn) >= development.cost,
+  }));
+  const goodsSpendOptions = game.settings.goodsTypes.map((goodsType) => {
+    const playerGoodsType = findGoodsTypeByName(activePlayer.goods, goodsType.name);
+    const quantity = playerGoodsType ? (activePlayer.goods.get(playerGoodsType) ?? 0) : 0;
+    const spendValue =
+      quantity > 0
+        ? goodsType.values[Math.min(quantity - 1, goodsType.values.length - 1)]
+        : 0;
+    return {
+      goodsType: goodsType.name,
+      quantity,
+      spendValue,
+    };
+  });
+  const canPurchase = isActionAllowed && availableDevelopments.length > 0;
+  const reason = !isActionAllowed
+    ? 'Development purchases are only available during build/development.'
+    : availableDevelopments.length === 0
+      ? 'All developments purchased.'
+      : null;
+
+  return {
+    isActionAllowed,
+    reason,
+    canPurchase,
+    coinsAvailable: game.state.turn.turnProduction.coins,
+    totalPurchasingPower: getTotalPurchasingPower(activePlayer, game.state.turn),
+    goodsSpendOptions,
+    availableDevelopments,
+    developmentCatalog,
+    ownedDevelopments: activePlayer.developments,
+  };
+});
 
 export const selectDiscardPanelModel = createSelector(selectGame, (game) => ({
   isActionAllowed: Boolean(game),

@@ -98,7 +98,7 @@ describe('stage3 flow integration', () => {
     await user.click(lockButtons[1]);
     await user.click(lockButtons[2]);
 
-    expect(screen.getByText(/Stored goods:/).textContent).not.toContain('Wood 0');
+    expect(screen.getByText(/^Wood:/).textContent).not.toBe('Wood: 0');
 
     randomSpy.mockRestore();
   });

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  buyDevelopment,
   buildCity,
   buildMonument,
   endTurn,
@@ -206,6 +207,67 @@ describe('gameSlice', () => {
       .workersCommitted;
 
     expect(progressAfter).toBeGreaterThanOrEqual(progressBefore);
+    randomSpy.mockRestore();
+  });
+
+  it('buys a development with coins during build/development', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.67); // 7 coins face
+    let state = reduce(undefined, startGame({ players: PLAYERS }));
+
+    state = reduce(state, keepDie({ dieIndex: 0 }));
+    state = reduce(state, keepDie({ dieIndex: 1 }));
+    state = reduce(state, keepDie({ dieIndex: 2 }));
+
+    const coinsBefore = state.game!.state.turn.turnProduction.coins;
+    state = reduce(
+      state,
+      buyDevelopment({ developmentId: 'leadership', goodsTypeNames: [] }),
+    );
+
+    const activePlayer = state.game!.state.players[0];
+    expect(state.game!.state.phase).toBe('development');
+    expect(activePlayer.developments).toContain('leadership');
+    expect(state.game!.state.turn.turnProduction.coins).toBeLessThan(coinsBefore);
+    randomSpy.mockRestore();
+  });
+
+  it('rejects development purchase in invalid phase', () => {
+    let state = reduce(undefined, startGame({ players: PLAYERS }));
+    state = reduce(
+      state,
+      buyDevelopment({ developmentId: 'leadership', goodsTypeNames: [] }),
+    );
+
+    expect(state.lastError).toEqual({
+      code: 'INVALID_PHASE',
+      message: 'Developments can only be purchased during build/development.',
+    });
+  });
+
+  it('buys a development using selected goods types when coins are insufficient', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.01); // 1 good
+    let state = reduce(undefined, startGame({ players: PLAYERS }));
+
+    state = reduce(state, keepDie({ dieIndex: 0 }));
+    state = reduce(state, keepDie({ dieIndex: 1 }));
+    state = reduce(state, keepDie({ dieIndex: 2 }));
+    // Advance through player 2 and back to player 1 to accumulate more goods.
+    state = reduce(state, endTurn());
+    state = reduce(state, endTurn());
+    state = reduce(state, keepDie({ dieIndex: 0 }));
+    state = reduce(state, keepDie({ dieIndex: 1 }));
+    state = reduce(state, keepDie({ dieIndex: 2 }));
+
+    state = reduce(
+      state,
+      buyDevelopment({
+        developmentId: 'agriculture',
+        goodsTypeNames: ['Wood', 'Stone', 'Ceramic'],
+      }),
+    );
+
+    expect(state.lastError).toBeNull();
+    expect(state.game!.state.players[0].developments).toContain('agriculture');
     randomSpy.mockRestore();
   });
 });

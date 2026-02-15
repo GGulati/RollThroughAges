@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { PlayerConfig } from '@/game';
 import { calculateDiceProduction } from '@/game/engine';
 import {
+  buyDevelopment,
   endTurn,
   keepDie,
   redo,
@@ -192,6 +193,50 @@ describe('store selectors', () => {
     expect(productionPanel.reason).toBe(
       'Production has already been resolved for this turn.',
     );
+
+    randomSpy.mockRestore();
+  });
+
+  it('returns development targets and purchasing power in build phase', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.67); // 7 coins
+    const store = createTestStore();
+    store.dispatch(startGame({ players: PLAYERS }));
+    store.dispatch(keepDie({ dieIndex: 0 }));
+    store.dispatch(keepDie({ dieIndex: 1 }));
+    store.dispatch(keepDie({ dieIndex: 2 }));
+
+    const developmentPanel = selectDevelopmentPanelModel(store.getState());
+    expect(developmentPanel.isActionAllowed).toBe(true);
+    expect(developmentPanel.canPurchase).toBe(true);
+    expect(developmentPanel.coinsAvailable).toBeGreaterThan(0);
+    expect(developmentPanel.availableDevelopments.length).toBeGreaterThan(0);
+    expect(
+      developmentPanel.availableDevelopments.some((development) => development.canAfford),
+    ).toBe(true);
+    expect(developmentPanel.developmentCatalog.length).toBeGreaterThanOrEqual(
+      developmentPanel.availableDevelopments.length,
+    );
+
+    randomSpy.mockRestore();
+  });
+
+  it('keeps purchased developments visible in catalog', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.67); // 7 coins
+    const store = createTestStore();
+    store.dispatch(startGame({ players: PLAYERS }));
+    store.dispatch(keepDie({ dieIndex: 0 }));
+    store.dispatch(keepDie({ dieIndex: 1 }));
+    store.dispatch(keepDie({ dieIndex: 2 }));
+    store.dispatch(
+      buyDevelopment({ developmentId: 'leadership', goodsTypeNames: [] }),
+    );
+
+    const developmentPanel = selectDevelopmentPanelModel(store.getState());
+    const leadership = developmentPanel.developmentCatalog.find(
+      (development) => development.id === 'leadership',
+    );
+    expect(leadership).toBeDefined();
+    expect(leadership?.purchased).toBe(true);
 
     randomSpy.mockRestore();
   });

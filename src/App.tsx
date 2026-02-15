@@ -1,7 +1,9 @@
-﻿import './index.css';
+﻿import { useMemo, useState } from 'react';
+import './index.css';
 import {
   buildCity,
   buildMonument,
+  buyDevelopment,
   endTurn,
   keepDie,
   redo,
@@ -39,6 +41,7 @@ function App() {
   const endgameStatus = useAppSelector(selectEndgameStatus);
   const canUndo = useAppSelector(selectCanUndo);
   const canRedo = useAppSelector(selectCanRedo);
+  const [selectedGoodsToSpend, setSelectedGoodsToSpend] = useState<string[]>([]);
 
   const rerollEmoji =
     dicePanel.rerollsRemaining > 0
@@ -53,6 +56,28 @@ function App() {
       return '☠️ Locked (Skull)';
     }
     return '🔓 Unlocked';
+  };
+
+  const selectedGoodsLookup = useMemo(
+    () => new Set(selectedGoodsToSpend),
+    [selectedGoodsToSpend],
+  );
+  const selectedGoodsCoins = useMemo(
+    () =>
+      developmentPanel.goodsSpendOptions
+        .filter((option) => selectedGoodsLookup.has(option.goodsType))
+        .reduce((sum, option) => sum + option.spendValue, 0),
+    [developmentPanel.goodsSpendOptions, selectedGoodsLookup],
+  );
+  const effectiveCoinsAvailable =
+    developmentPanel.coinsAvailable + selectedGoodsCoins;
+
+  const toggleGoodsSpend = (goodsType: string) => {
+    setSelectedGoodsToSpend((current) =>
+      current.includes(goodsType)
+        ? current.filter((entry) => entry !== goodsType)
+        : [...current, goodsType],
+    );
   };
 
   return (
@@ -154,12 +179,14 @@ function App() {
                 : buildPanel.reason ?? 'Build flow ready.'}
             </p>
             <p>Workers: {buildPanel.workersAvailable}</p>
-            <p>
-              Stored goods:{' '}
-              {buildPanel.goodsStoredSummary
-                .map((entry) => `${entry.goodsType} ${entry.quantity}`)
-                .join(' | ')}
-            </p>
+            <p>Stored goods:</p>
+            <div className="goods-list">
+              {buildPanel.goodsStoredSummary.map((entry) => (
+                <p key={entry.goodsType} className="goods-row">
+                  {entry.goodsType}: {entry.quantity}
+                </p>
+              ))}
+            </div>
             <div className="build-targets">
               <p className="choice-label">City Targets:</p>
               <div className="panel-actions">
@@ -204,10 +231,72 @@ function App() {
 
           <section className="app-panel">
             <h2>Development Panel</h2>
+            <p>{developmentPanel.reason ?? 'Choose a development to purchase.'}</p>
+            <p>Coins available: {effectiveCoinsAvailable}</p>
+            <p className="inline-note">
+              Base coins: {developmentPanel.coinsAvailable}
+              {selectedGoodsCoins > 0 ? ` + goods value ${selectedGoodsCoins}` : ''}
+            </p>
+            <p>Total purchasing power: {developmentPanel.totalPurchasingPower}</p>
+            <p className="choice-label">Goods To Spend</p>
             <p>
-              {developmentPanel.isActionAllowed
-                ? 'Development flow ready.'
-                : developmentPanel.reason}
+              Selected:{' '}
+              {selectedGoodsToSpend.length > 0
+                ? selectedGoodsToSpend.join(', ')
+                : 'none'}
+            </p>
+            <div className="panel-actions">
+              {developmentPanel.goodsSpendOptions.map((option) => (
+                <button
+                  key={option.goodsType}
+                  type="button"
+                  onClick={() => toggleGoodsSpend(option.goodsType)}
+                  disabled={option.quantity <= 0 || !developmentPanel.isActionAllowed}
+                >
+                  {selectedGoodsLookup.has(option.goodsType) ? '✅ ' : ''}
+                  {option.goodsType} ({option.quantity})
+                </button>
+              ))}
+            </div>
+            <p className="choice-label">Development Options</p>
+            <div className="development-list">
+              {developmentPanel.developmentCatalog.map((development) => {
+                const canAffordWithSelection =
+                  effectiveCoinsAvailable >= development.cost;
+                return (
+                  <article key={development.id} className="development-card">
+                  <p className="development-title">
+                    {development.name} ({development.cost}🪙, +{development.points} VP)
+                    {development.purchased ? ' • Purchased' : ''}
+                  </p>
+                  <p className="development-effect">{development.effectDescription}</p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      dispatch(
+                        buyDevelopment({
+                          developmentId: development.id,
+                          goodsTypeNames: selectedGoodsToSpend,
+                        }),
+                      )
+                    }
+                    disabled={
+                      !developmentPanel.isActionAllowed ||
+                      development.purchased ||
+                      !canAffordWithSelection
+                    }
+                  >
+                    {development.purchased ? 'Purchased' : 'Buy Development'}
+                  </button>
+                  </article>
+                );
+              })}
+            </div>
+            <p>
+              Owned:{' '}
+              {developmentPanel.ownedDevelopments.length > 0
+                ? developmentPanel.ownedDevelopments.join(', ')
+                : 'none'}
             </p>
           </section>
 

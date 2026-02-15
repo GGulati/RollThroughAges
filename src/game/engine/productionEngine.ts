@@ -3,7 +3,7 @@ import { PlayerState, TurnState, GameStateSnapshot, GameSettings } from '../game
 import { GoodsType } from '../goods';
 import { calculateDiceProduction, countSkulls } from './diceEngine';
 import { applyDisasters } from './disasterEngine';
-import { addGoods } from './goodsEngine';
+import { addGoods, findGoodsTypeByName } from './goodsEngine';
 
 /**
  * Result of production resolution including any pending choices.
@@ -157,9 +157,7 @@ function autoAllocateProducedGoods(
     // Yucata/base rules: each produced good is assigned automatically
     // bottom-to-top (Wood, Stone, Ceramic, Fabric, Spearhead), then repeat.
     const goodsTypeName = settings.goodsTypes[i % settings.goodsTypes.length].name;
-    const goodsType = Array.from(nextPlayer.goods.keys()).find(
-      (goods) => goods.name === goodsTypeName
-    );
+    const goodsType = findGoodsTypeByName(nextPlayer.goods, goodsTypeName);
     if (!goodsType) {
       continue;
     }

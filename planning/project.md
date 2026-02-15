@@ -23,6 +23,7 @@
 - **S4.2 Slice E (discard + end-of-turn)**: Implement overflow discard flow and strict turn completion guards through UI and reducers.
 - **S4.3 Slice F (interaction polish)**: Add undo/redo controls + keyboard shortcuts, action log labels, and accessibility polish for interactive controls.
 - **S4.4 Stage gate**: Add full-turn integration test (start -> complete turn path(s) -> undo/redo checkpoints) and critical validation-path tests.
+- **Detailed breakdown**: See `planning/stage4-implementation-breakdown.md`.
 
 ### Stage 2-4 Composition Guardrails
 - **Vertical slice rule**: Every increment must include reducer/action, selector contract, UI wiring, and integration test in the same PR.

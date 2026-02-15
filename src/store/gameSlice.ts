@@ -10,8 +10,11 @@ import {
   countPendingChoices,
   createGame,
   endTurn as endTurnEngine,
+  findGoodsTypeByName,
+  getAvailableDevelopments,
   keepDie as keepDieEngine,
   performRoll,
+  purchaseDevelopment,
   redo as redoEngine,
   resolveProduction as resolveProductionEngine,
   spendWorkers,
@@ -523,6 +526,87 @@ const gameSlice = createSlice({
       state.game = nextGame;
       state.lastError = null;
     },
+    buyDevelopment: (
+      state,
+      action: PayloadAction<{ developmentId: string; goodsTypeNames: string[] }>,
+    ) => {
+      if (!state.game) {
+        setError(state, 'NO_GAME', 'Start a game before buying developments.');
+        return;
+      }
+      if (
+        state.game.state.phase !== GamePhase.Build &&
+        state.game.state.phase !== GamePhase.Development
+      ) {
+        setError(
+          state,
+          'INVALID_PHASE',
+          'Developments can only be purchased during build/development.',
+        );
+        return;
+      }
+
+      let failureCode: GameActionErrorCode = 'DEVELOPMENT_NOT_AFFORDABLE';
+      let failureMessage =
+        'That development purchase is not valid with current coins/goods.';
+
+      const nextGame = applyMutationWithHistory(state.game, (game) => {
+        const activeIndex = game.state.activePlayerIndex;
+        const activePlayer = game.state.players[activeIndex];
+        const availableDevelopmentIds = new Set(
+          getAvailableDevelopments(activePlayer, game.settings).map((dev) => dev.id),
+        );
+        if (!availableDevelopmentIds.has(action.payload.developmentId)) {
+          failureCode = 'INVALID_DEVELOPMENT';
+          failureMessage = 'That development is not available to purchase.';
+          return game;
+        }
+
+        const goodsTypesToSpend = action.payload.goodsTypeNames
+          .map((name) => findGoodsTypeByName(activePlayer.goods, name))
+          .filter((goodsType): goodsType is NonNullable<typeof goodsType> =>
+            Boolean(goodsType),
+          );
+        if (goodsTypesToSpend.length !== action.payload.goodsTypeNames.length) {
+          failureCode = 'INVALID_DEVELOPMENT';
+          failureMessage = 'One or more selected goods types are invalid.';
+          return game;
+        }
+
+        const result = purchaseDevelopment(
+          activePlayer,
+          game.state.turn,
+          action.payload.developmentId,
+          goodsTypesToSpend,
+          game.settings,
+        );
+        if ('error' in result) {
+          failureCode = 'DEVELOPMENT_NOT_AFFORDABLE';
+          failureMessage = result.error;
+          return game;
+        }
+
+        const players = [...game.state.players];
+        players[activeIndex] = result.player;
+        return {
+          ...game,
+          state: {
+            ...game.state,
+            phase: GamePhase.Development,
+            players,
+            turn: result.turn,
+          },
+        };
+      });
+
+      if (!nextGame) {
+        setError(state, failureCode, failureMessage);
+        return;
+      }
+
+      state.game = nextGame;
+      state.lastError = null;
+    },
     undo: (state) => {
       if (!state.game) {
         setError(state, 'NO_GAME', 'Start a game before undoing moves.');
@@ -565,6 +649,7 @@ export const {
   resolveProduction,
   buildCity,
   buildMonument,
+  buyDevelopment,
   undo,
   redo,
 } = gameSlice.actions;

@@ -110,6 +110,29 @@ body,
   margin: 0.35rem 0 0.5rem;
 }
 
+.development-list {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+
+.development-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.6rem;
+  padding: 0.6rem;
+  background: #f9fafb;
+}
+
+.development-title {
+  font-weight: 700;
+  margin-bottom: 0.25rem !important;
+}
+
+.development-effect {
+  color: #374151;
+  margin-bottom: 0.5rem !important;
+}
+
 .build-targets {
   margin-top: 0.5rem;
 }
@@ -122,6 +145,15 @@ body,
 
 .inline-note {
   color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.goods-list {
+  margin-top: 0.25rem;
+}
+
+.goods-row {
+  color: #374151;
   font-size: 0.9rem;
 }
 
