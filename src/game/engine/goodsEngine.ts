@@ -83,15 +83,22 @@ export function addGoods(goods: GoodsTrack, goodsType: GoodsType, amount: number
 /**
  * Check if a player has the Caravans development (no goods limit).
  */
-export function hasNoGoodsLimit(player: PlayerState): boolean {
-  return player.developments.includes('caravans');
+export function hasNoGoodsLimit(
+  player: PlayerState,
+  settings: GameSettings
+): boolean {
+  return settings.developmentDefinitions.some(
+    (development) =>
+      player.developments.includes(development.id) &&
+      development.specialEffect.type === 'noGoodsLimit'
+  );
 }
 
 /**
  * Get the maximum goods a player can store per type.
  */
 export function getGoodsLimit(player: PlayerState, settings: GameSettings): number {
-  return hasNoGoodsLimit(player) ? Infinity : settings.maxGoods;
+  return hasNoGoodsLimit(player, settings) ? Infinity : settings.maxGoods;
 }
 
 /**

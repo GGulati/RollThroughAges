@@ -229,12 +229,33 @@ describe('productionEngine', () => {
   describe('hasGranaries', () => {
     it('returns false without development', () => {
       const player = createTestPlayer('p1', settings);
-      expect(hasGranaries(player)).toBe(false);
+      expect(hasGranaries(player, settings)).toBe(false);
     });
 
     it('returns true with Granaries', () => {
       const player = createTestPlayer('p1', settings, { developments: ['granaries'] });
-      expect(hasGranaries(player)).toBe(true);
+      expect(hasGranaries(player, settings)).toBe(true);
+    });
+
+    it('returns true for any matching exchange effect', () => {
+      const customSettings = createTestSettings(2);
+      customSettings.developmentDefinitions = customSettings.developmentDefinitions.map((dev) =>
+        dev.id === 'leadership'
+          ? {
+              ...dev,
+              specialEffect: {
+                type: 'exchange' as const,
+                from: 'food',
+                to: 'coins',
+                rate: 4,
+              },
+            }
+          : dev,
+      );
+      const player = createTestPlayer('p1', customSettings, {
+        developments: ['leadership'],
+      });
+      expect(hasGranaries(player, customSettings)).toBe(true);
     });
   });
 
@@ -268,17 +289,68 @@ describe('productionEngine', () => {
       const result = exchangeFoodForCoins(player, turn, 5, settings);
       expect(result).toBeNull();
     });
+
+    it('uses exchange effect metadata instead of granaries id', () => {
+      const customSettings = createTestSettings(2);
+      customSettings.developmentDefinitions = customSettings.developmentDefinitions.map((dev) =>
+        dev.id === 'leadership'
+          ? {
+              ...dev,
+              specialEffect: {
+                type: 'exchange' as const,
+                from: 'food',
+                to: 'coins',
+                rate: 4,
+              },
+            }
+          : dev,
+      );
+
+      const player = createTestPlayer('p1', customSettings, {
+        developments: ['leadership'],
+      });
+      player.food = 5;
+      const turn = createTestTurn('p1');
+      const result = exchangeFoodForCoins(player, turn, 2, customSettings);
+
+      expect(result).not.toBeNull();
+      if (result) {
+        expect(result.player.food).toBe(3);
+        expect(result.turn.turnProduction.coins).toBe(8);
+      }
+    });
   });
 
   describe('hasEngineering', () => {
     it('returns false without development', () => {
       const player = createTestPlayer('p1', settings);
-      expect(hasEngineering(player)).toBe(false);
+      expect(hasEngineering(player, settings)).toBe(false);
     });
 
     it('returns true with Engineering', () => {
       const player = createTestPlayer('p1', settings, { developments: ['engineering'] });
-      expect(hasEngineering(player)).toBe(true);
+      expect(hasEngineering(player, settings)).toBe(true);
+    });
+
+    it('returns true for any matching stone->workers exchange effect', () => {
+      const customSettings = createTestSettings(2);
+      customSettings.developmentDefinitions = customSettings.developmentDefinitions.map((dev) =>
+        dev.id === 'leadership'
+          ? {
+              ...dev,
+              specialEffect: {
+                type: 'exchange' as const,
+                from: 'stone',
+                to: 'workers',
+                rate: 2,
+              },
+            }
+          : dev,
+      );
+      const player = createTestPlayer('p1', customSettings, {
+        developments: ['leadership'],
+      });
+      expect(hasEngineering(player, customSettings)).toBe(true);
     });
   });
 
@@ -312,6 +384,36 @@ describe('productionEngine', () => {
 
       const result = exchangeStoneForWorkers(player, turn, 5, settings);
       expect(result).toBeNull();
+    });
+
+    it('uses exchange effect metadata instead of engineering id', () => {
+      const customSettings = createTestSettings(2);
+      customSettings.developmentDefinitions = customSettings.developmentDefinitions.map((dev) =>
+        dev.id === 'leadership'
+          ? {
+              ...dev,
+              specialEffect: {
+                type: 'exchange' as const,
+                from: 'stone',
+                to: 'workers',
+                rate: 2,
+              },
+            }
+          : dev,
+      );
+
+      let player = createTestPlayer('p1', customSettings, {
+        developments: ['leadership'],
+      });
+      player = setPlayerGoods(player, 'Stone', 4, customSettings);
+      const turn = createTestTurn('p1');
+      const result = exchangeStoneForWorkers(player, turn, 2, customSettings);
+
+      expect(result).not.toBeNull();
+      if (result) {
+        expect(getPlayerGoods(result.player, 'Stone', customSettings)).toBe(2);
+        expect(result.turn.turnProduction.workers).toBe(4);
+      }
     });
   });
 });

@@ -122,11 +122,24 @@ body,
   margin-top: 0.5rem;
 }
 
+.disaster-list {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+
 .development-card {
   border: 1px solid #e5e7eb;
   border-radius: 0.6rem;
   padding: 0.6rem;
   background: #f9fafb;
+}
+
+.disaster-card {
+  border: 1px solid #f3d1d1;
+  border-radius: 0.6rem;
+  padding: 0.6rem;
+  background: #fff7f7;
 }
 
 .development-title {

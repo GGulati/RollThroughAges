@@ -110,12 +110,25 @@ describe('goodsEngine', () => {
   describe('hasNoGoodsLimit', () => {
     it('returns false without Caravans', () => {
       const player = createTestPlayer('p1', settings);
-      expect(hasNoGoodsLimit(player)).toBe(false);
+      expect(hasNoGoodsLimit(player, settings)).toBe(false);
     });
 
     it('returns true with Caravans', () => {
       const player = createTestPlayer('p1', settings, { developments: ['caravans'] });
-      expect(hasNoGoodsLimit(player)).toBe(true);
+      expect(hasNoGoodsLimit(player, settings)).toBe(true);
+    });
+
+    it('returns true for any owned noGoodsLimit effect', () => {
+      const customSettings = createTestSettings(2);
+      customSettings.developmentDefinitions = customSettings.developmentDefinitions.map((dev) =>
+        dev.id === 'leadership'
+          ? { ...dev, specialEffect: { type: 'noGoodsLimit' as const } }
+          : dev,
+      );
+      const player = createTestPlayer('p1', customSettings, {
+        developments: ['leadership'],
+      });
+      expect(hasNoGoodsLimit(player, customSettings)).toBe(true);
     });
   });
 

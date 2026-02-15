@@ -275,6 +275,21 @@ describe('diceEngine', () => {
       const player = createTestPlayer('p1', settings, { developments: ['leadership'] });
       expect(getMaxRollsAllowed(player, settings)).toBe(settings.maxDiceRolls + 1);
     });
+
+    it('uses diceReroll count from special effects (data-driven)', () => {
+      const customSettings = createTestSettings(2);
+      customSettings.developmentDefinitions = customSettings.developmentDefinitions.map((dev) =>
+        dev.id === 'leadership'
+          ? { ...dev, specialEffect: { type: 'diceReroll' as const, count: 2 } }
+          : dev,
+      );
+      const player = createTestPlayer('p1', customSettings, {
+        developments: ['leadership'],
+      });
+      expect(getMaxRollsAllowed(player, customSettings)).toBe(
+        customSettings.maxDiceRolls + 2,
+      );
+    });
   });
 
   describe('calculateDiceProduction', () => {

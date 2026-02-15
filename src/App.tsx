@@ -18,6 +18,7 @@ import {
   selectCanRedo,
   selectCanUndo,
   selectDevelopmentPanelModel,
+  selectDisasterPanelModel,
   selectDiscardPanelModel,
   selectDicePanelModel,
   selectEndgameStatus,
@@ -48,6 +49,7 @@ function App() {
   const productionPanel = useAppSelector(selectProductionPanelModel);
   const buildPanel = useAppSelector(selectBuildPanelModel);
   const developmentPanel = useAppSelector(selectDevelopmentPanelModel);
+  const disasterPanel = useAppSelector(selectDisasterPanelModel);
   const discardPanel = useAppSelector(selectDiscardPanelModel);
   const endgameStatus = useAppSelector(selectEndgameStatus);
   const canUndo = useAppSelector(selectCanUndo);
@@ -71,6 +73,8 @@ function App() {
     }
     return '🔓 Unlocked';
   };
+  const getSkullDenotation = (skulls: number) =>
+    Array.from({ length: skulls }, () => '☠️').join(' ');
 
   const selectedGoodsLookup = useMemo(
     () => new Set(selectedGoodsToSpend),
@@ -202,6 +206,22 @@ function App() {
                       {die.lockDecision === 'kept' ? 'Unlock 🔓' : 'Lock 🔒'}
                     </button>
                   </div>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="app-panel">
+            <h2>Disaster Reference</h2>
+            <p>Disasters trigger by total skulls rolled this turn.</p>
+            <div className="disaster-list">
+              {disasterPanel.disasters.map((disaster) => (
+                <article key={disaster.id} className="disaster-card">
+                  <p className="development-title">
+                    {getSkullDenotation(disaster.skulls)} {disaster.id}
+                  </p>
+                  <p className="development-effect">{disaster.effect}</p>
+                  <p className="inline-note">Targets: {disaster.affectedPlayers}</p>
                 </article>
               ))}
             </div>

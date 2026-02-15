@@ -16,6 +16,7 @@ import {
   selectCanRedo,
   selectCanUndo,
   selectDevelopmentPanelModel,
+  selectDisasterPanelModel,
   selectDicePanelModel,
   selectDiscardPanelModel,
   selectEndgameStatus,
@@ -64,6 +65,7 @@ describe('store selectors', () => {
     expect(selectDiscardPanelModel(state).reason).toBe(
       'Start a game to discard goods.',
     );
+    expect(selectDisasterPanelModel(state).disasters).toEqual([]);
     expect(selectCanUndo(state)).toBe(false);
     expect(selectCanRedo(state)).toBe(false);
     expect(selectEndgameStatus(state)).toEqual({
@@ -241,5 +243,19 @@ describe('store selectors', () => {
     expect(leadership?.purchased).toBe(true);
 
     randomSpy.mockRestore();
+  });
+
+  it('returns disaster criteria for player awareness', () => {
+    const store = createTestStore();
+    store.dispatch(startGame({ players: PLAYERS }));
+
+    const disasterPanel = selectDisasterPanelModel(store.getState());
+    expect(disasterPanel.disasters.length).toBeGreaterThan(0);
+    expect(disasterPanel.disasters[0]).toMatchObject({
+      id: 'drought',
+      skulls: 2,
+      effect: 'Lose 2 points',
+      affectedPlayers: 'self',
+    });
   });
 });

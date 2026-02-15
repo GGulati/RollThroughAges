@@ -412,6 +412,28 @@ export const selectDiscardPanelModel = createSelector(selectGame, (game) => ({
   reason: game ? null : 'Start a game to discard goods.',
 }));
 
+export const selectDisasterPanelModel = createSelector(selectGame, (game) => {
+  if (!game) {
+    return {
+      disasters: [] as Array<{
+        id: string;
+        skulls: number;
+        effect: string;
+        affectedPlayers: string;
+      }>,
+    };
+  }
+
+  return {
+    disasters: game.settings.disasterDefinitions.map((disaster) => ({
+      id: disaster.id,
+      skulls: disaster.skulls,
+      effect: disaster.effect,
+      affectedPlayers: disaster.affectedPlayers,
+    })),
+  };
+});
+
 export const selectEndgameStatus = createSelector(selectGame, (game) => ({
   isGameActive: Boolean(game),
   isGameOver: game ? isGameOver(game) : false,

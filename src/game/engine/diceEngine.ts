@@ -158,17 +158,38 @@ export function getMaxRollsAllowed(
   player: PlayerState | undefined,
   settings: GameSettings
 ): number {
-  if (player && hasLeadership(player)) {
-    return settings.maxDiceRolls + 1;
-  }
-  return settings.maxDiceRolls;
+  return settings.maxDiceRolls + getDiceRerollBonus(player, settings);
 }
 
 /**
- * Check if player has Leadership development (allows extra re-roll).
+ * Check if player has Leadership development.
  */
 export function hasLeadership(player: PlayerState): boolean {
   return player.developments.includes('leadership');
+}
+
+/**
+ * Sum all extra re-rolls granted by owned diceReroll effects.
+ */
+function getDiceRerollBonus(
+  player: PlayerState | undefined,
+  settings: GameSettings
+): number {
+  if (!player) {
+    return 0;
+  }
+
+  let bonus = 0;
+  for (const development of settings.developmentDefinitions) {
+    if (!player.developments.includes(development.id)) {
+      continue;
+    }
+    if (development.specialEffect.type === 'diceReroll') {
+      bonus += development.specialEffect.count;
+    }
+  }
+
+  return bonus;
 }
 
 /**

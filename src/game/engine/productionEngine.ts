@@ -234,8 +234,32 @@ export function resolveProduction(
 /**
  * Check if player has Granaries development (convert food to coins).
  */
-export function hasGranaries(player: PlayerState): boolean {
-  return player.developments.includes('granaries');
+export function hasGranaries(player: PlayerState, settings: GameSettings): boolean {
+  return Boolean(getExchangeEffect(player, 'food', 'coins', settings));
+}
+
+function getExchangeEffect(
+  player: PlayerState,
+  from: string,
+  to: string,
+  settings: GameSettings
+): { from: string; to: string; rate: number } | undefined {
+  for (const development of settings.developmentDefinitions) {
+    if (!player.developments.includes(development.id)) {
+      continue;
+    }
+    if (development.specialEffect.type !== 'exchange') {
+      continue;
+    }
+    if (
+      development.specialEffect.from.toLowerCase() === from.toLowerCase() &&
+      development.specialEffect.to.toLowerCase() === to.toLowerCase()
+    ) {
+      return development.specialEffect;
+    }
+  }
+
+  return undefined;
 }
 
 /**
@@ -247,14 +271,10 @@ export function exchangeFoodForCoins(
   foodAmount: number,
   settings: GameSettings
 ): { player: PlayerState; turn: TurnState } | null {
-  if (!hasGranaries(player)) return null;
+  const exchangeEffect = getExchangeEffect(player, 'food', 'coins', settings);
+  if (!exchangeEffect) return null;
   if (player.food < foodAmount) return null;
-
-  const granariesDev = settings.developmentDefinitions.find(d => d.id === 'granaries');
-  if (!granariesDev || granariesDev.specialEffect.type !== 'exchange') return null;
-
-  const rate = granariesDev.specialEffect.rate;
-  const coinsGained = foodAmount * rate;
+  const coinsGained = foodAmount * exchangeEffect.rate;
 
   return {
     player: { ...player, food: player.food - foodAmount },
@@ -271,8 +291,8 @@ export function exchangeFoodForCoins(
 /**
  * Check if player has Engineering development (convert stone to workers).
  */
-export function hasEngineering(player: PlayerState): boolean {
-  return player.developments.includes('engineering');
+export function hasEngineering(player: PlayerState, settings: GameSettings): boolean {
+  return Boolean(getExchangeEffect(player, 'stone', 'workers', settings));
 }
 
 /**
@@ -284,7 +304,8 @@ export function exchangeStoneForWorkers(
   stoneAmount: number,
   settings: GameSettings
 ): { player: PlayerState; turn: TurnState } | null {
-  if (!hasEngineering(player)) return null;
+  const exchangeEffect = getExchangeEffect(player, 'stone', 'workers', settings);
+  if (!exchangeEffect) return null;
 
   const stoneType = settings.goodsTypes.find((g) => g.name === 'Stone');
   if (!stoneType) return null;
@@ -292,11 +313,7 @@ export function exchangeStoneForWorkers(
   const currentStone = player.goods.get(stoneType) ?? 0;
   if (currentStone < stoneAmount) return null;
 
-  const engineeringDev = settings.developmentDefinitions.find(d => d.id === 'engineering');
-  if (!engineeringDev || engineeringDev.specialEffect.type !== 'exchange') return null;
-
-  const rate = engineeringDev.specialEffect.rate;
-  const workersGained = stoneAmount * rate;
+  const workersGained = stoneAmount * exchangeEffect.rate;
 
   const newGoods = new Map(player.goods);
   newGoods.set(stoneType, currentStone - stoneAmount);
