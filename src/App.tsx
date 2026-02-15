@@ -159,11 +159,6 @@ function App() {
             {turnStatus.isGameActive ? 'Restart Game' : 'Start Game'}
           </button>
         </div>
-        <p>
-          Stage 2 playable loop: start a game, roll dice, end turn, and use
-          undo or redo.
-        </p>
-
         <div className="board-grid">
           <section className="app-panel" aria-live="polite">
             <h2>Turn Status</h2>
@@ -291,7 +286,7 @@ function App() {
                             }
                             disabled={!die.canChooseOption}
                           >
-                            {optionIndex === die.selectedOption ? '? ' : ''}
+                            {optionIndex === die.selectedOption ? '✅ ' : ''}
                             {die.optionSummaries[optionIndex]}
                           </button>
                         ))}
@@ -448,7 +443,7 @@ function App() {
                     onClick={() => toggleGoodsSpend(option.goodsType)}
                     disabled={option.quantity <= 0 || !developmentPanel.isActionAllowed}
                   >
-                    {selectedGoodsLookup.has(option.goodsType) ? '? ' : ''}
+                    {selectedGoodsLookup.has(option.goodsType) ? '✅ ' : ''}
                     {option.goodsType} ({option.quantity})
                   </button>
                 ))}

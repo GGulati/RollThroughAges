@@ -3,7 +3,6 @@ import { GamePhase, PlayerConfig } from '@/game';
 import { calculateDiceProduction } from '@/game/engine';
 import {
   buyDevelopment,
-  endTurn,
   keepDie,
   redo,
   rollDice,
@@ -120,11 +119,10 @@ describe('store selectors', () => {
   });
 
   it('tracks undo/redo selector state across mutations', () => {
-    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.2);
     const store = createTestStore();
     store.dispatch(startGame({ players: PLAYERS }));
-    store.dispatch(rollDice());
-    store.dispatch(endTurn());
+    store.dispatch(keepDie({ dieIndex: 0 }));
+    store.dispatch(keepDie({ dieIndex: 1 }));
 
     expect(selectCanUndo(store.getState())).toBe(true);
     expect(selectCanRedo(store.getState())).toBe(false);
@@ -136,7 +134,6 @@ describe('store selectors', () => {
     expect(selectCanRedo(store.getState())).toBe(false);
     expect(selectCanUndo(store.getState())).toBe(true);
 
-    randomSpy.mockRestore();
   });
 
   it('surfaces reason text when rolling is no longer allowed', () => {

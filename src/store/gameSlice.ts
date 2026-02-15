@@ -246,35 +246,14 @@ const gameSlice = createSlice({
         activePlayer,
         state.game.settings,
       );
-      const isBlockedByOverflow =
-        state.game.state.phase === GamePhase.DiscardGoods && overflow > 0;
-      if (isBlockedByOverflow) {
+      if (state.game.state.phase !== GamePhase.EndTurn) {
         setError(
           state,
           'INVALID_PHASE',
-          'Discard goods before ending the turn.',
+          state.game.state.phase === GamePhase.DiscardGoods && overflow > 0
+            ? 'Discard goods before ending the turn.'
+            : 'End turn is only available once discard checks are complete.',
         );
-        return;
-      }
-      if (overflow > 0 && state.game.state.phase !== GamePhase.DiscardGoods) {
-        const nextGame = applyMutationWithHistory(state.game, (game) => ({
-          ...game,
-          state: {
-            ...game.state,
-            phase: GamePhase.DiscardGoods,
-          },
-        }));
-        if (!nextGame) {
-          setError(
-            state,
-            'INVALID_PHASE',
-            'Discard goods before ending the turn.',
-          );
-          return;
-        }
-        state.game = nextGame;
-        state.lastError = null;
-        appendLog(state, 'Moved to discard phase due to goods overflow.');
         return;
       }
 

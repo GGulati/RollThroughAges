@@ -34,7 +34,7 @@ describe('gameSlice', () => {
     let state = reduce(undefined, startGame({ players: PLAYERS }));
 
     for (let i = 0; i < 25; i += 1) {
-      state = reduce(state, endTurn());
+      state = reduce(state, keepDie({ dieIndex: 0 }));
     }
 
     expect(state.game).not.toBeNull();
@@ -45,7 +45,7 @@ describe('gameSlice', () => {
     const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.4);
     let state = reduce(undefined, startGame({ players: PLAYERS }));
 
-    state = reduce(state, endTurn());
+    state = reduce(state, keepDie({ dieIndex: 0 }));
     state = reduce(state, undo());
 
     expect(state.game).not.toBeNull();
@@ -282,18 +282,37 @@ describe('gameSlice', () => {
   });
 
   it('buys a development using selected goods types when coins are insufficient', () => {
-    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.01); // 1 good
     let state = reduce(undefined, startGame({ players: PLAYERS }));
-
-    state = reduce(state, keepDie({ dieIndex: 0 }));
-    state = reduce(state, keepDie({ dieIndex: 1 }));
-    state = reduce(state, keepDie({ dieIndex: 2 }));
-    // Advance through player 2 and back to player 1 to accumulate more goods.
-    state = reduce(state, endTurn());
-    state = reduce(state, endTurn());
-    state = reduce(state, keepDie({ dieIndex: 0 }));
-    state = reduce(state, keepDie({ dieIndex: 1 }));
-    state = reduce(state, keepDie({ dieIndex: 2 }));
+    const game = state.game!;
+    const activeIndex = game.state.activePlayerIndex;
+    const activePlayer = game.state.players[activeIndex];
+    const wood = game.settings.goodsTypes.find((g) => g.name === 'Wood')!;
+    const stone = game.settings.goodsTypes.find((g) => g.name === 'Stone')!;
+    const ceramic = game.settings.goodsTypes.find((g) => g.name === 'Ceramic')!;
+    const goods = new Map(activePlayer.goods);
+    goods.set(wood, 3);
+    goods.set(stone, 2);
+    goods.set(ceramic, 1);
+    state = {
+      ...state,
+      game: {
+        ...game,
+        state: {
+          ...game.state,
+          phase: GamePhase.Development,
+          players: game.state.players.map((player, index) =>
+            index === activeIndex ? { ...player, goods } : player,
+          ),
+          turn: {
+            ...game.state.turn,
+            turnProduction: {
+              ...game.state.turn.turnProduction,
+              coins: 0,
+            },
+          },
+        },
+      },
+    };
 
     state = reduce(
       state,
@@ -305,7 +324,6 @@ describe('gameSlice', () => {
 
     expect(state.lastError).toBeNull();
     expect(state.game!.state.players[0].developments).toContain('agriculture');
-    randomSpy.mockRestore();
   });
 
   it('blocks end turn when discard overflow is unresolved', () => {
@@ -336,6 +354,24 @@ describe('gameSlice', () => {
       code: 'INVALID_PHASE',
       message: 'Discard goods before ending the turn.',
     });
+  });
+
+  it('blocks end turn outside endTurn phase even when no discard is required', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.67); // 7 coins
+    let state = reduce(undefined, startGame({ players: PLAYERS }));
+
+    state = reduce(state, keepDie({ dieIndex: 0 }));
+    state = reduce(state, keepDie({ dieIndex: 1 }));
+    state = reduce(state, keepDie({ dieIndex: 2 }));
+    expect(state.game!.state.phase).toBe('development');
+
+    state = reduce(state, endTurn());
+    expect(state.lastError).toEqual({
+      code: 'INVALID_PHASE',
+      message: 'End turn is only available once discard checks are complete.',
+    });
+
+    randomSpy.mockRestore();
   });
 
   it('applies discard selection and advances discard phase to end-turn', () => {

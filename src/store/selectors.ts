@@ -582,10 +582,12 @@ export const selectDiscardPanelModel = createSelector(selectGame, (game) => {
     : overflow > 0
       ? null
       : 'No discard is required right now.';
-  const canEndTurn = !isDiscardPhase || overflow <= 0;
+  const canEndTurn = game.state.phase === GamePhase.EndTurn;
   const endTurnReason = canEndTurn
     ? null
-    : 'Discard goods before ending the turn.';
+    : isDiscardPhase && overflow > 0
+      ? 'Discard goods before ending the turn.'
+      : 'End turn is only available once discard checks are complete.';
 
   return {
     isActionAllowed,
