@@ -23,6 +23,18 @@ body,
   gap: 1rem;
 }
 
+.title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.title-row h1 {
+  margin: 0;
+}
+
 .board-grid {
   display: grid;
   grid-template-columns: repeat(1, minmax(0, 1fr));
@@ -236,6 +248,21 @@ body,
 .log-list {
   margin: 0;
   padding-left: 1rem;
+}
+
+.log-textbox {
+  width: 100%;
+  min-height: 180px;
+  resize: vertical;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  padding: 0.6rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  color: #1f2937;
+  background: #f9fafb;
+  overflow-y: auto;
 }
 
 .actions button:disabled {

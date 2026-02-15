@@ -60,6 +60,11 @@ export const selectCanRedo = createSelector(
   (game) => (game ? game.future.length > 0 : false),
 );
 
+export const selectActionLog = createSelector(
+  selectGameSlice,
+  (slice) => slice.actionLog,
+);
+
 export const selectTurnStatus = createSelector(
   selectGame,
   selectLastError,

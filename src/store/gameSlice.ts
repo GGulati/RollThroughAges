@@ -33,10 +33,16 @@ enableMapSet();
 const initialState: GameSliceState = {
   game: null,
   lastError: null,
+  actionLog: [],
 };
 
 function setError(state: GameSliceState, code: GameActionErrorCode, message: string): void {
   state.lastError = { code, message };
+  state.actionLog = [...state.actionLog, `Error [${code}]: ${message}`];
+}
+
+function appendLog(state: GameSliceState, message: string): void {
+  state.actionLog = [...state.actionLog, message];
 }
 
 function cloneSnapshot(snapshot: GameStateSnapshot): GameStateSnapshot {
@@ -206,6 +212,10 @@ const gameSlice = createSlice({
     startGame: (state, action: PayloadAction<{ players: PlayerConfig[] }>) => {
       state.game = createGame(action.payload.players);
       state.lastError = null;
+      state.actionLog = [
+        ...state.actionLog,
+        `Game started with ${action.payload.players.length} players.`,
+      ];
     },
     rollDice: (state) => {
       if (!state.game) {
@@ -222,6 +232,7 @@ const gameSlice = createSlice({
 
       state.game = autoResolveProductionIfReady(nextGame);
       state.lastError = null;
+      appendLog(state, 'Rolled unlocked dice.');
     },
     endTurn: (state) => {
       if (!state.game) {
@@ -245,9 +256,31 @@ const gameSlice = createSlice({
         );
         return;
       }
+      if (overflow > 0 && state.game.state.phase !== GamePhase.DiscardGoods) {
+        const nextGame = applyMutationWithHistory(state.game, (game) => ({
+          ...game,
+          state: {
+            ...game.state,
+            phase: GamePhase.DiscardGoods,
+          },
+        }));
+        if (!nextGame) {
+          setError(
+            state,
+            'INVALID_PHASE',
+            'Discard goods before ending the turn.',
+          );
+          return;
+        }
+        state.game = nextGame;
+        state.lastError = null;
+        appendLog(state, 'Moved to discard phase due to goods overflow.');
+        return;
+      }
 
       state.game = applyMutationWithHistory(state.game, endTurnEngine);
       state.lastError = null;
+      appendLog(state, 'Ended turn.');
     },
     discardGoods: (
       state,
@@ -312,6 +345,7 @@ const gameSlice = createSlice({
 
       state.game = nextGame;
       state.lastError = null;
+      appendLog(state, 'Applied goods discard selection.');
     },
     keepDie: (state, action: PayloadAction<{ dieIndex: number }>) => {
       if (!state.game) {
@@ -369,6 +403,7 @@ const gameSlice = createSlice({
 
       state.game = nextGame;
       state.lastError = null;
+      appendLog(state, `Toggled lock state for die ${dieIndex + 1}.`);
     },
     selectProduction: (
       state,
@@ -451,6 +486,10 @@ const gameSlice = createSlice({
 
       state.game = nextGame;
       state.lastError = null;
+      appendLog(
+        state,
+        `Selected production option ${productionIndex + 1} for die ${dieIndex + 1}.`,
+      );
     },
     resolveProduction: (state) => {
       if (!state.game) {
@@ -499,6 +538,7 @@ const gameSlice = createSlice({
 
       state.game = nextGame;
       state.lastError = null;
+      appendLog(state, 'Resolved production.');
     },
     buildCity: (state, action: PayloadAction<{ cityIndex: number }>) => {
       if (!state.game) {
@@ -576,6 +616,7 @@ const gameSlice = createSlice({
 
       state.game = nextGame;
       state.lastError = null;
+      appendLog(state, `Built city ${action.payload.cityIndex + 1}.`);
     },
     buildMonument: (state, action: PayloadAction<{ monumentId: string }>) => {
       if (!state.game) {
@@ -654,6 +695,7 @@ const gameSlice = createSlice({
 
       state.game = nextGame;
       state.lastError = null;
+      appendLog(state, `Built monument ${action.payload.monumentId}.`);
     },
     buyDevelopment: (
       state,
@@ -735,6 +777,7 @@ const gameSlice = createSlice({
 
       state.game = nextGame;
       state.lastError = null;
+      appendLog(state, `Purchased development ${action.payload.developmentId}.`);
     },
     undo: (state) => {
       if (!state.game) {
@@ -750,6 +793,7 @@ const gameSlice = createSlice({
 
       state.game = nextGame;
       state.lastError = null;
+      appendLog(state, 'Undid last action.');
     },
     redo: (state) => {
       if (!state.game) {
@@ -765,6 +809,7 @@ const gameSlice = createSlice({
 
       state.game = nextGame;
       state.lastError = null;
+      appendLog(state, 'Redid action.');
     },
   },
 });

@@ -15,6 +15,7 @@ import {
   undo,
 } from '@/store/gameSlice';
 import {
+  selectActionLog,
   selectBuildPanelModel,
   selectCanRedo,
   selectCanUndo,
@@ -47,6 +48,7 @@ const DEFAULT_SECTION_PREFERENCES: SectionPreferences = {
 function App() {
   const dispatch = useAppDispatch();
   const turnStatus = useAppSelector(selectTurnStatus);
+  const actionLog = useAppSelector(selectActionLog);
   const dicePanel = useAppSelector(selectDicePanelModel);
   const diceOutcome = useAppSelector(selectDiceOutcomeModel);
   const productionPanel = useAppSelector(selectProductionPanelModel);
@@ -148,7 +150,15 @@ function App() {
   return (
     <main className="app-shell">
       <section className="app-layout">
-        <h1>Roll Through the Ages</h1>
+        <div className="title-row">
+          <h1>Roll Through the Ages</h1>
+          <button
+            type="button"
+            onClick={() => dispatch(startGame({ players: DEFAULT_PLAYERS }))}
+          >
+            {turnStatus.isGameActive ? 'Restart Game' : 'Start Game'}
+          </button>
+        </div>
         <p>
           Stage 2 playable loop: start a game, roll dice, end turn, and use
           undo or redo.
@@ -178,6 +188,32 @@ function App() {
             <p>
               <strong>Current Points:</strong> {turnStatus.activePlayerPoints}
             </p>
+            <div className="actions">
+              <button
+                type="button"
+                onClick={() => dispatch(endTurn())}
+                disabled={!discardPanel.canEndTurn}
+              >
+                End Turn
+              </button>
+              <button
+                type="button"
+                onClick={() => dispatch(undo())}
+                disabled={!canUndo}
+              >
+                Undo
+              </button>
+              <button
+                type="button"
+                onClick={() => dispatch(redo())}
+                disabled={!canRedo}
+              >
+                Redo
+              </button>
+            </div>
+            {!discardPanel.canEndTurn && discardPanel.endTurnReason ? (
+              <p className="hint-text">{discardPanel.endTurnReason}</p>
+            ) : null}
             {turnStatus.playerPoints.length > 0 ? (
               <div className="scoreboard-list">
                 {turnStatus.playerPoints.map((entry) => (
@@ -510,53 +546,13 @@ function App() {
 
         <div className="actions-log-grid">
           <section className="app-panel">
-            <h2>Actions</h2>
-            <div className="actions">
-              <button
-                type="button"
-                onClick={() => dispatch(startGame({ players: DEFAULT_PLAYERS }))}
-              >
-                {turnStatus.isGameActive ? 'Restart Game' : 'Start Game'}
-              </button>
-              <button
-                type="button"
-                onClick={() => dispatch(endTurn())}
-                disabled={!discardPanel.canEndTurn}
-              >
-                End Turn
-              </button>
-              {!discardPanel.canEndTurn && discardPanel.endTurnReason ? (
-                <p className="hint-text">{discardPanel.endTurnReason}</p>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => dispatch(undo())}
-                disabled={!canUndo}
-              >
-                Undo
-              </button>
-              <button
-                type="button"
-                onClick={() => dispatch(redo())}
-                disabled={!canRedo}
-              >
-                Redo
-              </button>
-            </div>
-          </section>
-
-          <section className="app-panel">
             <h2>Action Log</h2>
-            <ul className="log-list">
-              <li>Current phase: {turnStatus.phase ?? 'none'}</li>
-              <li>
-                Active player: {turnStatus.activePlayerName ?? 'no active game'}
-              </li>
-              <li>
-                Undo available: {canUndo ? 'yes' : 'no'} | Redo available:{' '}
-                {canRedo ? 'yes' : 'no'}
-              </li>
-            </ul>
+            <textarea
+              className="log-textbox"
+              readOnly
+              value={actionLog.join('\n')}
+              aria-label="Action log history"
+            />
           </section>
         </div>
 

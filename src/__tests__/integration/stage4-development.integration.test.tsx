@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+﻿import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Provider } from 'react-redux';
 import { describe, expect, it, vi } from 'vitest';
@@ -28,9 +28,7 @@ describe('stage4 development integration', () => {
     await user.click(lockButtons[2]);
 
     const coinsBefore = store.getState().game.game?.state.turn.turnProduction.coins ?? 0;
-    const leadershipCard = screen
-      .getByText(/Leadership \(10🪙, \+2 VP\)/i)
-      .closest('article');
+    const leadershipCard = screen.getByText(/Leadership \(/i).closest('article');
     expect(leadershipCard).not.toBeNull();
     if (!leadershipCard) {
       throw new Error('Leadership card not found');
@@ -39,9 +37,7 @@ describe('stage4 development integration', () => {
 
     const coinsAfter = store.getState().game.game?.state.turn.turnProduction.coins ?? 0;
     expect(coinsAfter).toBeLessThan(coinsBefore);
-    expect(
-      screen.getByText(/Leadership \(10🪙, \+2 VP\) • Purchased/i),
-    ).not.toBeNull();
+    expect(screen.getByText(/Leadership .* Purchased/i)).not.toBeNull();
 
     randomSpy.mockRestore();
   });

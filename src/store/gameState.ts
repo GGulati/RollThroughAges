@@ -32,6 +32,7 @@ export type GameActionErrorCode =
 export interface GameSliceState {
   game: GameState | null;
   lastError: GameActionError | null;
+  actionLog: string[];
 }
 
 export interface StartGamePayload {
