@@ -1,12 +1,18 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { enableMapSet } from 'immer';
 import { ConstructionProgress } from '@/game/construction';
-import { PlayerConfig } from '@/game/game';
+import { GamePhase, PlayerConfig } from '@/game/game';
 import {
+  allocateSingleGood,
+  areAllDiceLocked,
+  countPendingChoices,
   createGame,
   endTurn as endTurnEngine,
+  keepDie as keepDieEngine,
   performRoll,
   redo as redoEngine,
+  resolveProduction as resolveProductionEngine,
+  selectProduction as selectProductionEngine,
   undo as undoEngine,
 } from '@/game/engine';
 import { GameState, GameStateSnapshot } from '@/game';
@@ -132,6 +138,272 @@ const gameSlice = createSlice({
       state.game = applyMutationWithHistory(state.game, endTurnEngine);
       state.lastError = null;
     },
+    keepDie: (state, action: PayloadAction<{ dieIndex: number }>) => {
+      if (!state.game) {
+        setError(state, 'NO_GAME', 'Start a game before keeping dice.');
+        return;
+      }
+
+      if (state.game.state.phase !== GamePhase.RollDice) {
+        setError(
+          state,
+          'INVALID_PHASE',
+          'You can only keep dice during the roll phase.',
+        );
+        return;
+      }
+
+      const { dieIndex } = action.payload;
+      const die = state.game.state.turn.dice[dieIndex];
+      if (!die) {
+        setError(state, 'INVALID_DIE_INDEX', 'That die does not exist.');
+        return;
+      }
+      if (die.lockDecision === 'skull') {
+        setError(state, 'INVALID_DIE_INDEX', 'Skull dice are always locked.');
+        return;
+      }
+
+      const nextGame = applyMutationWithHistory(state.game, (game) => {
+        const nextDice = keepDieEngine(game.state.turn.dice, dieIndex);
+        const shouldAdvance = areAllDiceLocked(nextDice);
+
+        return {
+          ...game,
+          state: {
+            ...game.state,
+            phase: shouldAdvance ? GamePhase.DecideDice : game.state.phase,
+            turn: {
+              ...game.state.turn,
+              dice: nextDice,
+            },
+          },
+        };
+      });
+
+      if (!nextGame) {
+        setError(
+          state,
+          'INVALID_DIE_INDEX',
+          'Only non-skull dice can be toggled.',
+        );
+        return;
+      }
+
+      state.game = nextGame;
+      state.lastError = null;
+    },
+    selectProduction: (
+      state,
+      action: PayloadAction<{ dieIndex: number; productionIndex: number }>,
+    ) => {
+      if (!state.game) {
+        setError(state, 'NO_GAME', 'Start a game before choosing production.');
+        return;
+      }
+
+      if (
+        state.game.state.phase !== GamePhase.DecideDice &&
+        state.game.state.phase !== GamePhase.RollDice
+      ) {
+        setError(
+          state,
+          'INVALID_PHASE',
+          'Production choices are only available during dice decision.',
+        );
+        return;
+      }
+
+      const { dieIndex, productionIndex } = action.payload;
+      const die = state.game.state.turn.dice[dieIndex];
+      if (!die) {
+        setError(state, 'INVALID_DIE_INDEX', 'That die does not exist.');
+        return;
+      }
+
+      const dieFace = state.game.settings.diceFaces[die.diceFaceIndex];
+      if (
+        productionIndex < 0 ||
+        productionIndex >= dieFace.production.length
+      ) {
+        setError(
+          state,
+          'INVALID_PRODUCTION_CHOICE',
+          'That production choice is not valid for this die.',
+        );
+        return;
+      }
+
+      const nextGame = applyMutationWithHistory(state.game, (game) => {
+        const nextDice = selectProductionEngine(
+          game.state.turn.dice,
+          dieIndex,
+          productionIndex,
+          game.settings,
+        );
+        const pendingChoices = countPendingChoices(nextDice, game.settings);
+        const nextPhase =
+          pendingChoices === 0 && game.state.phase === GamePhase.DecideDice
+            ? GamePhase.ResolveProduction
+            : game.state.phase;
+
+        return {
+          ...game,
+          state: {
+            ...game.state,
+            phase: nextPhase,
+            turn: {
+              ...game.state.turn,
+              dice: nextDice,
+              pendingChoices,
+            },
+          },
+        };
+      });
+
+      if (!nextGame) {
+        setError(
+          state,
+          'INVALID_PRODUCTION_CHOICE',
+          'Unable to apply that production choice.',
+        );
+        return;
+      }
+
+      state.game = nextGame;
+      state.lastError = null;
+    },
+    resolveProduction: (state) => {
+      if (!state.game) {
+        setError(state, 'NO_GAME', 'Start a game before resolving production.');
+        return;
+      }
+
+      if (
+        state.game.state.phase !== GamePhase.DecideDice &&
+        state.game.state.phase !== GamePhase.ResolveProduction
+      ) {
+        setError(
+          state,
+          'INVALID_PHASE',
+          'Resolve production is only available after dice decisions.',
+        );
+        return;
+      }
+
+      const pendingChoices = countPendingChoices(
+        state.game.state.turn.dice,
+        state.game.settings,
+      );
+      if (pendingChoices > 0) {
+        setError(
+          state,
+          'PRODUCTION_NOT_READY',
+          'Choose all pending dice production options first.',
+        );
+        return;
+      }
+
+      const nextGame = applyMutationWithHistory(state.game, (game) => {
+        const resolved = resolveProductionEngine(
+          game.state,
+          game.state.players,
+          game.settings,
+        );
+
+        return {
+          ...game,
+          state: {
+            ...game.state,
+            players: resolved.players,
+            phase: GamePhase.Build,
+            turn: {
+              ...game.state.turn,
+              pendingChoices: 0,
+              turnProduction: resolved.turnProduction,
+            },
+          },
+        };
+      });
+
+      if (!nextGame) {
+        setError(
+          state,
+          'PRODUCTION_NOT_READY',
+          'Unable to resolve production at this time.',
+        );
+        return;
+      }
+
+      state.game = nextGame;
+      state.lastError = null;
+    },
+    allocateGood: (state, action: PayloadAction<{ goodsTypeName: string }>) => {
+      if (!state.game) {
+        setError(state, 'NO_GAME', 'Start a game before allocating goods.');
+        return;
+      }
+
+      if (state.game.state.phase !== GamePhase.Build) {
+        setError(
+          state,
+          'INVALID_PHASE',
+          'Goods can only be allocated during the build phase.',
+        );
+        return;
+      }
+
+      if (state.game.state.turn.turnProduction.goods <= 0) {
+        setError(state, 'NO_PENDING_GOODS', 'There are no goods left to allocate.');
+        return;
+      }
+
+      const goodsType = state.game.settings.goodsTypes.find(
+        (g) => g.name === action.payload.goodsTypeName,
+      );
+      if (!goodsType) {
+        setError(state, 'UNKNOWN_GOOD', 'Unknown goods type.');
+        return;
+      }
+
+      const nextGame = applyMutationWithHistory(state.game, (game) => {
+        const activeIndex = game.state.activePlayerIndex;
+        const activePlayer = game.state.players[activeIndex];
+        const { player, turn } = allocateSingleGood(
+          activePlayer,
+          game.state.turn,
+          action.payload.goodsTypeName,
+          game.settings,
+        );
+
+        if (
+          player === activePlayer &&
+          turn.turnProduction.goods === game.state.turn.turnProduction.goods
+        ) {
+          return game;
+        }
+
+        const players = [...game.state.players];
+        players[activeIndex] = player;
+
+        return {
+          ...game,
+          state: {
+            ...game.state,
+            players,
+            turn,
+          },
+        };
+      });
+
+      if (!nextGame) {
+        setError(state, 'NO_PENDING_GOODS', 'No goods could be allocated.');
+        return;
+      }
+
+      state.game = nextGame;
+      state.lastError = null;
+    },
     undo: (state) => {
       if (!state.game) {
         setError(state, 'NO_GAME', 'Start a game before undoing moves.');
@@ -165,5 +437,15 @@ const gameSlice = createSlice({
   },
 });
 
-export const { startGame, rollDice, endTurn, undo, redo } = gameSlice.actions;
+export const {
+  startGame,
+  rollDice,
+  endTurn,
+  keepDie,
+  selectProduction,
+  resolveProduction,
+  allocateGood,
+  undo,
+  redo,
+} = gameSlice.actions;
 export const gameReducer = gameSlice.reducer;

@@ -97,7 +97,8 @@ export function createInitialTurn(
   const diceCount = getDiceCount(player);
   return {
     activePlayerId: playerId,
-    rollsUsed: 0,
+    // First roll is automatic at turn start.
+    rollsUsed: 1,
     dice: createInitialDice(diceCount, settings),
     pendingChoices: 0,
     turnProduction: emptyProduction(),

@@ -76,7 +76,7 @@ describe('Game Flow Integration Tests', () => {
       game = advancePhase(game); // RollDice
 
       expect(game.state.phase).toBe(GamePhase.RollDice);
-      expect(game.state.turn.rollsUsed).toBe(0);
+      expect(game.state.turn.rollsUsed).toBe(1);
     });
   });
 
@@ -115,17 +115,17 @@ describe('Game Flow Integration Tests', () => {
       expect(game.state.round).toBe(2);
     });
 
-    it('starts each new turn with zero rolls used', () => {
+    it('starts each new turn with one automatic roll used', () => {
       let game = createGame([
         { id: 'p1', name: 'Player 1', controller: 'human' },
         { id: 'p2', name: 'Player 2', controller: 'human' },
       ]);
 
       game = performRoll(game);
-      expect(game.state.turn.rollsUsed).toBe(1);
+      expect(game.state.turn.rollsUsed).toBe(2);
 
       game = endTurn(game);
-      expect(game.state.turn.rollsUsed).toBe(0);
+      expect(game.state.turn.rollsUsed).toBe(1);
     });
   });
 
@@ -139,14 +139,14 @@ describe('Game Flow Integration Tests', () => {
         { id: 'p2', name: 'Player 2', controller: 'human' },
       ]);
 
-      // Phase 1: RollDice - dice created, no rolls used yet
+      // Phase 1: RollDice - first roll is automatic at turn start
       expect(game.state.phase).toBe(GamePhase.RollDice);
-      expect(game.state.turn.rollsUsed).toBe(0);
+      expect(game.state.turn.rollsUsed).toBe(1);
       expect(game.state.turn.dice.length).toBe(3); // 3 starting cities = 3 dice
 
-      // Perform initial roll
+      // Perform first reroll
       game = performRoll(game);
-      expect(game.state.turn.rollsUsed).toBe(1);
+      expect(game.state.turn.rollsUsed).toBe(2);
 
       // Keep all dice (lock them)
       game = updateTurn(game, (turn) => ({
@@ -191,9 +191,9 @@ describe('Game Flow Integration Tests', () => {
         { id: 'p2', name: 'Player 2', controller: 'human' },
       ]);
 
-      // Initial roll
+      // First reroll
       game = performRoll(game);
-      expect(game.state.turn.rollsUsed).toBe(1);
+      expect(game.state.turn.rollsUsed).toBe(2);
 
       // Lock first die
       game = updateTurn(game, (turn) => ({
@@ -203,9 +203,9 @@ describe('Game Flow Integration Tests', () => {
 
       expect(game.state.turn.dice[0].lockDecision).toBe('kept');
 
-      // Second roll
+      // Second reroll
       game = performRoll(game);
-      expect(game.state.turn.rollsUsed).toBe(2);
+      expect(game.state.turn.rollsUsed).toBe(3);
 
       // First die should still be locked
       expect(game.state.turn.dice[0].lockDecision).toBe('kept');

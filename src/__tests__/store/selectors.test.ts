@@ -38,7 +38,7 @@ describe('store selectors', () => {
       errorMessage: null,
     });
     expect(selectDicePanelModel(state)).toMatchObject({
-      isActionAllowed: false,
+      canRoll: false,
       reason: 'Start a game before rolling dice.',
       rollsUsed: 0,
       maxRollsAllowed: 0,
@@ -75,7 +75,7 @@ describe('store selectors', () => {
     expect(turnStatus.round).toBe(1);
     expect(turnStatus.activePlayerId).toBe('p1');
     expect(turnStatus.activePlayerName).toBe('Player 1');
-    expect(dicePanel.isActionAllowed).toBe(true);
+    expect(dicePanel.canRoll).toBe(true);
     expect(dicePanel.reason).toBeNull();
     expect(dicePanel.maxRollsAllowed).toBe(3);
     expect(selectCanUndo(state)).toBe(false);
@@ -112,7 +112,7 @@ describe('store selectors', () => {
     store.dispatch(rollDice());
 
     const dicePanel = selectDicePanelModel(store.getState());
-    expect(dicePanel.isActionAllowed).toBe(false);
+    expect(dicePanel.canRoll).toBe(false);
     expect(dicePanel.reason).toBe('No roll is available right now.');
 
     randomSpy.mockRestore();

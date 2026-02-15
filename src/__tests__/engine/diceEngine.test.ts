@@ -57,11 +57,18 @@ describe('diceEngine', () => {
       expect(dice).toHaveLength(5);
     });
 
-    it('all dice are unlocked initially', () => {
-      const dice = createInitialDice(3, settings);
-      dice.forEach((die) => {
-        expect(die.lockDecision).toBe('unlocked');
-      });
+    it('initial skull dice start locked', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.2); // TWO_GOODS_SKULL
+      const dice = createInitialDice(1, settings);
+      expect(dice[0].lockDecision).toBe('skull');
+      vi.restoreAllMocks();
+    });
+
+    it('initial non-skull dice start unlocked', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.0); // ONE_GOOD
+      const dice = createInitialDice(1, settings);
+      expect(dice[0].lockDecision).toBe('unlocked');
+      vi.restoreAllMocks();
     });
 
     it('all dice have valid face indices', () => {
@@ -139,13 +146,18 @@ describe('diceEngine', () => {
       expect(result[2].lockDecision).toBe('unlocked');
     });
 
-    it('does not change skull or kept dice', () => {
-      const dice = createTestDice([0, 1], ['skull', 'kept']);
-      const result1 = keepDie(dice, 0);
-      const result2 = keepDie(dice, 1);
+    it('unlocks a previously kept die', () => {
+      const dice = createTestDice([0], ['kept']);
+      const result = keepDie(dice, 0);
 
-      expect(result1[0].lockDecision).toBe('skull');
-      expect(result2[1].lockDecision).toBe('kept');
+      expect(result[0].lockDecision).toBe('unlocked');
+    });
+
+    it('does not change skull dice', () => {
+      const dice = createTestDice([0], ['skull']);
+      const result = keepDie(dice, 0);
+
+      expect(result[0].lockDecision).toBe('skull');
     });
   });
 

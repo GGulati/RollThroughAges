@@ -36,10 +36,11 @@ export function createInitialDice(count: number, settings: GameSettings): DieSta
   return Array.from({ length: count }, () => {
     const faceIndex = rollSingleDie(settings.diceFaces);
     const face = settings.diceFaces[faceIndex];
+    const hasSkull = face.production.some((production) => production.skulls > 0);
     return {
       diceFaceIndex: faceIndex,
       productionIndex: face.production.length > 1 ? -1 : 0,
-      lockDecision: 'unlocked' as DiceLockDecision,
+      lockDecision: hasSkull ? ('skull' as DiceLockDecision) : ('unlocked' as DiceLockDecision),
     };
   });
 }
@@ -81,10 +82,19 @@ export function areAllDiceLocked(dice: DieState[]): boolean {
  */
 export function keepDie(dice: DieState[], dieIndex: number): DieState[] {
   return dice.map((die, idx) => {
-    if (idx === dieIndex && die.lockDecision === 'unlocked') {
+    if (idx !== dieIndex) {
+      return die;
+    }
+
+    if (die.lockDecision === 'skull') {
+      return die;
+    }
+
+    if (die.lockDecision === 'unlocked') {
       return { ...die, lockDecision: 'kept' as DiceLockDecision };
     }
-    return die;
+
+    return { ...die, lockDecision: 'unlocked' as DiceLockDecision };
   });
 }
 

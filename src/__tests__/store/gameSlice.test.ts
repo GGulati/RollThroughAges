@@ -1,5 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
-import { gameReducer, startGame, rollDice, endTurn, undo, redo } from '@/store/gameSlice';
+import {
+  allocateGood,
+  endTurn,
+  gameReducer,
+  keepDie,
+  redo,
+  resolveProduction,
+  rollDice,
+  startGame,
+  undo,
+} from '@/store/gameSlice';
 import { GameSliceState } from '@/store/gameState';
 import { PlayerConfig } from '@/game';
 
@@ -98,5 +108,44 @@ describe('gameSlice', () => {
       code: 'UNDO_NOT_AVAILABLE',
       message: 'There are no moves to undo.',
     });
+  });
+
+  it('keeps dice, resolves production, and allocates goods in order', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.01);
+    let state = reduce(undefined, startGame({ players: PLAYERS }));
+
+    state = reduce(state, rollDice());
+    state = reduce(state, keepDie({ dieIndex: 0 }));
+    state = reduce(state, keepDie({ dieIndex: 1 }));
+    state = reduce(state, keepDie({ dieIndex: 2 }));
+
+    expect(state.game!.state.phase).toBe('decideDice');
+
+    state = reduce(state, resolveProduction());
+    expect(state.game!.state.phase).toBe('build');
+    expect(state.game!.state.turn.turnProduction.goods).toBeGreaterThan(0);
+
+    const goodsBefore = state.game!.state.turn.turnProduction.goods;
+    state = reduce(state, allocateGood({ goodsTypeName: 'Wood' }));
+
+    expect(state.game!.state.turn.turnProduction.goods).toBe(goodsBefore - 1);
+    randomSpy.mockRestore();
+  });
+
+  it('rejects production resolution when pending choices remain', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.34);
+    let state = reduce(undefined, startGame({ players: PLAYERS }));
+
+    state = reduce(state, rollDice());
+    state = reduce(state, keepDie({ dieIndex: 0 }));
+    state = reduce(state, keepDie({ dieIndex: 1 }));
+    state = reduce(state, keepDie({ dieIndex: 2 }));
+    state = reduce(state, resolveProduction());
+
+    expect(state.lastError).toEqual({
+      code: 'PRODUCTION_NOT_READY',
+      message: 'Choose all pending dice production options first.',
+    });
+    randomSpy.mockRestore();
   });
 });

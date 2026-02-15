@@ -70,6 +70,60 @@ body,
   cursor: pointer;
 }
 
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.dice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.die-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.6rem;
+  padding: 0.6rem;
+  background: #f9fafb;
+}
+
+.die-title {
+  font-weight: 700;
+  margin-bottom: 0.25rem !important;
+}
+
+.die-face {
+  color: #374151;
+  margin-bottom: 0.25rem !important;
+}
+
+.die-badge {
+  font-size: 0.9rem;
+  color: #1f2937;
+}
+
+.choice-block {
+  margin: 0.35rem 0 0.5rem;
+}
+
+.choice-label {
+  font-size: 0.85rem;
+  color: #4b5563;
+  margin-bottom: 0.25rem !important;
+}
+
+.die-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+
 .log-list {
   margin: 0;
   padding-left: 1rem;

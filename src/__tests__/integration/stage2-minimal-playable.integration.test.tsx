@@ -22,7 +22,7 @@ function rowText(label: RegExp): string {
 
 describe('stage2 minimal playable integration', () => {
   it('completes start -> roll -> end turn -> undo -> redo with real store', async () => {
-    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.25);
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.0);
     const user = userEvent.setup();
     const store = renderWithStore();
 

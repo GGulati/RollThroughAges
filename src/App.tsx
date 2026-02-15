@@ -1,5 +1,15 @@
 import './index.css';
-import { endTurn, redo, rollDice, startGame, undo } from '@/store/gameSlice';
+import {
+  allocateGood,
+  endTurn,
+  keepDie,
+  redo,
+  resolveProduction,
+  rollDice,
+  selectProduction,
+  startGame,
+  undo,
+} from '@/store/gameSlice';
 import {
   selectBuildPanelModel,
   selectCanRedo,
@@ -29,6 +39,15 @@ function App() {
   const endgameStatus = useAppSelector(selectEndgameStatus);
   const canUndo = useAppSelector(selectCanUndo);
   const canRedo = useAppSelector(selectCanRedo);
+  const getLockBadge = (lockDecision: string) => {
+    if (lockDecision === 'kept') {
+      return '🔒 Locked (Kept)';
+    }
+    if (lockDecision === 'skull') {
+      return '☠️ Locked (Skull)';
+    }
+    return '🔓 Unlocked';
+  };
 
   return (
     <main className="app-shell">
@@ -63,22 +82,81 @@ function App() {
           </section>
 
           <section className="app-panel">
-            <h2>Dice Panel</h2>
+            <h2>Dice Panel 🎲</h2>
             <p>
-              {dicePanel.isActionAllowed
-                ? 'Ready to roll.'
+              {dicePanel.canRoll
+                ? 'Reroll available.'
                 : dicePanel.reason ?? 'Roll unavailable.'}
             </p>
             <p>Dice count: {dicePanel.dice.length}</p>
+            <p>Rerolls available: {dicePanel.rerollsRemaining}</p>
+            <button
+              type="button"
+              onClick={() => dispatch(rollDice())}
+              disabled={!dicePanel.canRoll}
+            >
+              Reroll Dice
+            </button>
+            <div className="dice-grid">
+              {dicePanel.diceCards.map((die) => (
+                <article key={die.index} className="die-card">
+                  <p className="die-title">Die {die.index + 1}</p>
+                  <p className="die-face">{die.label}</p>
+                  {die.hasChoice ? (
+                    <div className="choice-block">
+                      <p className="choice-label">Production choice:</p>
+                      <div className="panel-actions">
+                        {Array.from({ length: die.optionCount }, (_, optionIndex) => (
+                          <button
+                            key={`${die.index}-${optionIndex}`}
+                            type="button"
+                            onClick={() =>
+                              dispatch(
+                                selectProduction({
+                                  dieIndex: die.index,
+                                  productionIndex: optionIndex,
+                                }),
+                              )
+                            }
+                            disabled={!die.canChooseOption}
+                          >
+                            {optionIndex === die.selectedOption ? '✅ ' : ''}
+                            {die.optionSummaries[optionIndex]}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  <p className="die-badge">{getLockBadge(die.lockDecision)}</p>
+                  <div className="panel-actions">
+                    <button
+                      type="button"
+                      onClick={() => dispatch(keepDie({ dieIndex: die.index }))}
+                      disabled={!die.canKeep}
+                    >
+                      {die.lockDecision === 'kept' ? 'Unlock 🔓' : 'Lock 🔒'}
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
           </section>
 
           <section className="app-panel">
             <h2>Production Panel</h2>
             <p>
-              {productionPanel.isActionAllowed
+              {productionPanel.canResolveProduction
                 ? 'Production flow ready.'
                 : productionPanel.reason}
             </p>
+            <p>Pending choices: {productionPanel.pendingProductionChoices}</p>
+            <button
+              type="button"
+              onClick={() => dispatch(resolveProduction())}
+              disabled={!productionPanel.canResolveProduction}
+            >
+              Resolve Production
+            </button>
           </section>
 
           <section className="app-panel">
@@ -86,6 +164,20 @@ function App() {
             <p>
               {buildPanel.isActionAllowed ? 'Build flow ready.' : buildPanel.reason}
             </p>
+            <p>Workers: {buildPanel.workersAvailable}</p>
+            <p>Goods to allocate: {buildPanel.goodsToAllocate}</p>
+            <div className="panel-actions">
+              {buildPanel.goodsTypes.map((goodsType) => (
+                <button
+                  key={goodsType}
+                  type="button"
+                  onClick={() => dispatch(allocateGood({ goodsTypeName: goodsType }))}
+                  disabled={!buildPanel.canAllocateGoods}
+                >
+                  +{goodsType}
+                </button>
+              ))}
+            </div>
           </section>
 
           <section className="app-panel">
@@ -120,7 +212,7 @@ function App() {
               <button
                 type="button"
                 onClick={() => dispatch(rollDice())}
-                disabled={!dicePanel.isActionAllowed}
+                disabled={!dicePanel.canRoll}
               >
                 Roll Dice
               </button>
@@ -166,7 +258,7 @@ function App() {
         {turnStatus.errorMessage ? (
           <p className="error-text">{turnStatus.errorMessage}</p>
         ) : null}
-        {!dicePanel.isActionAllowed && dicePanel.reason ? (
+        {!dicePanel.canRoll && dicePanel.reason ? (
           <p className="hint-text">{dicePanel.reason}</p>
         ) : null}
       </section>
