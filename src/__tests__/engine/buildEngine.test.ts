@@ -123,6 +123,20 @@ describe('buildEngine', () => {
       expect(workersUsed).toBe(0);
       expect(newPlayer).toEqual(player);
     });
+
+    it('does not allow allocating to a later city before the next city', () => {
+      const player = createTestPlayer('p1', settings);
+
+      const { player: newPlayer, workersUsed } = allocateWorkersToCity(
+        player,
+        4,
+        3,
+        settings
+      );
+
+      expect(workersUsed).toBe(0);
+      expect(newPlayer).toEqual(player);
+    });
   });
 
   describe('getAvailableMonuments', () => {
@@ -375,11 +389,17 @@ describe('buildEngine', () => {
       expect(options.monuments).toEqual([]);
     });
 
-    it('filters out options that exceed workers available', () => {
+    it('allows partial build options when workers are available', () => {
       const players = [createTestPlayer('p1', settings)];
       const options = getBuildOptions(players[0], players, 2, settings);
-      expect(options.cities).toEqual([]);
-      expect(options.monuments).toEqual([]);
+      expect(options.cities).toEqual([3]);
+      expect(options.monuments.length).toBeGreaterThan(0);
+    });
+
+    it('only offers the next city in sequence', () => {
+      const players = [createTestPlayer('p1', settings)];
+      const options = getBuildOptions(players[0], players, 10, settings);
+      expect(options.cities).toEqual([3]);
     });
   });
 

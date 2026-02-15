@@ -105,8 +105,11 @@ export function allocateSingleGood(
   const pendingGoods = turn.turnProduction.goods;
   if (pendingGoods <= 0) return { player, turn };
 
+  const goodsBonus = getGoodsTypeBonus(player, goodsTypeName, settings);
+  const totalToAllocate = 1 + goodsBonus;
+
   return {
-    player: allocateGoods(player, goodsType, 1),
+    player: allocateGoods(player, goodsType, totalToAllocate),
     turn: {
       ...turn,
       turnProduction: {
@@ -115,6 +118,29 @@ export function allocateSingleGood(
       },
     },
   };
+}
+
+function getGoodsTypeBonus(
+  player: PlayerState,
+  goodsTypeName: string,
+  settings: GameSettings
+): number {
+  let bonus = 0;
+
+  for (const dev of settings.developmentDefinitions) {
+    if (!player.developments.includes(dev.id)) {
+      continue;
+    }
+
+    if (
+      dev.specialEffect.type === 'goodsProductionBonus' &&
+      dev.specialEffect.goodsType.name === goodsTypeName
+    ) {
+      bonus += dev.specialEffect.bonus;
+    }
+  }
+
+  return bonus;
 }
 
 /**

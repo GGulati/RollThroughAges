@@ -131,10 +131,27 @@ export function countPendingChoices(dice: DieState[], settings: GameSettings): n
 /**
  * Check if the player can still roll dice.
  */
-export function canRoll(turn: TurnState, settings: GameSettings): boolean {
-  if (turn.rollsUsed >= settings.maxDiceRolls) return false;
+export function canRoll(
+  turn: TurnState,
+  settings: GameSettings,
+  player?: PlayerState
+): boolean {
+  if (turn.rollsUsed >= getMaxRollsAllowed(player, settings)) return false;
   if (areAllDiceLocked(turn.dice)) return false;
   return turn.dice.some((die) => die.lockDecision === 'unlocked');
+}
+
+/**
+ * Get max roll count for this turn, including Leadership bonus.
+ */
+export function getMaxRollsAllowed(
+  player: PlayerState | undefined,
+  settings: GameSettings
+): number {
+  if (player && hasLeadership(player)) {
+    return settings.maxDiceRolls + 1;
+  }
+  return settings.maxDiceRolls;
 }
 
 /**
@@ -181,7 +198,6 @@ export function calculateDiceProduction(
     total.coins += production.coins;
     total.skulls += production.skulls;
 
-    // TODO: goods production bonus special effect
   }
 
   return total;

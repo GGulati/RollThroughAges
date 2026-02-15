@@ -21,12 +21,47 @@ import {
   countPendingChoices,
   emptyProduction,
   areAllDiceLocked,
+  getMaxRollsAllowed,
 } from './diceEngine';
 import { hasGoodsOverflow, validateKeepGoods, applyKeepGoods, GoodsValidationResult } from './goodsEngine';
 import { GoodsTrack } from '../goods';
 import { updateAllScores } from './scoreEngine';
 import { getDevelopmentCount } from './developmentEngine';
 import { getCompletedMonumentCount } from './buildEngine';
+import { ConstructionProgress } from '../construction';
+
+function cloneSnapshot(snapshot: GameStateSnapshot): GameStateSnapshot {
+  return {
+    players: snapshot.players.map((player) => ({
+      ...player,
+      goods: new Map(player.goods),
+      cities: player.cities.map(
+        (city): ConstructionProgress => ({
+          workersCommitted: city.workersCommitted,
+          completed: city.completed,
+        })
+      ),
+      developments: [...player.developments],
+      monuments: Object.fromEntries(
+        Object.entries(player.monuments).map(([id, progress]) => [
+          id,
+          {
+            workersCommitted: progress.workersCommitted,
+            completed: progress.completed,
+          },
+        ])
+      ),
+    })),
+    activePlayerIndex: snapshot.activePlayerIndex,
+    round: snapshot.round,
+    phase: snapshot.phase,
+    turn: {
+      ...snapshot.turn,
+      dice: snapshot.turn.dice.map((die) => ({ ...die })),
+      turnProduction: { ...snapshot.turn.turnProduction },
+    },
+  };
+}
 
 /**
  * Create initial game state for a new game.
@@ -74,7 +109,7 @@ export function createInitialTurn(
  */
 export function saveToHistory(game: GameState): GameState {
   const historyEntry: HistoryEntry = {
-    snapshot: JSON.parse(JSON.stringify(game.state)) as GameStateSnapshot,
+    snapshot: cloneSnapshot(game.state),
   };
 
   return {
@@ -95,9 +130,9 @@ export function undo(game: GameState): GameState | null {
 
   return {
     ...game,
-    state: lastEntry.snapshot,
+    state: cloneSnapshot(lastEntry.snapshot),
     history: previousHistory,
-    future: [{ snapshot: game.state }, ...game.future],
+    future: [{ snapshot: cloneSnapshot(game.state) }, ...game.future],
   };
 }
 
@@ -111,8 +146,8 @@ export function redo(game: GameState): GameState | null {
 
   return {
     ...game,
-    state: nextEntry.snapshot,
-    history: [...game.history, { snapshot: game.state }],
+    state: cloneSnapshot(nextEntry.snapshot),
+    history: [...game.history, { snapshot: cloneSnapshot(game.state) }],
     future: remainingFuture,
   };
 }
@@ -307,8 +342,9 @@ export function updateTurn(
  */
 export function performRoll(game: GameState): GameState {
   const { state, settings } = game;
+  const activePlayer = state.players[state.activePlayerIndex];
 
-  if (!canRoll(state.turn, settings)) {
+  if (!canRoll(state.turn, settings, activePlayer)) {
     return game;
   }
 
@@ -319,7 +355,9 @@ export function performRoll(game: GameState): GameState {
     rollsUsed: state.turn.rollsUsed + 1,
   };
 
-  const shouldAutoAdvance = areAllDiceLocked(newDice) || newTurn.rollsUsed >= settings.maxDiceRolls;
+  const shouldAutoAdvance =
+    areAllDiceLocked(newDice) ||
+    newTurn.rollsUsed >= getMaxRollsAllowed(activePlayer, settings);
 
   let newPhase = state.phase;
   if (shouldAutoAdvance) {

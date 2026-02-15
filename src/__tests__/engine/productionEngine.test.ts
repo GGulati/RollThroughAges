@@ -163,6 +163,23 @@ describe('productionEngine', () => {
       const { turn: newTurn } = allocateSingleGood(player, turn, 'Unknown', settings);
       expect(newTurn.turnProduction.goods).toBe(5);
     });
+
+    it('applies Quarrying bonus when allocating Stone', () => {
+      const player = createTestPlayer('p1', settings, { developments: ['quarrying'] });
+      const turn = createTestTurn('p1', {
+        turnProduction: { goods: 1, food: 0, workers: 0, coins: 0, skulls: 0 },
+      });
+
+      const { player: newPlayer, turn: newTurn } = allocateSingleGood(
+        player,
+        turn,
+        'Stone',
+        settings
+      );
+
+      expect(getPlayerGoods(newPlayer, 'Stone', settings)).toBe(2);
+      expect(newTurn.turnProduction.goods).toBe(0);
+    });
   });
 
   describe('resolveProduction', () => {

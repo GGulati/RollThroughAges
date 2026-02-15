@@ -11,6 +11,7 @@ import {
   requiresChoice,
   countPendingChoices,
   canRoll,
+  getMaxRollsAllowed,
   calculateDiceProduction,
   emptyProduction,
 } from '../../game/engine/diceEngine';
@@ -231,6 +232,36 @@ describe('diceEngine', () => {
         dice: createTestDice([0, 1], ['kept', 'skull']),
       });
       expect(canRoll(turn, settings)).toBe(false);
+    });
+
+    it('allows one extra roll with Leadership', () => {
+      const player = createTestPlayer('p1', settings, { developments: ['leadership'] });
+      const turn = createTestTurn('p1', {
+        rollsUsed: settings.maxDiceRolls,
+        dice: createTestDice([0, 1, 2]),
+      });
+      expect(canRoll(turn, settings, player)).toBe(true);
+    });
+
+    it('stops rolling after Leadership bonus is used', () => {
+      const player = createTestPlayer('p1', settings, { developments: ['leadership'] });
+      const turn = createTestTurn('p1', {
+        rollsUsed: settings.maxDiceRolls + 1,
+        dice: createTestDice([0, 1, 2]),
+      });
+      expect(canRoll(turn, settings, player)).toBe(false);
+    });
+  });
+
+  describe('getMaxRollsAllowed', () => {
+    it('returns default max rolls without Leadership', () => {
+      const player = createTestPlayer('p1', settings);
+      expect(getMaxRollsAllowed(player, settings)).toBe(settings.maxDiceRolls);
+    });
+
+    it('returns max rolls + 1 with Leadership', () => {
+      const player = createTestPlayer('p1', settings, { developments: ['leadership'] });
+      expect(getMaxRollsAllowed(player, settings)).toBe(settings.maxDiceRolls + 1);
     });
   });
 

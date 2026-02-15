@@ -18,7 +18,8 @@ import { keepDie, selectProduction } from '../../game/engine/diceEngine';
 import { allocateWorkersToCity, allocateWorkersToMonument } from '../../game/engine/buildEngine';
 import { purchaseDevelopment } from '../../game/engine/developmentEngine';
 import { allocateSingleGood } from '../../game/engine/productionEngine';
-import { DICE_FACE } from '../testUtils';
+import { DICE_FACE, getPlayerGoods } from '../testUtils';
+import { setGoodsQuantity } from '../../game/engine/goodsEngine';
 
 describe('Game Flow Integration Tests', () => {
   describe('Phase Transitions', () => {
@@ -459,6 +460,32 @@ describe('Game Flow Integration Tests', () => {
 
       expect(redo(game)).toBeNull();
     });
+
+    it('preserves goods Map behavior through undo/redo', () => {
+      let game = createGame([
+        { id: 'p1', name: 'Player 1', controller: 'human' },
+        { id: 'p2', name: 'Player 2', controller: 'human' },
+      ]);
+
+      game = updateActivePlayer(game, (player) => ({
+        ...player,
+        goods: setGoodsQuantity(player.goods, 'Wood', 3),
+      }));
+
+      expect(getPlayerGoods(game.state.players[0], 'Wood', game.settings)).toBe(3);
+
+      game = saveToHistory(game);
+      game = updateActivePlayer(game, (player) => ({
+        ...player,
+        goods: setGoodsQuantity(player.goods, 'Wood', 5),
+      }));
+
+      const undone = undo(game)!;
+      expect(getPlayerGoods(undone.state.players[0], 'Wood', game.settings)).toBe(3);
+
+      const redone = redo(undone)!;
+      expect(getPlayerGoods(redone.state.players[0], 'Wood', game.settings)).toBe(5);
+    });
   });
 
   describe('Multi-Turn Game Flow', () => {
@@ -545,6 +572,30 @@ describe('Game Flow Integration Tests', () => {
       const woodType = game.settings.goodsTypes.find((g) => g.name === 'Wood')!;
       expect(player.goods.get(woodType)).toBe(1);
       expect(turn.turnProduction.goods).toBe(4);
+    });
+  });
+
+  describe('Leadership Roll Limit', () => {
+    it('allows a fourth roll for players with Leadership', () => {
+      let game = createGame([
+        { id: 'p1', name: 'Player 1', controller: 'human' },
+        { id: 'p2', name: 'Player 2', controller: 'human' },
+      ]);
+
+      game = updateActivePlayer(game, (player) => ({
+        ...player,
+        developments: [...player.developments, 'leadership'],
+      }));
+
+      for (let i = 0; i < 4; i++) {
+        game = updateTurn(game, (turn) => ({
+          ...turn,
+          dice: turn.dice.map((die) => ({ ...die, lockDecision: 'unlocked' })),
+        }));
+        game = performRoll(game);
+      }
+
+      expect(game.state.turn.rollsUsed).toBe(4);
     });
   });
 });

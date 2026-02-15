@@ -44,6 +44,11 @@ export function allocateWorkersToCity(
   workers: number,
   settings: GameSettings
 ): { player: PlayerState; workersUsed: number } {
+  const nextCityIndex = getNextCityToBuild(player);
+  if (nextCityIndex === null || cityIndex !== nextCityIndex) {
+    return { player, workersUsed: 0 };
+  }
+
   const city = player.cities[cityIndex];
   if (!city || city.completed) {
     return { player, workersUsed: 0 };
@@ -217,14 +222,12 @@ export function getBuildOptions(
     return { cities, monuments };
   }
 
-  // Check cities
-  for (let i = 0; i < player.cities.length; i++) {
-    const city = player.cities[i];
-    if (!city.completed) {
-      const remaining = getRemainingCityWorkers(player, i, settings);
-      if (remaining > 0 && remaining <= workersAvailable) {
-        cities.push(i);
-      }
+  // Check next city only (cities must be built in order).
+  const nextCityIndex = getNextCityToBuild(player);
+  if (nextCityIndex !== null) {
+    const remaining = getRemainingCityWorkers(player, nextCityIndex, settings);
+    if (remaining > 0) {
+      cities.push(nextCityIndex);
     }
   }
 
@@ -234,7 +237,7 @@ export function getBuildOptions(
   for (const monument of availableMonuments) {
     if (canBuildMonument(monument.id, player, allPlayers)) {
       const remaining = getRemainingMonumentWorkers(player, monument.id, settings);
-      if (remaining > 0 && remaining <= workersAvailable) {
+      if (remaining > 0) {
         monuments.push(monument.id);
       }
     }
