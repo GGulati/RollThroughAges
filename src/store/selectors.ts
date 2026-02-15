@@ -15,6 +15,8 @@ import {
   getCitiesToFeed,
   getDisasterPreview,
   getMaxRollsAllowed,
+  getRewrittenDisasterTargeting,
+  hasDisasterImmunity,
   getScoreBreakdown,
   isGameOver,
   resolveProduction,
@@ -555,20 +557,64 @@ export const selectDisasterPanelModel = createSelector(selectGame, (game) => {
         id: string;
         name: string;
         skulls: number;
-        effect: string;
-        affectedPlayers: string;
+        effectText: string;
+        targetsText: string;
       }>,
     };
   }
 
+  const activePlayer = game.state.players[game.state.activePlayerIndex];
+  const toTargetsText = (scope: 'self' | 'opponents' | 'all') => {
+    if (scope === 'self') return 'You';
+    if (scope === 'opponents') return 'Opponents';
+    return 'All players';
+  };
+
   return {
-    disasters: game.settings.disasterDefinitions.map((disaster) => ({
-      id: disaster.id,
-      name: disaster.name,
-      skulls: disaster.skulls,
-      effect: disaster.effect,
-      affectedPlayers: disaster.affectedPlayers,
-    })),
+    disasters: game.settings.disasterDefinitions.map((disaster) => {
+      const rewrittenScope = getRewrittenDisasterTargeting(
+        activePlayer,
+        disaster.id,
+        game.settings,
+      );
+      const effectiveScope = rewrittenScope ?? disaster.affectedPlayers;
+      const appliesToActivePlayer =
+        effectiveScope === 'self' || effectiveScope === 'all';
+      const immuneToDisaster = hasDisasterImmunity(
+        activePlayer,
+        disaster.id,
+        game.settings,
+      );
+      const immunityDevelopment = game.settings.developmentDefinitions.find(
+        (development) =>
+          activePlayer.developments.includes(development.id) &&
+          development.specialEffect.type === 'disasterImmunity' &&
+          development.specialEffect.disasterId === disaster.id,
+      );
+      const rewriteDevelopment = game.settings.developmentDefinitions.find(
+        (development) =>
+          activePlayer.developments.includes(development.id) &&
+          development.specialEffect.type === 'rewriteDisasterTargeting' &&
+          development.specialEffect.disasterId === disaster.id,
+      );
+      const effectText =
+        appliesToActivePlayer && immuneToDisaster
+          ? `No effect on you (immune via ${
+              immunityDevelopment?.name ?? 'development'
+            }). Base effect: ${disaster.effect}`
+          : disaster.effect;
+      const targetsText = rewriteDevelopment
+        ? `${toTargetsText(effectiveScope)} (via ${rewriteDevelopment.name})`
+        : toTargetsText(effectiveScope);
+
+      return {
+        id: disaster.id,
+        name: disaster.name,
+        skulls: disaster.skulls,
+        effectText,
+        targetsText,
+      };
+    }),
   };
 });
 

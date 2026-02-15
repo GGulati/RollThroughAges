@@ -263,8 +263,8 @@ function App() {
                   <p className="development-title">
                     {getSkullDenotation(disaster.skulls)} {disaster.name}
                   </p>
-                  <p className="development-effect">{disaster.effect}</p>
-                  <p className="inline-note">Targets: {disaster.affectedPlayers}</p>
+                  <p className="development-effect">{disaster.effectText}</p>
+                  <p className="inline-note">Targets: {disaster.targetsText}</p>
                 </article>
               ))}
             </div>

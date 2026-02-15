@@ -280,8 +280,28 @@ describe('store selectors', () => {
       id: 'drought',
       name: 'Drought',
       skulls: 2,
-      effect: 'Lose 2 points',
-      affectedPlayers: 'self',
+      effectText: 'Lose 2 points',
+      targetsText: 'You',
     });
   });
+
+  it('updates disaster wording when immunity development is purchased', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.67); // 7 coins
+    const store = createTestStore();
+    store.dispatch(startGame({ players: PLAYERS }));
+    store.dispatch(keepDie({ dieIndex: 0 }));
+    store.dispatch(keepDie({ dieIndex: 1 }));
+    store.dispatch(keepDie({ dieIndex: 2 }));
+    store.dispatch(
+      buyDevelopment({ developmentId: 'irrigation', goodsTypeNames: [] }),
+    );
+
+    const disasterPanel = selectDisasterPanelModel(store.getState());
+    const drought = disasterPanel.disasters.find((entry) => entry.id === 'drought');
+    expect(drought).toBeDefined();
+    expect(drought?.effectText).toContain('immune via Irrigation');
+
+    randomSpy.mockRestore();
+  });
+
 });
