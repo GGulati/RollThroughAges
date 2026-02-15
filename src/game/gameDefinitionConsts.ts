@@ -272,6 +272,7 @@ export const DEVELOPMENTS: DevelopmentDefinition[] = [
 export const DISASTERS: DisasterDefinition[] = [
   {
     id: 'drought',
+    name: 'Drought',
     skulls: 2,
     effect: 'Lose 2 points',
     pointsDelta: -2,
@@ -280,6 +281,7 @@ export const DISASTERS: DisasterDefinition[] = [
   },
   {
     id: 'pestilence',
+    name: 'Pestilence',
     skulls: 3,
     effect: 'Opponents lose 3 points',
     pointsDelta: -3,
@@ -288,6 +290,7 @@ export const DISASTERS: DisasterDefinition[] = [
   },
   {
     id: 'invasion',
+    name: 'Invasion',
     skulls: 4,
     effect: 'Lose 4 points',
     pointsDelta: -4,
@@ -296,6 +299,7 @@ export const DISASTERS: DisasterDefinition[] = [
   },
   {
     id: 'revolt',
+    name: 'Revolt',
     skulls: 5,
     effect: 'Lose all goods',
     pointsDelta: 0,

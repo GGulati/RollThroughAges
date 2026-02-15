@@ -21,6 +21,7 @@ import {
   selectDisasterPanelModel,
   selectDiscardPanelModel,
   selectDicePanelModel,
+  selectDiceOutcomeModel,
   selectEndgameStatus,
   selectProductionPanelModel,
   selectTurnStatus,
@@ -46,6 +47,7 @@ function App() {
   const dispatch = useAppDispatch();
   const turnStatus = useAppSelector(selectTurnStatus);
   const dicePanel = useAppSelector(selectDicePanelModel);
+  const diceOutcome = useAppSelector(selectDiceOutcomeModel);
   const productionPanel = useAppSelector(selectProductionPanelModel);
   const buildPanel = useAppSelector(selectBuildPanelModel);
   const developmentPanel = useAppSelector(selectDevelopmentPanelModel);
@@ -175,6 +177,28 @@ function App() {
             <h2>Dice Panel 🎲</h2>
             <p>Rerolls available: {rerollEmoji}</p>
             <p>Pending choices: {productionPanel.pendingProductionChoices}</p>
+            <article className="outcome-card">
+              <p className="development-title">Turn Outcome ({diceOutcome.summary ?? 'Projected'})</p>
+              <p className="scoreboard-row">🪙 Coins: +{diceOutcome.coinsProduced}</p>
+              <p className="scoreboard-row">👷 Workers: +{diceOutcome.workersProduced}</p>
+              <p className="scoreboard-row">📦 Goods: +{diceOutcome.goodsProduced}</p>
+              <p className="scoreboard-row">
+                ☠️ Skulls: {diceOutcome.skulls}
+                {diceOutcome.disaster ? ` -> ${diceOutcome.disaster}` : ''}
+              </p>
+              {diceOutcome.penalties.foodPenalty > 0 ? (
+                <p className="outcome-penalty">
+                  ⚠️ Food shortage: -{diceOutcome.penalties.foodPenalty} VP (
+                  {diceOutcome.food.shortage} unfed
+                  {diceOutcome.food.shortage === 1 ? ' city' : ' cities'})
+                </p>
+              ) : null}
+              {diceOutcome.penalties.disasterPenalty > 0 ? (
+                <p className="outcome-penalty">
+                  ⚠️ Disaster penalty: -{diceOutcome.penalties.disasterPenalty} VP
+                </p>
+              ) : null}
+            </article>
             <button
               type="button"
               onClick={() => dispatch(rollDice())}
@@ -237,7 +261,7 @@ function App() {
               {disasterPanel.disasters.map((disaster) => (
                 <article key={disaster.id} className="disaster-card">
                   <p className="development-title">
-                    {getSkullDenotation(disaster.skulls)} {disaster.id}
+                    {getSkullDenotation(disaster.skulls)} {disaster.name}
                   </p>
                   <p className="development-effect">{disaster.effect}</p>
                   <p className="inline-note">Targets: {disaster.affectedPlayers}</p>
@@ -255,6 +279,7 @@ function App() {
                   : buildPanel.reason ?? 'Build flow ready.'}
               </p>
               <p>Workers: {buildPanel.workersAvailable}</p>
+              <p>Stored food: {buildPanel.storedFood}</p>
               <p>Stored goods:</p>
               <div className="goods-list">
                 {buildPanel.goodsStoredSummary.map((entry) => (

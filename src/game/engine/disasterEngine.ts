@@ -177,5 +177,5 @@ export function applyDisasters(
 export function getDisasterPreview(skullCount: number, settings: GameSettings): string | null {
   const disaster = getTriggeredDisaster(skullCount, settings);
   if (!disaster) return null;
-  return `${disaster.id}: ${disaster.effect}`;
+  return `${disaster.name}: ${disaster.effect}`;
 }

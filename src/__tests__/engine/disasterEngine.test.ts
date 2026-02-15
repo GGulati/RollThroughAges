@@ -206,7 +206,7 @@ describe('disasterEngine', () => {
   describe('getDisasterPreview', () => {
     it('returns description for triggered disaster', () => {
       const preview = getDisasterPreview(2, settings);
-      expect(preview).toContain('drought');
+      expect(preview).toContain('Drought');
     });
 
     it('returns null for no disaster', () => {

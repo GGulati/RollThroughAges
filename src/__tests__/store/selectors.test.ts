@@ -18,6 +18,7 @@ import {
   selectDevelopmentPanelModel,
   selectDisasterPanelModel,
   selectDicePanelModel,
+  selectDiceOutcomeModel,
   selectDiscardPanelModel,
   selectEndgameStatus,
   selectProductionPanelModel,
@@ -55,6 +56,13 @@ describe('store selectors', () => {
       rollsUsed: 0,
       maxRollsAllowed: 0,
     });
+    expect(selectDiceOutcomeModel(state)).toMatchObject({
+      status: 'projected',
+      skulls: 0,
+      workersProduced: 0,
+      coinsProduced: 0,
+      goodsProduced: 0,
+    });
     expect(selectProductionPanelModel(state).reason).toBe(
       'Start a game to resolve production.',
     );
@@ -83,6 +91,7 @@ describe('store selectors', () => {
     const state = store.getState();
     const turnStatus = selectTurnStatus(state);
     const dicePanel = selectDicePanelModel(state);
+    const diceOutcome = selectDiceOutcomeModel(state);
 
     expect(turnStatus.isGameActive).toBe(true);
     expect(turnStatus.round).toBe(1);
@@ -101,6 +110,10 @@ describe('store selectors', () => {
     expect(dicePanel.canRoll).toBe(true);
     expect(dicePanel.reason).toBeNull();
     expect(dicePanel.maxRollsAllowed).toBe(3);
+    expect(diceOutcome.status).toBe('projected');
+    expect(typeof diceOutcome.food.need).toBe('number');
+    expect(typeof diceOutcome.points.before).toBe('number');
+    expect(typeof diceOutcome.points.after).toBe('number');
     expect(selectCanUndo(state)).toBe(false);
     expect(selectCanRedo(state)).toBe(false);
   });
@@ -265,6 +278,7 @@ describe('store selectors', () => {
     expect(disasterPanel.disasters.length).toBeGreaterThan(0);
     expect(disasterPanel.disasters[0]).toMatchObject({
       id: 'drought',
+      name: 'Drought',
       skulls: 2,
       effect: 'Lose 2 points',
       affectedPlayers: 'self',

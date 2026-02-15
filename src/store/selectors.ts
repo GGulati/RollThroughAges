@@ -7,12 +7,17 @@ import {
   getCityWorkerCost,
   getRemainingCityWorkers,
   getRemainingMonumentWorkers,
+  calculateDiceProduction,
   canRoll,
   countPendingChoices,
+  countSkulls,
   findGoodsTypeByName,
+  getCitiesToFeed,
+  getDisasterPreview,
   getMaxRollsAllowed,
   getScoreBreakdown,
   isGameOver,
+  resolveProduction,
 } from '@/game/engine';
 import { RootState } from './store';
 
@@ -176,6 +181,104 @@ export const selectDicePanelModel = createSelector(selectGame, (game) => {
   };
 });
 
+export const selectDiceOutcomeModel = createSelector(selectGame, (game) => {
+  if (!game) {
+    return {
+      status: 'projected' as const,
+      summary: null as string | null,
+      food: { produced: 0, need: 0, shortage: 0, before: 0, after: 0 },
+      workersProduced: 0,
+      coinsProduced: 0,
+      goodsProduced: 0,
+      skulls: 0,
+      disaster: null as string | null,
+      penalties: { foodPenalty: 0, disasterPenalty: 0 },
+      points: { before: 0, after: 0 },
+    };
+  }
+
+  const phase = game.state.phase;
+  const isProjectedPhase =
+    phase === GamePhase.RollDice ||
+    phase === GamePhase.DecideDice ||
+    phase === GamePhase.ResolveProduction;
+  const activeIndex = game.state.activePlayerIndex;
+  const activePlayer = game.state.players[activeIndex];
+  const produced = calculateDiceProduction(
+    game.state.turn.dice,
+    activePlayer,
+    game.settings,
+  );
+  const foodNeed = getCitiesToFeed(activePlayer);
+  const foodBefore = activePlayer.food;
+  const foodAfterFeeding = foodBefore + produced.food - foodNeed;
+  const foodShortage = Math.max(0, -foodAfterFeeding);
+  const foodAfter = Math.max(0, Math.min(game.settings.maxFood, foodAfterFeeding));
+  const skulls = countSkulls(game.state.turn.dice, game.settings);
+  const disaster = getDisasterPreview(skulls, game.settings);
+  const pointsBefore = getScoreBreakdown(
+    activePlayer,
+    game.state.players,
+    game.settings,
+  ).total;
+
+  if (isProjectedPhase) {
+    const projectedResult = resolveProduction(
+      game.state,
+      game.state.players,
+      game.settings,
+    );
+    const projectedActive = projectedResult.players[activeIndex];
+    const pointsAfter = getScoreBreakdown(
+      projectedActive,
+      projectedResult.players,
+      game.settings,
+    ).total;
+    const penaltyDelta = Math.max(0, pointsBefore - pointsAfter);
+
+    return {
+      status: 'projected' as const,
+      summary: 'Projected',
+      food: {
+        produced: produced.food,
+        need: foodNeed,
+        shortage: foodShortage,
+        before: foodBefore,
+        after: foodAfter,
+      },
+      workersProduced: produced.workers,
+      coinsProduced: produced.coins,
+      goodsProduced: produced.goods,
+      skulls,
+      disaster,
+      penalties: {
+        foodPenalty: foodShortage,
+        disasterPenalty: Math.max(0, penaltyDelta - foodShortage),
+      },
+      points: { before: pointsBefore, after: pointsAfter },
+    };
+  }
+
+  return {
+    status: 'applied' as const,
+    summary: 'Applied',
+    food: {
+      produced: game.state.turn.turnProduction.food,
+      need: foodNeed,
+      shortage: 0,
+      before: activePlayer.food,
+      after: activePlayer.food,
+    },
+    workersProduced: game.state.turn.turnProduction.workers,
+    coinsProduced: game.state.turn.turnProduction.coins,
+    goodsProduced: 0,
+    skulls: game.state.turn.turnProduction.skulls,
+    disaster,
+    penalties: { foodPenalty: 0, disasterPenalty: 0 },
+    points: { before: pointsBefore, after: pointsBefore },
+  };
+});
+
 export const selectProductionPanelModel = createSelector(selectGame, (game) => {
   if (!game) {
     return {
@@ -215,6 +318,7 @@ export const selectBuildPanelModel = createSelector(selectGame, (game) => {
       isActionAllowed: false,
       reason: 'Start a game to build cities or monuments.',
       workersAvailable: 0,
+      storedFood: 0,
       goodsStoredSummary: [] as Array<{ goodsType: string; quantity: number }>,
       canBuild: false,
       cityTargets: [] as Array<{
@@ -251,6 +355,7 @@ export const selectBuildPanelModel = createSelector(selectGame, (game) => {
 
   const workersAvailable = game.state.turn.turnProduction.workers;
   const activePlayer = game.state.players[game.state.activePlayerIndex];
+  const storedFood = activePlayer.food;
   const goodsStoredSummary = game.settings.goodsTypes.map((goodsType) => ({
     goodsType: goodsType.name,
     quantity: activePlayer.goods.get(goodsType) ?? 0,
@@ -336,6 +441,7 @@ export const selectBuildPanelModel = createSelector(selectGame, (game) => {
     isActionAllowed: Boolean(game),
     reason,
     workersAvailable,
+    storedFood,
     goodsStoredSummary,
     canBuild,
     cityTargets,
@@ -447,6 +553,7 @@ export const selectDisasterPanelModel = createSelector(selectGame, (game) => {
     return {
       disasters: [] as Array<{
         id: string;
+        name: string;
         skulls: number;
         effect: string;
         affectedPlayers: string;
@@ -457,6 +564,7 @@ export const selectDisasterPanelModel = createSelector(selectGame, (game) => {
   return {
     disasters: game.settings.disasterDefinitions.map((disaster) => ({
       id: disaster.id,
+      name: disaster.name,
       skulls: disaster.skulls,
       effect: disaster.effect,
       affectedPlayers: disaster.affectedPlayers,
