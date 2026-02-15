@@ -202,7 +202,11 @@ describe('productionEngine', () => {
       const result = resolveProduction(game.state, game.state.players, settings);
 
       expect(result.skullsRolled).toBe(2);
-      expect(result.turnProduction.goods).toBe(4); // 2 goods per skull die
+      expect(result.turnProduction.goods).toBe(0);
+      expect(getPlayerGoods(result.activePlayer, 'Wood', settings)).toBe(1);
+      expect(getPlayerGoods(result.activePlayer, 'Stone', settings)).toBe(1);
+      expect(getPlayerGoods(result.activePlayer, 'Ceramic', settings)).toBe(1);
+      expect(getPlayerGoods(result.activePlayer, 'Fabric', settings)).toBe(1);
     });
 
     it('applies disasters based on skulls', () => {

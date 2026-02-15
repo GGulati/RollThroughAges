@@ -3,7 +3,9 @@ import { enableMapSet } from 'immer';
 import { ConstructionProgress } from '@/game/construction';
 import { GamePhase, PlayerConfig } from '@/game/game';
 import {
-  allocateSingleGood,
+  allocateWorkersToCity,
+  allocateWorkersToMonument,
+  getBuildOptions,
   areAllDiceLocked,
   countPendingChoices,
   createGame,
@@ -12,6 +14,7 @@ import {
   performRoll,
   redo as redoEngine,
   resolveProduction as resolveProductionEngine,
+  spendWorkers,
   selectProduction as selectProductionEngine,
   undo as undoEngine,
 } from '@/game/engine';
@@ -105,6 +108,56 @@ function applyMutationWithoutHistory(
   };
 }
 
+function resolveProductionMutation(game: GameState): GameState {
+  const resolved = resolveProductionEngine(
+    game.state,
+    game.state.players,
+    game.settings,
+  );
+
+  return {
+    ...game,
+    state: {
+      ...game.state,
+      players: resolved.players,
+      phase: GamePhase.Build,
+      turn: {
+        ...game.state.turn,
+        pendingChoices: 0,
+        turnProduction: resolved.turnProduction,
+      },
+    },
+  };
+}
+
+function autoResolveProductionIfReady(game: GameState): GameState {
+  if (
+    game.state.phase !== GamePhase.DecideDice &&
+    game.state.phase !== GamePhase.ResolveProduction
+  ) {
+    return game;
+  }
+
+  const pendingChoices = countPendingChoices(
+    game.state.turn.dice,
+    game.settings,
+  );
+  if (pendingChoices > 0) {
+    return {
+      ...game,
+      state: {
+        ...game.state,
+        turn: {
+          ...game.state.turn,
+          pendingChoices,
+        },
+      },
+    };
+  }
+
+  return resolveProductionMutation(game);
+}
+
 const gameSlice = createSlice({
   name: 'game',
   initialState,
@@ -126,7 +179,7 @@ const gameSlice = createSlice({
         return;
       }
 
-      state.game = nextGame;
+      state.game = autoResolveProductionIfReady(nextGame);
       state.lastError = null;
     },
     endTurn: (state) => {
@@ -168,7 +221,7 @@ const gameSlice = createSlice({
         const nextDice = keepDieEngine(game.state.turn.dice, dieIndex);
         const shouldAdvance = areAllDiceLocked(nextDice);
 
-        return {
+        const nextState = {
           ...game,
           state: {
             ...game.state,
@@ -179,6 +232,8 @@ const gameSlice = createSlice({
             },
           },
         };
+
+        return autoResolveProductionIfReady(nextState);
       });
 
       if (!nextGame) {
@@ -247,7 +302,7 @@ const gameSlice = createSlice({
             ? GamePhase.ResolveProduction
             : game.state.phase;
 
-        return {
+        const nextState = {
           ...game,
           state: {
             ...game.state,
@@ -259,6 +314,8 @@ const gameSlice = createSlice({
             },
           },
         };
+
+        return autoResolveProductionIfReady(nextState);
       });
 
       if (!nextGame) {
@@ -304,27 +361,10 @@ const gameSlice = createSlice({
         return;
       }
 
-      const nextGame = applyMutationWithHistory(state.game, (game) => {
-        const resolved = resolveProductionEngine(
-          game.state,
-          game.state.players,
-          game.settings,
-        );
-
-        return {
-          ...game,
-          state: {
-            ...game.state,
-            players: resolved.players,
-            phase: GamePhase.Build,
-            turn: {
-              ...game.state.turn,
-              pendingChoices: 0,
-              turnProduction: resolved.turnProduction,
-            },
-          },
-        };
-      });
+      const nextGame = applyMutationWithHistory(
+        state.game,
+        resolveProductionMutation,
+      );
 
       if (!nextGame) {
         setError(
@@ -338,53 +378,55 @@ const gameSlice = createSlice({
       state.game = nextGame;
       state.lastError = null;
     },
-    allocateGood: (state, action: PayloadAction<{ goodsTypeName: string }>) => {
+    buildCity: (state, action: PayloadAction<{ cityIndex: number }>) => {
       if (!state.game) {
-        setError(state, 'NO_GAME', 'Start a game before allocating goods.');
+        setError(state, 'NO_GAME', 'Start a game before building cities.');
         return;
       }
-
       if (state.game.state.phase !== GamePhase.Build) {
         setError(
           state,
           'INVALID_PHASE',
-          'Goods can only be allocated during the build phase.',
+          'Cities can only be built during the build phase.',
         );
         return;
       }
-
-      if (state.game.state.turn.turnProduction.goods <= 0) {
-        setError(state, 'NO_PENDING_GOODS', 'There are no goods left to allocate.');
-        return;
-      }
-
-      const goodsType = state.game.settings.goodsTypes.find(
-        (g) => g.name === action.payload.goodsTypeName,
-      );
-      if (!goodsType) {
-        setError(state, 'UNKNOWN_GOOD', 'Unknown goods type.');
+      if (state.game.state.turn.turnProduction.workers <= 0) {
+        setError(
+          state,
+          'NO_WORKERS_AVAILABLE',
+          'No workers are available for building.',
+        );
         return;
       }
 
       const nextGame = applyMutationWithHistory(state.game, (game) => {
         const activeIndex = game.state.activePlayerIndex;
         const activePlayer = game.state.players[activeIndex];
-        const { player, turn } = allocateSingleGood(
+        const options = getBuildOptions(
           activePlayer,
-          game.state.turn,
-          action.payload.goodsTypeName,
+          game.state.players,
+          game.state.turn.turnProduction.workers,
           game.settings,
         );
 
-        if (
-          player === activePlayer &&
-          turn.turnProduction.goods === game.state.turn.turnProduction.goods
-        ) {
+        if (!options.cities.includes(action.payload.cityIndex)) {
+          return game;
+        }
+
+        const { player, workersUsed } = allocateWorkersToCity(
+          activePlayer,
+          action.payload.cityIndex,
+          game.state.turn.turnProduction.workers,
+          game.settings,
+        );
+        if (workersUsed <= 0) {
           return game;
         }
 
         const players = [...game.state.players];
         players[activeIndex] = player;
+        const turn = spendWorkers(game.state.turn, workersUsed);
 
         return {
           ...game,
@@ -397,7 +439,84 @@ const gameSlice = createSlice({
       });
 
       if (!nextGame) {
-        setError(state, 'NO_PENDING_GOODS', 'No goods could be allocated.');
+        setError(
+          state,
+          'INVALID_BUILD_TARGET',
+          'That city is not currently buildable.',
+        );
+        return;
+      }
+
+      state.game = nextGame;
+      state.lastError = null;
+    },
+    buildMonument: (state, action: PayloadAction<{ monumentId: string }>) => {
+      if (!state.game) {
+        setError(state, 'NO_GAME', 'Start a game before building monuments.');
+        return;
+      }
+      if (state.game.state.phase !== GamePhase.Build) {
+        setError(
+          state,
+          'INVALID_PHASE',
+          'Monuments can only be built during the build phase.',
+        );
+        return;
+      }
+      if (state.game.state.turn.turnProduction.workers <= 0) {
+        setError(
+          state,
+          'NO_WORKERS_AVAILABLE',
+          'No workers are available for building.',
+        );
+        return;
+      }
+
+      const nextGame = applyMutationWithHistory(state.game, (game) => {
+        const activeIndex = game.state.activePlayerIndex;
+        const activePlayer = game.state.players[activeIndex];
+        const options = getBuildOptions(
+          activePlayer,
+          game.state.players,
+          game.state.turn.turnProduction.workers,
+          game.settings,
+        );
+
+        if (!options.monuments.includes(action.payload.monumentId)) {
+          return game;
+        }
+
+        const { player, workersUsed } = allocateWorkersToMonument(
+          activePlayer,
+          action.payload.monumentId,
+          game.state.turn.turnProduction.workers,
+          game.state.players,
+          game.settings,
+        );
+        if (workersUsed <= 0) {
+          return game;
+        }
+
+        const players = [...game.state.players];
+        players[activeIndex] = player;
+        const turn = spendWorkers(game.state.turn, workersUsed);
+
+        return {
+          ...game,
+          state: {
+            ...game.state,
+            players,
+            turn,
+          },
+        };
+      });
+
+      if (!nextGame) {
+        setError(
+          state,
+          'INVALID_BUILD_TARGET',
+          'That monument is not currently buildable.',
+        );
         return;
       }
 
@@ -444,7 +563,8 @@ export const {
   keepDie,
   selectProduction,
   resolveProduction,
-  allocateGood,
+  buildCity,
+  buildMonument,
   undo,
   redo,
 } = gameSlice.actions;

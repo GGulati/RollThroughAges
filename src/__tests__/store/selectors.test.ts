@@ -1,6 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PlayerConfig } from '@/game';
-import { endTurn, redo, rollDice, startGame, undo } from '@/store/gameSlice';
+import { calculateDiceProduction } from '@/game/engine';
+import {
+  endTurn,
+  keepDie,
+  redo,
+  rollDice,
+  startGame,
+  undo,
+} from '@/store/gameSlice';
 import { createAppStore } from '@/store/store';
 import {
   selectBuildPanelModel,
@@ -126,5 +134,65 @@ describe('store selectors', () => {
     expect(selectTurnStatus(store.getState()).errorMessage).toBe(
       'Start a game before undoing moves.',
     );
+  });
+
+  it('returns build targets when in build phase with workers', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.55);
+    const store = createTestStore();
+    store.dispatch(startGame({ players: PLAYERS }));
+    store.dispatch(rollDice());
+    store.dispatch(keepDie({ dieIndex: 0 }));
+    store.dispatch(keepDie({ dieIndex: 1 }));
+    store.dispatch(keepDie({ dieIndex: 2 }));
+
+    const buildPanel = selectBuildPanelModel(store.getState());
+    expect(buildPanel.canBuild).toBe(true);
+    expect(buildPanel.cityTargets.length).toBeGreaterThan(0);
+    expect(buildPanel.monumentTargets.length).toBeGreaterThan(0);
+
+    randomSpy.mockRestore();
+  });
+
+  it('updates stored goods summary after resolving goods production', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.01); // 1 Good
+    const store = createTestStore();
+    store.dispatch(startGame({ players: PLAYERS }));
+    store.dispatch(keepDie({ dieIndex: 0 }));
+    store.dispatch(keepDie({ dieIndex: 1 }));
+    store.dispatch(keepDie({ dieIndex: 2 }));
+    const beforeResolve = store.getState().game.game!;
+    expect(beforeResolve.state.phase).toBe('build');
+    expect(
+      calculateDiceProduction(
+        beforeResolve.state.turn.dice,
+        beforeResolve.state.players[beforeResolve.state.activePlayerIndex],
+        beforeResolve.settings,
+      ).goods,
+    ).toBeGreaterThan(0);
+    const buildPanel = selectBuildPanelModel(store.getState());
+    const totalGoods = buildPanel.goodsStoredSummary.reduce(
+      (sum, entry) => sum + entry.quantity,
+      0,
+    );
+    expect(totalGoods).toBeGreaterThan(0);
+
+    randomSpy.mockRestore();
+  });
+
+  it('shows resolved wording in build phase after production is done', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.55);
+    const store = createTestStore();
+    store.dispatch(startGame({ players: PLAYERS }));
+    store.dispatch(keepDie({ dieIndex: 0 }));
+    store.dispatch(keepDie({ dieIndex: 1 }));
+    store.dispatch(keepDie({ dieIndex: 2 }));
+
+    const productionPanel = selectProductionPanelModel(store.getState());
+    expect(productionPanel.canResolveProduction).toBe(false);
+    expect(productionPanel.reason).toBe(
+      'Production has already been resolved for this turn.',
+    );
+
+    randomSpy.mockRestore();
   });
 });

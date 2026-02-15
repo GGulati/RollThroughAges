@@ -23,7 +23,9 @@ export type GameActionErrorCode =
   | 'INVALID_PRODUCTION_CHOICE'
   | 'PRODUCTION_NOT_READY'
   | 'NO_PENDING_GOODS'
-  | 'UNKNOWN_GOOD';
+  | 'UNKNOWN_GOOD'
+  | 'NO_WORKERS_AVAILABLE'
+  | 'INVALID_BUILD_TARGET';
 
 export interface GameSliceState {
   game: GameState | null;

@@ -1,10 +1,10 @@
-import './index.css';
+﻿import './index.css';
 import {
-  allocateGood,
+  buildCity,
+  buildMonument,
   endTurn,
   keepDie,
   redo,
-  resolveProduction,
   rollDice,
   selectProduction,
   startGame,
@@ -39,6 +39,12 @@ function App() {
   const endgameStatus = useAppSelector(selectEndgameStatus);
   const canUndo = useAppSelector(selectCanUndo);
   const canRedo = useAppSelector(selectCanRedo);
+
+  const rerollEmoji =
+    dicePanel.rerollsRemaining > 0
+      ? Array.from({ length: dicePanel.rerollsRemaining }, () => '🎲').join(' ')
+      : 'None';
+
   const getLockBadge = (lockDecision: string) => {
     if (lockDecision === 'kept') {
       return '🔒 Locked (Kept)';
@@ -83,13 +89,8 @@ function App() {
 
           <section className="app-panel">
             <h2>Dice Panel 🎲</h2>
-            <p>
-              {dicePanel.canRoll
-                ? 'Reroll available.'
-                : dicePanel.reason ?? 'Roll unavailable.'}
-            </p>
-            <p>Dice count: {dicePanel.dice.length}</p>
-            <p>Rerolls available: {dicePanel.rerollsRemaining}</p>
+            <p>Rerolls available: {rerollEmoji}</p>
+            <p>Pending choices: {productionPanel.pendingProductionChoices}</p>
             <button
               type="button"
               onClick={() => dispatch(rollDice())}
@@ -97,6 +98,9 @@ function App() {
             >
               Reroll Dice
             </button>
+            {!productionPanel.canResolveProduction && productionPanel.reason ? (
+              <p className="hint-text">{productionPanel.reason}</p>
+            ) : null}
             <div className="dice-grid">
               {dicePanel.diceCards.map((die) => (
                 <article key={die.index} className="die-card">
@@ -143,40 +147,58 @@ function App() {
           </section>
 
           <section className="app-panel">
-            <h2>Production Panel</h2>
-            <p>
-              {productionPanel.canResolveProduction
-                ? 'Production flow ready.'
-                : productionPanel.reason}
-            </p>
-            <p>Pending choices: {productionPanel.pendingProductionChoices}</p>
-            <button
-              type="button"
-              onClick={() => dispatch(resolveProduction())}
-              disabled={!productionPanel.canResolveProduction}
-            >
-              Resolve Production
-            </button>
-          </section>
-
-          <section className="app-panel">
             <h2>Build Panel</h2>
             <p>
-              {buildPanel.isActionAllowed ? 'Build flow ready.' : buildPanel.reason}
+              {buildPanel.canBuild
+                ? 'Build targets available.'
+                : buildPanel.reason ?? 'Build flow ready.'}
             </p>
             <p>Workers: {buildPanel.workersAvailable}</p>
-            <p>Goods to allocate: {buildPanel.goodsToAllocate}</p>
-            <div className="panel-actions">
-              {buildPanel.goodsTypes.map((goodsType) => (
-                <button
-                  key={goodsType}
-                  type="button"
-                  onClick={() => dispatch(allocateGood({ goodsTypeName: goodsType }))}
-                  disabled={!buildPanel.canAllocateGoods}
-                >
-                  +{goodsType}
-                </button>
-              ))}
+            <p>
+              Stored goods:{' '}
+              {buildPanel.goodsStoredSummary
+                .map((entry) => `${entry.goodsType} ${entry.quantity}`)
+                .join(' | ')}
+            </p>
+            <div className="build-targets">
+              <p className="choice-label">City Targets:</p>
+              <div className="panel-actions">
+                {buildPanel.cityTargets.length === 0 ? (
+                  <span className="inline-note">No city targets</span>
+                ) : (
+                  buildPanel.cityTargets.map((target) => (
+                    <button
+                      key={`city-${target.cityIndex}`}
+                      type="button"
+                      onClick={() =>
+                        dispatch(buildCity({ cityIndex: target.cityIndex }))
+                      }
+                      disabled={!buildPanel.canBuild}
+                    >
+                      {target.label} ({target.workersCommitted}/{target.workerCost})
+                    </button>
+                  ))
+                )}
+              </div>
+              <p className="choice-label">Monument Targets:</p>
+              <div className="panel-actions">
+                {buildPanel.monumentTargets.length === 0 ? (
+                  <span className="inline-note">No monument targets</span>
+                ) : (
+                  buildPanel.monumentTargets.map((target) => (
+                    <button
+                      key={`monument-${target.monumentId}`}
+                      type="button"
+                      onClick={() =>
+                        dispatch(buildMonument({ monumentId: target.monumentId }))
+                      }
+                      disabled={!buildPanel.canBuild}
+                    >
+                      {target.label} ({target.workersCommitted}/{target.workerCost})
+                    </button>
+                  ))
+                )}
+              </div>
             </div>
           </section>
 
@@ -208,13 +230,6 @@ function App() {
                 onClick={() => dispatch(startGame({ players: DEFAULT_PLAYERS }))}
               >
                 {turnStatus.isGameActive ? 'Restart Game' : 'Start Game'}
-              </button>
-              <button
-                type="button"
-                onClick={() => dispatch(rollDice())}
-                disabled={!dicePanel.canRoll}
-              >
-                Roll Dice
               </button>
               <button
                 type="button"
@@ -258,13 +273,9 @@ function App() {
         {turnStatus.errorMessage ? (
           <p className="error-text">{turnStatus.errorMessage}</p>
         ) : null}
-        {!dicePanel.canRoll && dicePanel.reason ? (
-          <p className="hint-text">{dicePanel.reason}</p>
-        ) : null}
       </section>
     </main>
   );
 }
 
 export default App;
-

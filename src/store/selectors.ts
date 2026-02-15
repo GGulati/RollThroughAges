@@ -1,6 +1,10 @@
 import { createSelector } from '@reduxjs/toolkit';
 import { GamePhase } from '@/game';
 import {
+  getBuildOptions,
+  getCityWorkerCost,
+  getRemainingCityWorkers,
+  getRemainingMonumentWorkers,
   canRoll,
   countPendingChoices,
   getMaxRollsAllowed,
@@ -157,12 +161,16 @@ export const selectProductionPanelModel = createSelector(selectGame, (game) => {
     (game.state.phase === GamePhase.DecideDice ||
       game.state.phase === GamePhase.ResolveProduction) &&
     pendingProductionChoices === 0;
+  const reason =
+    game.state.phase === GamePhase.Build
+      ? 'Production has already been resolved for this turn.'
+      : canResolveProduction
+        ? null
+        : 'Choose all pending dice options before resolving production.';
 
   return {
     canResolveProduction,
-    reason: canResolveProduction
-      ? null
-      : 'Choose all pending dice options before resolving production.',
+    reason,
     pendingProductionChoices,
     pendingProduction: game.state.turn.turnProduction,
   };
@@ -174,23 +182,83 @@ export const selectBuildPanelModel = createSelector(selectGame, (game) => {
       isActionAllowed: false,
       reason: 'Start a game to build cities or monuments.',
       workersAvailable: 0,
-      goodsToAllocate: 0,
-      goodsTypes: [] as string[],
-      canAllocateGoods: false,
+      goodsStoredSummary: [] as Array<{ goodsType: string; quantity: number }>,
+      canBuild: false,
+      cityTargets: [] as Array<{
+        cityIndex: number;
+        label: string;
+        workerCost: number;
+        workersCommitted: number;
+      }>,
+      monumentTargets: [] as Array<{
+        monumentId: string;
+        label: string;
+        workerCost: number;
+        workersCommitted: number;
+      }>,
     };
   }
 
-  const goodsToAllocate = game.state.turn.turnProduction.goods;
-  const canAllocateGoods =
-    game.state.phase === GamePhase.Build && goodsToAllocate > 0;
+  const workersAvailable = game.state.turn.turnProduction.workers;
+  const activePlayer = game.state.players[game.state.activePlayerIndex];
+  const goodsStoredSummary = game.settings.goodsTypes.map((goodsType) => ({
+    goodsType: goodsType.name,
+    quantity: activePlayer.goods.get(goodsType) ?? 0,
+  }));
+  const buildOptions =
+    game.state.phase === GamePhase.Build
+      ? getBuildOptions(
+          activePlayer,
+          game.state.players,
+          workersAvailable,
+          game.settings,
+        )
+      : { cities: [], monuments: [] };
+
+  const cityTargets = buildOptions.cities.map((cityIndex) => ({
+    cityIndex,
+    label: `City ${cityIndex + 1}`,
+    workerCost: getCityWorkerCost(cityIndex, game.settings),
+    workersCommitted:
+      getCityWorkerCost(cityIndex, game.settings) -
+      getRemainingCityWorkers(activePlayer, cityIndex, game.settings),
+  }));
+  const monumentTargets = buildOptions.monuments.map((monumentId) => {
+    const monumentDefinition = game.settings.monumentDefinitions.find(
+      (m) => m.id === monumentId,
+    );
+    return {
+      monumentId,
+      label: monumentDefinition?.requirements.name ?? monumentId,
+      workerCost: monumentDefinition?.requirements.workerCost ?? 0,
+      workersCommitted:
+        (monumentDefinition?.requirements.workerCost ?? 0) -
+        getRemainingMonumentWorkers(
+        activePlayer,
+        monumentId,
+        game.settings,
+      ),
+    };
+  });
+  const canBuild =
+    game.state.phase === GamePhase.Build &&
+    workersAvailable > 0 &&
+    (cityTargets.length > 0 || monumentTargets.length > 0);
+  const reason =
+    game.state.phase !== GamePhase.Build
+      ? 'Build actions are only available during the build phase.'
+      : workersAvailable <= 0
+        ? 'No workers are available for building.'
+        : null;
 
   return {
-    isActionAllowed: true,
-    reason: null,
-    workersAvailable: game.state.turn.turnProduction.workers,
-    goodsToAllocate,
-    goodsTypes: game.settings.goodsTypes.map((goods) => goods.name),
-    canAllocateGoods,
+    isActionAllowed: Boolean(game),
+    reason,
+    workersAvailable,
+    goodsStoredSummary,
+    canBuild,
+    cityTargets,
+    monumentTargets,
   };
 });
 

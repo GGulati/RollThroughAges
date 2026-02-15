@@ -143,6 +143,44 @@ function getGoodsTypeBonus(
   return bonus;
 }
 
+function autoAllocateProducedGoods(
+  player: PlayerState,
+  goodsProduced: number,
+  settings: GameSettings
+): PlayerState {
+  if (goodsProduced <= 0 || settings.goodsTypes.length === 0) {
+    return player;
+  }
+
+  let nextPlayer = player;
+  for (let i = 0; i < goodsProduced; i += 1) {
+    // Yucata/base rules: each produced good is assigned automatically
+    // bottom-to-top (Wood, Stone, Ceramic, Fabric, Spearhead), then repeat.
+    const goodsTypeName = settings.goodsTypes[i % settings.goodsTypes.length].name;
+    const goodsType = Array.from(nextPlayer.goods.keys()).find(
+      (goods) => goods.name === goodsTypeName
+    );
+    if (!goodsType) {
+      continue;
+    }
+
+    const current = nextPlayer.goods.get(goodsType) ?? 0;
+    const maxForType = goodsType.values.length;
+    if (current >= maxForType) {
+      continue;
+    }
+
+    const bonus = getGoodsTypeBonus(nextPlayer, goodsTypeName, settings);
+    const amount = Math.min(1 + bonus, maxForType - current);
+    nextPlayer = {
+      ...nextPlayer,
+      goods: addGoods(nextPlayer.goods, goodsType, amount),
+    };
+  }
+
+  return nextPlayer;
+}
+
 /**
  * Resolve all production from dice.
  */
@@ -161,12 +199,17 @@ export function resolveProduction(
     production.food,
     settings
   );
+  const playerAfterGoods = autoAllocateProducedGoods(
+    playerAfterFood,
+    production.goods,
+    settings
+  );
 
   const skullCount = countSkulls(turn.dice, settings);
   const playersAfterDisasters = applyDisasters(
     [
       ...players.slice(0, snapshot.activePlayerIndex),
-      playerAfterFood,
+      playerAfterGoods,
       ...players.slice(snapshot.activePlayerIndex + 1),
     ],
     snapshot.activePlayerIndex,
@@ -181,7 +224,7 @@ export function resolveProduction(
     skullsRolled: skullCount,
     goodsToAllocate: production.goods,
     turnProduction: {
-      goods: production.goods,
+      goods: 0,
       food: production.food,
       workers: production.workers,
       coins: production.coins,

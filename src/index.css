@@ -110,10 +110,19 @@ body,
   margin: 0.35rem 0 0.5rem;
 }
 
+.build-targets {
+  margin-top: 0.5rem;
+}
+
 .choice-label {
   font-size: 0.85rem;
   color: #4b5563;
   margin-bottom: 0.25rem !important;
+}
+
+.inline-note {
+  color: #6b7280;
+  font-size: 0.9rem;
 }
 
 .die-row {

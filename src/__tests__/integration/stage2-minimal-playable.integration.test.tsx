@@ -27,7 +27,7 @@ describe('stage2 minimal playable integration', () => {
     const store = renderWithStore();
 
     const startButton = screen.getByRole('button', { name: 'Start Game' });
-    const rollButton = screen.getByRole('button', { name: 'Roll Dice' });
+    const rollButton = screen.getByRole('button', { name: 'Reroll Dice' });
     const endTurnButton = screen.getByRole('button', { name: 'End Turn' });
     const undoButton = screen.getByRole('button', { name: 'Undo' });
     const redoButton = screen.getByRole('button', { name: 'Redo' });

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  allocateGood,
+  buildCity,
+  buildMonument,
   endTurn,
   gameReducer,
   keepDie,
@@ -110,7 +111,7 @@ describe('gameSlice', () => {
     });
   });
 
-  it('keeps dice, resolves production, and allocates goods in order', () => {
+  it('keeps dice and auto-collects goods when production resolves', () => {
     const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.01);
     let state = reduce(undefined, startGame({ players: PLAYERS }));
 
@@ -119,16 +120,15 @@ describe('gameSlice', () => {
     state = reduce(state, keepDie({ dieIndex: 1 }));
     state = reduce(state, keepDie({ dieIndex: 2 }));
 
-    expect(state.game!.state.phase).toBe('decideDice');
-
-    state = reduce(state, resolveProduction());
     expect(state.game!.state.phase).toBe('build');
-    expect(state.game!.state.turn.turnProduction.goods).toBeGreaterThan(0);
+    expect(state.game!.state.turn.turnProduction.goods).toBe(0);
 
-    const goodsBefore = state.game!.state.turn.turnProduction.goods;
-    state = reduce(state, allocateGood({ goodsTypeName: 'Wood' }));
-
-    expect(state.game!.state.turn.turnProduction.goods).toBe(goodsBefore - 1);
+    const activePlayer = state.game!.state.players[0];
+    const totalGoods = Array.from(activePlayer.goods.values()).reduce(
+      (sum, quantity) => sum + quantity,
+      0,
+    );
+    expect(totalGoods).toBeGreaterThan(0);
     randomSpy.mockRestore();
   });
 
@@ -146,6 +146,66 @@ describe('gameSlice', () => {
       code: 'PRODUCTION_NOT_READY',
       message: 'Choose all pending dice production options first.',
     });
+    randomSpy.mockRestore();
+  });
+
+  it('builds a city when workers are available in build phase', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.55); // 3 workers face
+    let state = reduce(undefined, startGame({ players: PLAYERS }));
+
+    state = reduce(state, rollDice());
+    state = reduce(state, keepDie({ dieIndex: 0 }));
+    state = reduce(state, keepDie({ dieIndex: 1 }));
+    state = reduce(state, keepDie({ dieIndex: 2 }));
+
+    const cityBefore = state.game!.state.players[0].cities[3];
+    const workersBefore = state.game!.state.turn.turnProduction.workers;
+    state = reduce(state, buildCity({ cityIndex: 3 }));
+
+    const cityAfter = state.game!.state.players[0].cities[3];
+    const workersAfter = state.game!.state.turn.turnProduction.workers;
+    expect(cityAfter.completed || cityAfter.workersCommitted > cityBefore.workersCommitted).toBe(
+      true,
+    );
+    expect(workersAfter).toBeLessThan(workersBefore);
+
+    randomSpy.mockRestore();
+  });
+
+  it('rejects invalid city build targets', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.55);
+    let state = reduce(undefined, startGame({ players: PLAYERS }));
+
+    state = reduce(state, rollDice());
+    state = reduce(state, keepDie({ dieIndex: 0 }));
+    state = reduce(state, keepDie({ dieIndex: 1 }));
+    state = reduce(state, keepDie({ dieIndex: 2 }));
+    state = reduce(state, buildCity({ cityIndex: 4 }));
+
+    expect(state.lastError).toEqual({
+      code: 'INVALID_BUILD_TARGET',
+      message: 'That city is not currently buildable.',
+    });
+    randomSpy.mockRestore();
+  });
+
+  it('builds a monument when workers are available in build phase', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.55);
+    let state = reduce(undefined, startGame({ players: PLAYERS }));
+
+    state = reduce(state, rollDice());
+    state = reduce(state, keepDie({ dieIndex: 0 }));
+    state = reduce(state, keepDie({ dieIndex: 1 }));
+    state = reduce(state, keepDie({ dieIndex: 2 }));
+
+    const monumentId = 'stepPyramid';
+    const progressBefore = state.game!.state.players[0].monuments[monumentId]
+      .workersCommitted;
+    state = reduce(state, buildMonument({ monumentId }));
+    const progressAfter = state.game!.state.players[0].monuments[monumentId]
+      .workersCommitted;
+
+    expect(progressAfter).toBeGreaterThanOrEqual(progressBefore);
     randomSpy.mockRestore();
   });
 });
