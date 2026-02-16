@@ -636,6 +636,7 @@ function App() {
               setLookaheadUtilityWeights(cloneStandardLookaheadUtilityWeights());
             }}
             headlessSimulations={headlessSimulations}
+            onClearHeadlessSimulations={() => setHeadlessSimulations([])}
           />
         ) : null}
         {turnStatus.isGameActive && endgameStatus.isGameOver ? (

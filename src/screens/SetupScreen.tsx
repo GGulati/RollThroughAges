@@ -35,6 +35,7 @@ type SetupScreenProps = {
   onResetHeuristicDefaults: () => void;
   onResetLookaheadDefaults: () => void;
   headlessSimulations: HeadlessSimulationSummary[];
+  onClearHeadlessSimulations: () => void;
 };
 
 export function SetupScreen({
@@ -59,6 +60,7 @@ export function SetupScreen({
   onResetHeuristicDefaults,
   onResetLookaheadDefaults,
   headlessSimulations,
+  onClearHeadlessSimulations,
 }: SetupScreenProps) {
   const coreMetricKeys = new Set<string>(CORE_BOT_METRIC_KEYS as readonly string[]);
   const getMetric = (metrics: Record<string, number>, key: string) => metrics[key] ?? 0;
@@ -636,7 +638,16 @@ export function SetupScreen({
       </section>
       {headlessSimulations.length > 0 ? (
         <section className="app-panel setup-panel">
-          <h2>AI Testing</h2>
+          <div className="collapsible-header">
+            <h2>AI Testing</h2>
+            <button
+              type="button"
+              className="section-toggle"
+              onClick={onClearHeadlessSimulations}
+            >
+              Clear
+            </button>
+          </div>
           <div className="development-list">
             {headlessSimulations.map((simulation, index) => (
               <article
