@@ -430,8 +430,16 @@ function App() {
 
           <section className={getPanelClassName('production')}>
             <h2>Production</h2>
-            <p>Rerolls available: {rerollEmoji}</p>
-            <p>Pending choices: {productionPanel.pendingProductionChoices}</p>
+            <div className="title-actions">
+              <p>Rerolls available: {rerollEmoji}</p>
+              <button
+                type="button"
+                onClick={() => dispatch(rollDice())}
+                disabled={!dicePanel.canRoll}
+              >
+                Reroll Dice
+              </button>
+            </div>
             <article className="outcome-card">
               <p className="development-title">Turn Outcome ({diceOutcome.summary ?? 'Projected'})</p>
               <p className="scoreboard-row">🍖 Food: +{diceOutcome.food.produced}</p>
@@ -454,13 +462,6 @@ function App() {
                 </p>
               ) : null}
             </article>
-            <button
-              type="button"
-              onClick={() => dispatch(rollDice())}
-              disabled={!dicePanel.canRoll}
-            >
-              Reroll Dice
-            </button>
             {!productionPanel.canResolveProduction && productionPanel.reason ? (
               <p className="hint-text">{productionPanel.reason}</p>
             ) : null}

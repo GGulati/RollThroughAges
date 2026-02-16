@@ -43,15 +43,26 @@ const initialState: GameSliceState = {
 
 function setError(state: GameSliceState, code: GameActionErrorCode, message: string): void {
   state.lastError = { code, message };
-  state.actionLog = [...state.actionLog, `Error [${code}]: ${message}`];
-}
-
-function appendLog(state: GameSliceState, message: string): void {
-  state.actionLog = [...state.actionLog, message];
+  appendLog(state, `Error [${code}]: ${message}`);
 }
 
 function getPlayerName(game: GameState, playerId: string): string {
   return game.settings.players.find((player) => player.id === playerId)?.name ?? playerId;
+}
+
+function appendLog(
+  state: GameSliceState,
+  message: string,
+  gameForActor: GameState | null = state.game,
+  playerIdForActor?: string,
+): void {
+  const actorName = gameForActor
+    ? getPlayerName(
+        gameForActor,
+        playerIdForActor ?? gameForActor.state.turn.activePlayerId,
+      )
+    : 'System';
+  state.actionLog = [...state.actionLog, `[${actorName}] ${message}`];
 }
 
 function countUnlockedDice(snapshot: GameStateSnapshot): number {
@@ -272,7 +283,7 @@ const gameSlice = createSlice({
       state.game = createGame(action.payload.players);
       state.lastError = null;
       state.actionLog = [
-        `Game started with ${action.payload.players.length} players: ${action.payload.players
+        `[System] Game started with ${action.payload.players.length} players: ${action.payload.players
           .map((player) => player.name)
           .join(', ')}.`,
       ];
@@ -344,6 +355,8 @@ const gameSlice = createSlice({
             state.game.state,
             state.game,
           )}).`,
+          state.game,
+          beforeSnapshot.turn.activePlayerId,
         );
       }
     },
