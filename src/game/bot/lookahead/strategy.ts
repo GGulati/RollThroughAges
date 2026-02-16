@@ -1,6 +1,6 @@
 import { ResourceProduction } from '../../dice';
 import { autoAdvanceForcedPhases, getMaxRollsAllowed, resolveProduction } from '../../engine';
-import { GamePhase, GameState } from '../../game';
+import { GAME_PHASE_ORDER, GamePhase, GameState } from '../../game';
 import { applyBotAction } from '../actionAdapter';
 import { botActionKey } from '../actionKey';
 import { getLegalBotActions } from '../candidates';
@@ -14,8 +14,20 @@ type ChanceOutcome = {
 };
 
 type EvaluationBudget = {
-  remaining: number;
+  remainingByPhase: Record<GamePhase, number>;
 };
+
+function createEvaluationBudget(maxEvaluationsPerPhase: number): EvaluationBudget {
+  return {
+    remainingByPhase: GAME_PHASE_ORDER.reduce(
+      (acc, phase) => {
+        acc[phase] = maxEvaluationsPerPhase;
+        return acc;
+      },
+      {} as Record<GamePhase, number>,
+    ),
+  };
+}
 
 function scoreProductionChoice(
   production: ResourceProduction,
@@ -130,10 +142,12 @@ function evaluateResolvedTurnUtilityBudgeted(
   config: LookaheadConfig,
   budget: EvaluationBudget,
 ): number {
-  if (budget.remaining <= 0) {
+  const phase = game.state.phase;
+  const remaining = budget.remainingByPhase[phase] ?? 0;
+  if (remaining <= 0) {
     return 0;
   }
-  budget.remaining -= 1;
+  budget.remainingByPhase[phase] = remaining - 1;
   return evaluateResolvedTurnUtility(game, config);
 }
 
@@ -238,6 +252,7 @@ function approximateRollUtility(
   game: GameState,
   rerolledDieIndices: number[],
   config: LookaheadConfig,
+  rootPlayerId: string,
   depth: number,
   budget: EvaluationBudget,
 ): number {
@@ -246,12 +261,12 @@ function approximateRollUtility(
   let totalDelta = 0;
 
   for (const dieIndex of rerolledDieIndices) {
-    if (budget.remaining <= 0) {
+    if ((budget.remainingByPhase[game.state.phase] ?? 0) <= 0) {
       break;
     }
     let dieUtilitySum = 0;
     for (let faceIndex = 0; faceIndex < faceCount; faceIndex += 1) {
-      if (budget.remaining <= 0) {
+      if ((budget.remainingByPhase[game.state.phase] ?? 0) <= 0) {
         break;
       }
       const outcomeGame = applyRollOutcome(
@@ -261,7 +276,13 @@ function approximateRollUtility(
         config,
         rerolledDieIndices.length === 1 ? 'rerollSingleDie' : 'rollDice',
       );
-      dieUtilitySum += evaluateActionValue(outcomeGame, config, depth - 1, budget);
+      dieUtilitySum += evaluateActionValue(
+        outcomeGame,
+        config,
+        rootPlayerId,
+        depth - 1,
+        budget,
+      );
     }
     totalDelta += dieUtilitySum / faceCount - baseUtility;
   }
@@ -273,6 +294,7 @@ function evaluateChanceAction(
   game: GameState,
   action: Extract<BotAction, { type: 'rollDice' | 'rerollSingleDie' }>,
   config: LookaheadConfig,
+  rootPlayerId: string,
   depth: number,
   budget: EvaluationBudget,
 ): number {
@@ -292,7 +314,14 @@ function evaluateChanceAction(
     action.type === 'rollDice' &&
     rerolledDieIndices.length > config.maxEnumeratedRollDice
   ) {
-    return approximateRollUtility(game, rerolledDieIndices, config, depth, budget);
+    return approximateRollUtility(
+      game,
+      rerolledDieIndices,
+      config,
+      rootPlayerId,
+      depth,
+      budget,
+    );
   }
 
   const faceCount = game.settings.diceFaces.length;
@@ -309,12 +338,12 @@ function evaluateChanceAction(
 
   let total = 0;
   for (const outcome of chanceOutcomes) {
-    if (budget.remaining <= 0) {
+    if ((budget.remainingByPhase[outcome.game.state.phase] ?? 0) <= 0) {
       break;
     }
     total +=
       outcome.probability *
-      evaluateActionValue(outcome.game, config, depth - 1, budget);
+      evaluateActionValue(outcome.game, config, rootPlayerId, depth - 1, budget);
   }
   return total;
 }
@@ -323,6 +352,7 @@ function evaluateDeterministicAction(
   game: GameState,
   action: BotAction,
   config: LookaheadConfig,
+  rootPlayerId: string,
   depth: number,
   budget: EvaluationBudget,
 ): number {
@@ -330,16 +360,17 @@ function evaluateDeterministicAction(
   if (!result.applied) {
     return Number.NEGATIVE_INFINITY;
   }
-  return evaluateActionValue(result.game, config, depth - 1, budget);
+  return evaluateActionValue(result.game, config, rootPlayerId, depth - 1, budget);
 }
 
 function evaluateActionValue(
   game: GameState,
   config: LookaheadConfig,
+  rootPlayerId: string,
   depth: number,
   budget: EvaluationBudget,
 ): number {
-  if (depth <= 0 || budget.remaining <= 0) {
+  if (depth <= 0 || (budget.remainingByPhase[game.state.phase] ?? 0) <= 0) {
     return evaluateResolvedTurnUtilityBudgeted(game, config, budget);
   }
 
@@ -350,29 +381,40 @@ function evaluateActionValue(
     return evaluateResolvedTurnUtilityBudgeted(game, config, budget);
   }
 
-  let best = Number.NEGATIVE_INFINITY;
+  const activePlayer = game.state.players[game.state.activePlayerIndex];
+  const maximize = activePlayer.id === rootPlayerId;
+  let best = maximize ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY;
   for (const action of legalActions) {
-    if (budget.remaining <= 0) {
+    if ((budget.remainingByPhase[game.state.phase] ?? 0) <= 0) {
       break;
     }
     const value =
       action.type === 'rollDice' || action.type === 'rerollSingleDie'
-        ? evaluateChanceAction(game, action, config, depth, budget)
-        : evaluateDeterministicAction(game, action, config, depth, budget);
-    if (value > best) {
+        ? evaluateChanceAction(game, action, config, rootPlayerId, depth, budget)
+        : evaluateDeterministicAction(game, action, config, rootPlayerId, depth, budget);
+    if (maximize && value > best) {
+      best = value;
+    }
+    if (!maximize && value < best) {
       best = value;
     }
   }
-  return best === Number.NEGATIVE_INFINITY
+  const noActionValue =
+    (maximize && best === Number.NEGATIVE_INFINITY) ||
+    (!maximize && best === Number.POSITIVE_INFINITY);
+  return noActionValue
     ? evaluateResolvedTurnUtilityBudgeted(game, config, budget)
     : best;
 }
 
-function pickBestRollPhaseAction(
+function pickBestLookaheadAction(
   game: GameState,
   config: LookaheadConfig,
 ): BotAction | null {
-  const budget: EvaluationBudget = { remaining: config.maxEvaluations };
+  const rootPlayerId = game.state.players[game.state.activePlayerIndex]?.id;
+  if (!rootPlayerId) {
+    return null;
+  }
   const legalActions = getLegalBotActions(game)
     .sort((a, b) => botActionKey(a).localeCompare(botActionKey(b)))
     .slice(0, config.maxActionsPerNode);
@@ -381,10 +423,11 @@ function pickBestRollPhaseAction(
   }
 
   const scored = legalActions.map((action) => {
+    const budget = createEvaluationBudget(config.maxEvaluations);
     const value =
       action.type === 'rollDice' || action.type === 'rerollSingleDie'
-        ? evaluateChanceAction(game, action, config, config.depth, budget)
-        : evaluateDeterministicAction(game, action, config, config.depth, budget);
+        ? evaluateChanceAction(game, action, config, rootPlayerId, config.depth, budget)
+        : evaluateDeterministicAction(game, action, config, rootPlayerId, config.depth, budget);
     return { action, value };
   });
 
@@ -399,10 +442,11 @@ export function chooseLookaheadBotAction(
   game: GameState,
   config: LookaheadConfig = LOOKAHEAD_STANDARD_CONFIG,
 ): BotAction | null {
-  if (game.state.phase !== GamePhase.RollDice) {
-    return chooseHeuristicBotAction(game, config.heuristicFallbackConfig);
+  const lookaheadAction = pickBestLookaheadAction(game, config);
+  if (lookaheadAction) {
+    return lookaheadAction;
   }
-  return pickBestRollPhaseAction(game, config);
+  return chooseHeuristicBotAction(game, config.heuristicFallbackConfig);
 }
 
 export function createLookaheadBot(

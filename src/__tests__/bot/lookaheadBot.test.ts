@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createGame } from '@/game/engine';
+import { GamePhase } from '@/game';
 import { botActionKey, getLegalBotActions, lookaheadStandardBot, runBotTurn } from '@/game/bot';
 
 const PLAYERS = [
@@ -34,6 +35,23 @@ describe('lookahead bot', () => {
     expect(actionB).not.toBeNull();
     expect(botActionKey(actionA!)).toBe(botActionKey(actionB!));
     randomSpy.mockRestore();
+  });
+
+  it('chooses a legal action in non-roll phases', () => {
+    const game = createGame(PLAYERS);
+    const nextState = {
+      ...game.state,
+      phase: GamePhase.Development,
+    };
+    const developmentGame = { ...game, state: nextState };
+
+    const legalActions = getLegalBotActions(developmentGame);
+    const action = lookaheadStandardBot.chooseAction({ game: developmentGame });
+
+    expect(action).not.toBeNull();
+    expect(
+      legalActions.some((legal) => botActionKey(legal) === botActionKey(action!)),
+    ).toBe(true);
   });
 
   it('can complete a full turn through runner integration', () => {
