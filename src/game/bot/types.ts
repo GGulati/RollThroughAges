@@ -16,6 +16,10 @@ export type BotAction =
 
 export type BotContext = {
   game: GameState;
+  instrumentation?: {
+    strategyId: string;
+    addMetric: (metric: string, value?: number) => void;
+  };
 };
 
 export type BotStrategy = {

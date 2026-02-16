@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  getHeadlessBotInstrumentation,
   getHeadlessScoreSummary,
   lookaheadStandardBot,
+  resetHeadlessBotInstrumentation,
   runHeadlessBotMatch,
 } from '@/game/bot';
 
@@ -72,4 +74,26 @@ describe('headless bot match', () => {
     expect(result.actionLog.some((line) => line.includes('[Bot 1]'))).toBe(true);
     randomSpy.mockRestore();
   }, 15000);
+
+  it('tracks and resets headless instrumentation', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    resetHeadlessBotInstrumentation();
+
+    const result = runHeadlessBotMatch([
+      { id: 'b1', name: 'Bot 1', controller: 'bot' },
+      { id: 'b2', name: 'Bot 2', controller: 'bot' },
+    ]);
+    expect(result.turnsPlayed).toBeGreaterThan(0);
+
+    const after = getHeadlessBotInstrumentation();
+    expect(after.runHeadlessBotGameCalls).toBeGreaterThan(0);
+    expect(after.turnsPlayedTotal).toBeGreaterThan(0);
+    expect(after.runHeadlessBotGameMsTotal).toBeGreaterThanOrEqual(0);
+
+    resetHeadlessBotInstrumentation();
+    const reset = getHeadlessBotInstrumentation();
+    expect(reset.runHeadlessBotGameCalls).toBe(0);
+    expect(reset.turnsPlayedTotal).toBe(0);
+    randomSpy.mockRestore();
+  });
 });

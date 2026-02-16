@@ -7,6 +7,36 @@ import { BotStrategy } from './types';
 import { runBotTurn } from './runner';
 import { botActionKey } from './actionKey';
 
+export type HeadlessBotInstrumentation = {
+  runHeadlessBotGameCalls: number;
+  runHeadlessBotGameMsTotal: number;
+  completedGames: number;
+  stalledGames: number;
+  turnsPlayedTotal: number;
+  actionLogEntriesTotal: number;
+};
+
+function createEmptyHeadlessInstrumentation(): HeadlessBotInstrumentation {
+  return {
+    runHeadlessBotGameCalls: 0,
+    runHeadlessBotGameMsTotal: 0,
+    completedGames: 0,
+    stalledGames: 0,
+    turnsPlayedTotal: 0,
+    actionLogEntriesTotal: 0,
+  };
+}
+
+const headlessBotInstrumentation = createEmptyHeadlessInstrumentation();
+
+export function resetHeadlessBotInstrumentation(): void {
+  Object.assign(headlessBotInstrumentation, createEmptyHeadlessInstrumentation());
+}
+
+export function getHeadlessBotInstrumentation(): HeadlessBotInstrumentation {
+  return { ...headlessBotInstrumentation };
+}
+
 export type HeadlessBotGameResult = {
   completed: boolean;
   turnsPlayed: number;
@@ -41,6 +71,8 @@ export function runHeadlessBotGame(
   initialGame: GameState,
   options: HeadlessBotGameOptions = {},
 ): HeadlessBotGameResult {
+  headlessBotInstrumentation.runHeadlessBotGameCalls += 1;
+  const runStartMs = Date.now();
   const maxTurns = options.maxTurns ?? 500;
   const maxStepsPerTurn = options.maxStepsPerTurn ?? 300;
 
@@ -98,6 +130,14 @@ export function runHeadlessBotGame(
   } else if (stallReason) {
     actionLog.push(`[System] Simulation stopped: ${stallReason}`);
   }
+  if (completed) {
+    headlessBotInstrumentation.completedGames += 1;
+  } else {
+    headlessBotInstrumentation.stalledGames += 1;
+  }
+  headlessBotInstrumentation.turnsPlayedTotal += turnsPlayed;
+  headlessBotInstrumentation.actionLogEntriesTotal += actionLog.length;
+  headlessBotInstrumentation.runHeadlessBotGameMsTotal += Date.now() - runStartMs;
 
   return {
     completed,

@@ -10,6 +10,11 @@ import { applyBotAction } from '../actionAdapter';
 import { botActionKey } from '../actionKey';
 import { getLegalBotActions } from '../candidates';
 import { chooseHeuristicBotAction } from '../heuristic';
+import {
+  BotCoreInstrumentation,
+  getBotCoreInstrumentation,
+  resetBotCoreInstrumentation,
+} from '../runner';
 import { BotAction, BotContext, BotStrategy } from '../types';
 import { LookaheadConfig, LOOKAHEAD_STANDARD_CONFIG } from './config';
 
@@ -22,6 +27,84 @@ type EvaluationBudget = {
   remainingByPhase: Record<GamePhase, number>;
 };
 
+type SearchMemo = {
+  stateSignatureCache: WeakMap<GameState, string>;
+  legalActionsByState: Map<string, BotAction[]>;
+  actionPreScoreByKey: Map<string, number>;
+  appliedActionByKey: Map<string, GameState | null>;
+  rollOutcomeByKey: Map<string, GameState>;
+  utilityByStateAndRoot: Map<string, number>;
+  recordMetric?: (metric: string, value?: number) => void;
+};
+
+export type LookaheadInstrumentation = {
+  core: BotCoreInstrumentation;
+  evaluateActionValueCalls: number;
+  evaluateChanceActionCalls: number;
+  evaluateDeterministicActionCalls: number;
+  evaluatedChanceOutcomes: number;
+  stateSignatureCacheHits: number;
+  stateSignatureCacheMisses: number;
+  legalActionsCacheHits: number;
+  legalActionsCacheMisses: number;
+  actionPreScoreCacheHits: number;
+  actionPreScoreCacheMisses: number;
+  appliedActionCacheHits: number;
+  appliedActionCacheMisses: number;
+  rollOutcomeCacheHits: number;
+  rollOutcomeCacheMisses: number;
+  utilityCacheHits: number;
+  utilityCacheMisses: number;
+};
+
+function createEmptyInstrumentation(): LookaheadInstrumentation {
+  return {
+    core: getBotCoreInstrumentation(),
+    evaluateActionValueCalls: 0,
+    evaluateChanceActionCalls: 0,
+    evaluateDeterministicActionCalls: 0,
+    evaluatedChanceOutcomes: 0,
+    stateSignatureCacheHits: 0,
+    stateSignatureCacheMisses: 0,
+    legalActionsCacheHits: 0,
+    legalActionsCacheMisses: 0,
+    actionPreScoreCacheHits: 0,
+    actionPreScoreCacheMisses: 0,
+    appliedActionCacheHits: 0,
+    appliedActionCacheMisses: 0,
+    rollOutcomeCacheHits: 0,
+    rollOutcomeCacheMisses: 0,
+    utilityCacheHits: 0,
+    utilityCacheMisses: 0,
+  };
+}
+
+const lookaheadInstrumentation = createEmptyInstrumentation();
+
+type LookaheadMetricName = Exclude<keyof LookaheadInstrumentation, 'core'>;
+
+function recordLookaheadMetric(
+  memo: SearchMemo,
+  metric: LookaheadMetricName,
+  value = 1,
+): void {
+  lookaheadInstrumentation[metric] += value;
+  memo.recordMetric?.(`lookahead.${metric}`, value);
+}
+
+export function resetLookaheadInstrumentation(): void {
+  resetBotCoreInstrumentation();
+  const reset = createEmptyInstrumentation();
+  Object.assign(lookaheadInstrumentation, reset);
+}
+
+export function getLookaheadInstrumentation(): LookaheadInstrumentation {
+  return {
+    ...lookaheadInstrumentation,
+    core: getBotCoreInstrumentation(),
+  };
+}
+
 function createEvaluationBudget(maxEvaluationsPerPhase: number): EvaluationBudget {
   return {
     remainingByPhase: GAME_PHASE_ORDER.reduce(
@@ -32,6 +115,97 @@ function createEvaluationBudget(maxEvaluationsPerPhase: number): EvaluationBudge
       {} as Record<GamePhase, number>,
     ),
   };
+}
+
+function createSearchMemo(
+  recordMetric?: (metric: string, value?: number) => void,
+): SearchMemo {
+  return {
+    stateSignatureCache: new WeakMap<GameState, string>(),
+    legalActionsByState: new Map<string, BotAction[]>(),
+    actionPreScoreByKey: new Map<string, number>(),
+    appliedActionByKey: new Map<string, GameState | null>(),
+    rollOutcomeByKey: new Map<string, GameState>(),
+    utilityByStateAndRoot: new Map<string, number>(),
+    recordMetric,
+  };
+}
+
+function getStateSignature(game: GameState, memo: SearchMemo): string {
+  const cached = memo.stateSignatureCache.get(game);
+  if (cached) {
+    recordLookaheadMetric(memo, 'stateSignatureCacheHits');
+    return cached;
+  }
+  recordLookaheadMetric(memo, 'stateSignatureCacheMisses');
+
+  const turn = game.state.turn;
+  const turnSig = [
+    turn.activePlayerId,
+    turn.rollsUsed,
+    turn.singleDieRerollsUsed,
+    turn.pendingChoices,
+    turn.foodShortage,
+    turn.developmentPurchased ? 1 : 0,
+    turn.turnProduction.workers,
+    turn.turnProduction.coins,
+    turn.turnProduction.food,
+    turn.turnProduction.goods,
+    turn.turnProduction.skulls,
+    turn.dice
+      .map((die) => `${die.diceFaceIndex}:${die.productionIndex}:${die.lockDecision}`)
+      .join(';'),
+  ].join('|');
+
+  const playersSig = game.state.players
+    .map((player) => {
+      const goodsSig = game.settings.goodsTypes
+        .map((goodsType) => `${goodsType.name}:${player.goods.get(goodsType) ?? 0}`)
+        .join(',');
+      const citiesSig = player.cities
+        .map((city) => `${city.completed ? 1 : 0}:${city.workersCommitted}`)
+        .join(',');
+      const monumentsSig = game.settings.monumentDefinitions
+        .map((monument) => {
+          const progress = player.monuments[monument.id];
+          return `${monument.id}:${progress?.completed ? 1 : 0}:${progress?.workersCommitted ?? 0}`;
+        })
+        .join(',');
+      return [
+        player.id,
+        player.food,
+        player.disasterPenalties,
+        player.score,
+        [...player.developments].sort((a, b) => a.localeCompare(b)).join(','),
+        goodsSig,
+        citiesSig,
+        monumentsSig,
+      ].join('|');
+    })
+    .join('||');
+
+  const signature = [
+    game.state.phase,
+    game.state.round,
+    game.state.activePlayerIndex,
+    turnSig,
+    playersSig,
+  ].join('#');
+  memo.stateSignatureCache.set(game, signature);
+  return signature;
+}
+
+function getLegalActionsCached(game: GameState, memo: SearchMemo): BotAction[] {
+  const stateSig = getStateSignature(game, memo);
+  const cached = memo.legalActionsByState.get(stateSig);
+  if (cached) {
+    recordLookaheadMetric(memo, 'legalActionsCacheHits');
+    return cached;
+  }
+  recordLookaheadMetric(memo, 'legalActionsCacheMisses');
+  const actions = getLegalBotActions(game);
+  memo.legalActionsByState.set(stateSig, actions);
+  return actions;
 }
 
 function scoreProductionChoice(
@@ -193,10 +367,18 @@ function evaluateResolvedTurnUtility(
   game: GameState,
   rootPlayerId: string,
   config: LookaheadConfig,
+  memo: SearchMemo,
 ): number {
   if (config.maxEvaluations <= 0) {
     return 0;
   }
+  const utilityKey = `${rootPlayerId}|${getStateSignature(game, memo)}`;
+  const cached = memo.utilityByStateAndRoot.get(utilityKey);
+  if (cached !== undefined) {
+    recordLookaheadMetric(memo, 'utilityCacheHits');
+    return cached;
+  }
+  recordLookaheadMetric(memo, 'utilityCacheMisses');
   const normalized = withBestPendingProductionChoices(game, config);
   const rootValue = getPlayerPositionValue(normalized, rootPlayerId, config);
   const opponentValues = normalized.state.players
@@ -206,7 +388,9 @@ function evaluateResolvedTurnUtility(
     opponentValues.length > 0
       ? opponentValues.reduce((sum, value) => sum + value, 0) / opponentValues.length
       : 0;
-  return rootValue - opponentAverage;
+  const utility = rootValue - opponentAverage;
+  memo.utilityByStateAndRoot.set(utilityKey, utility);
+  return utility;
 }
 
 function evaluateResolvedTurnUtilityBudgeted(
@@ -214,6 +398,7 @@ function evaluateResolvedTurnUtilityBudgeted(
   rootPlayerId: string,
   config: LookaheadConfig,
   budget: EvaluationBudget,
+  memo: SearchMemo,
 ): number {
   const phase = game.state.phase;
   const remaining = budget.remainingByPhase[phase] ?? 0;
@@ -221,7 +406,7 @@ function evaluateResolvedTurnUtilityBudgeted(
     return 0;
   }
   budget.remainingByPhase[phase] = remaining - 1;
-  return evaluateResolvedTurnUtility(game, rootPlayerId, config);
+  return evaluateResolvedTurnUtility(game, rootPlayerId, config, memo);
 }
 
 function createDieForFace(
@@ -247,7 +432,20 @@ function applyRollOutcome(
   faceIndices: number[],
   config: LookaheadConfig,
   actionType: 'rollDice' | 'rerollSingleDie',
+  memo: SearchMemo,
 ): GameState {
+  const rollKey = [
+    getStateSignature(game, memo),
+    actionType,
+    rerolledDieIndices.join(','),
+    faceIndices.join(','),
+  ].join('|');
+  const cached = memo.rollOutcomeByKey.get(rollKey);
+  if (cached) {
+    recordLookaheadMetric(memo, 'rollOutcomeCacheHits');
+    return cached;
+  }
+  recordLookaheadMetric(memo, 'rollOutcomeCacheMisses');
   const nextDice = game.state.turn.dice.map((die, dieIndex) => {
     const rerollIndex = rerolledDieIndices.indexOf(dieIndex);
     if (rerollIndex < 0) {
@@ -279,10 +477,12 @@ function applyRollOutcome(
     turn: nextTurn,
   };
 
-  return autoAdvanceForcedPhases({
+  const outcome = autoAdvanceForcedPhases({
     ...game,
     state: nextState,
   });
+  memo.rollOutcomeByKey.set(rollKey, outcome);
+  return outcome;
 }
 
 function enumerateFaceCombinations(count: number, faces: number): number[][] {
@@ -311,19 +511,40 @@ function getActionPreScore(
   action: BotAction,
   config: LookaheadConfig,
   rootPlayerId: string,
+  memo: SearchMemo,
 ): number {
+  const preScoreKey = `${rootPlayerId}|${getStateSignature(game, memo)}|${botActionKey(action)}`;
+  const cached = memo.actionPreScoreByKey.get(preScoreKey);
+  if (cached !== undefined) {
+    recordLookaheadMetric(memo, 'actionPreScoreCacheHits');
+    return cached;
+  }
+  recordLookaheadMetric(memo, 'actionPreScoreCacheMisses');
+
+  let score = Number.NEGATIVE_INFINITY;
   if (action.type === 'rollDice' || action.type === 'rerollSingleDie') {
     const probeBudget = createEvaluationBudget(
       Math.max(1, Math.floor(config.maxEvaluations / 6)),
     );
-    return evaluateChanceAction(game, action, config, rootPlayerId, 1, probeBudget);
+    score = evaluateChanceAction(
+      game,
+      action,
+      config,
+      rootPlayerId,
+      1,
+      probeBudget,
+      memo,
+    );
+    memo.actionPreScoreByKey.set(preScoreKey, score);
+    return score;
   }
 
   const result = applyBotAction(game, action);
-  if (!result.applied) {
-    return Number.NEGATIVE_INFINITY;
+  if (result.applied) {
+    score = evaluateResolvedTurnUtility(result.game, rootPlayerId, config, memo);
   }
-  return evaluateResolvedTurnUtility(result.game, rootPlayerId, config);
+  memo.actionPreScoreByKey.set(preScoreKey, score);
+  return score;
 }
 
 function getPrioritizedActions(
@@ -332,10 +553,11 @@ function getPrioritizedActions(
   config: LookaheadConfig,
   rootPlayerId: string,
   maximize: boolean,
+  memo: SearchMemo,
 ): BotAction[] {
   const scored = actions.map((action) => ({
     action,
-    preScore: getActionPreScore(game, action, config, rootPlayerId),
+    preScore: getActionPreScore(game, action, config, rootPlayerId, memo),
   }));
   scored.sort((a, b) => {
     const preScoreDelta = maximize
@@ -356,6 +578,7 @@ function approximateRollUtility(
   rootPlayerId: string,
   depth: number,
   budget: EvaluationBudget,
+  memo: SearchMemo,
 ): number {
   const faceCount = game.settings.diceFaces.length;
   const baseUtility = evaluateResolvedTurnUtilityBudgeted(
@@ -363,6 +586,7 @@ function approximateRollUtility(
     rootPlayerId,
     config,
     budget,
+    memo,
   );
   let totalDelta = 0;
 
@@ -381,6 +605,7 @@ function approximateRollUtility(
         [faceIndex],
         config,
         rerolledDieIndices.length === 1 ? 'rerollSingleDie' : 'rollDice',
+        memo,
       );
       dieUtilitySum += evaluateActionValue(
         outcomeGame,
@@ -388,6 +613,7 @@ function approximateRollUtility(
         rootPlayerId,
         depth - 1,
         budget,
+        memo,
       );
     }
     totalDelta += dieUtilitySum / faceCount - baseUtility;
@@ -403,7 +629,9 @@ function evaluateChanceAction(
   rootPlayerId: string,
   depth: number,
   budget: EvaluationBudget,
+  memo: SearchMemo,
 ): number {
+  recordLookaheadMetric(memo, 'evaluateChanceActionCalls');
   const rerolledDieIndices =
     action.type === 'rollDice'
       ? game.state.turn.dice
@@ -427,6 +655,7 @@ function evaluateChanceAction(
       rootPlayerId,
       depth,
       budget,
+      memo,
     );
   }
 
@@ -441,8 +670,10 @@ function evaluateChanceAction(
       faces,
       config,
       action.type,
+      memo,
     ),
   }));
+  recordLookaheadMetric(memo, 'evaluatedChanceOutcomes', chanceOutcomes.length);
 
   let total = 0;
   for (const outcome of chanceOutcomes) {
@@ -451,9 +682,33 @@ function evaluateChanceAction(
     }
     total +=
       outcome.probability *
-      evaluateActionValue(outcome.game, config, rootPlayerId, depth - 1, budget);
+      evaluateActionValue(
+        outcome.game,
+        config,
+        rootPlayerId,
+        depth - 1,
+        budget,
+        memo,
+      );
   }
   return total;
+}
+
+function getAppliedActionCached(
+  game: GameState,
+  action: BotAction,
+  memo: SearchMemo,
+): GameState | null {
+  const actionKey = `${getStateSignature(game, memo)}|${botActionKey(action)}`;
+  if (memo.appliedActionByKey.has(actionKey)) {
+    recordLookaheadMetric(memo, 'appliedActionCacheHits');
+    return memo.appliedActionByKey.get(actionKey) ?? null;
+  }
+  recordLookaheadMetric(memo, 'appliedActionCacheMisses');
+  const result = applyBotAction(game, action);
+  const nextGame = result.applied ? result.game : null;
+  memo.appliedActionByKey.set(actionKey, nextGame);
+  return nextGame;
 }
 
 function evaluateDeterministicAction(
@@ -463,12 +718,14 @@ function evaluateDeterministicAction(
   rootPlayerId: string,
   depth: number,
   budget: EvaluationBudget,
+  memo: SearchMemo,
 ): number {
-  const result = applyBotAction(game, action);
-  if (!result.applied) {
+  recordLookaheadMetric(memo, 'evaluateDeterministicActionCalls');
+  const nextGame = getAppliedActionCached(game, action, memo);
+  if (!nextGame) {
     return Number.NEGATIVE_INFINITY;
   }
-  return evaluateActionValue(result.game, config, rootPlayerId, depth - 1, budget);
+  return evaluateActionValue(nextGame, config, rootPlayerId, depth - 1, budget, memo);
 }
 
 function evaluateActionValue(
@@ -477,14 +734,16 @@ function evaluateActionValue(
   rootPlayerId: string,
   depth: number,
   budget: EvaluationBudget,
+  memo: SearchMemo,
 ): number {
+  recordLookaheadMetric(memo, 'evaluateActionValueCalls');
   if (depth <= 0 || (budget.remainingByPhase[game.state.phase] ?? 0) <= 0) {
-    return evaluateResolvedTurnUtilityBudgeted(game, rootPlayerId, config, budget);
+    return evaluateResolvedTurnUtilityBudgeted(game, rootPlayerId, config, budget, memo);
   }
 
-  const allLegalActions = getLegalBotActions(game);
+  const allLegalActions = getLegalActionsCached(game, memo);
   if (allLegalActions.length === 0) {
-    return evaluateResolvedTurnUtilityBudgeted(game, rootPlayerId, config, budget);
+    return evaluateResolvedTurnUtilityBudgeted(game, rootPlayerId, config, budget, memo);
   }
 
   const activePlayer = game.state.players[game.state.activePlayerIndex];
@@ -495,6 +754,7 @@ function evaluateActionValue(
     config,
     rootPlayerId,
     maximize,
+    memo,
   ).slice(0, config.maxActionsPerNode);
   let best = maximize ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY;
   for (const action of legalActions) {
@@ -503,8 +763,16 @@ function evaluateActionValue(
     }
     const value =
       action.type === 'rollDice' || action.type === 'rerollSingleDie'
-        ? evaluateChanceAction(game, action, config, rootPlayerId, depth, budget)
-        : evaluateDeterministicAction(game, action, config, rootPlayerId, depth, budget);
+        ? evaluateChanceAction(game, action, config, rootPlayerId, depth, budget, memo)
+        : evaluateDeterministicAction(
+            game,
+            action,
+            config,
+            rootPlayerId,
+            depth,
+            budget,
+            memo,
+          );
     if (maximize && value > best) {
       best = value;
     }
@@ -516,13 +784,14 @@ function evaluateActionValue(
     (maximize && best === Number.NEGATIVE_INFINITY) ||
     (!maximize && best === Number.POSITIVE_INFINITY);
   return noActionValue
-    ? evaluateResolvedTurnUtilityBudgeted(game, rootPlayerId, config, budget)
+    ? evaluateResolvedTurnUtilityBudgeted(game, rootPlayerId, config, budget, memo)
     : best;
 }
 
 function pickBestLookaheadAction(
   game: GameState,
   config: LookaheadConfig,
+  memo: SearchMemo,
 ): BotAction | null {
   const rootPlayerId = game.state.players[game.state.activePlayerIndex]?.id;
   if (!rootPlayerId) {
@@ -530,10 +799,11 @@ function pickBestLookaheadAction(
   }
   const legalActions = getPrioritizedActions(
     game,
-    getLegalBotActions(game),
+    getLegalActionsCached(game, memo),
     config,
     rootPlayerId,
     true,
+    memo,
   ).slice(0, config.maxActionsPerNode);
   if (legalActions.length === 0) {
     return null;
@@ -543,8 +813,24 @@ function pickBestLookaheadAction(
     const budget = createEvaluationBudget(config.maxEvaluations);
     const value =
       action.type === 'rollDice' || action.type === 'rerollSingleDie'
-        ? evaluateChanceAction(game, action, config, rootPlayerId, config.depth, budget)
-        : evaluateDeterministicAction(game, action, config, rootPlayerId, config.depth, budget);
+        ? evaluateChanceAction(
+            game,
+            action,
+            config,
+            rootPlayerId,
+            config.depth,
+            budget,
+            memo,
+          )
+        : evaluateDeterministicAction(
+            game,
+            action,
+            config,
+            rootPlayerId,
+            config.depth,
+            budget,
+            memo,
+          );
     return { action, value };
   });
 
@@ -558,8 +844,10 @@ function pickBestLookaheadAction(
 export function chooseLookaheadBotAction(
   game: GameState,
   config: LookaheadConfig = LOOKAHEAD_STANDARD_CONFIG,
+  recordMetric?: (metric: string, value?: number) => void,
 ): BotAction | null {
-  const lookaheadAction = pickBestLookaheadAction(game, config);
+  const memo = createSearchMemo(recordMetric);
+  const lookaheadAction = pickBestLookaheadAction(game, config, memo);
   if (lookaheadAction) {
     return lookaheadAction;
   }
@@ -573,7 +861,11 @@ export function createLookaheadBot(
   return {
     id,
     chooseAction: (context: BotContext) =>
-      chooseLookaheadBotAction(context.game, config),
+      chooseLookaheadBotAction(
+        context.game,
+        config,
+        context.instrumentation?.addMetric,
+      ),
   };
 }
 

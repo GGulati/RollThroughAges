@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createGame } from '@/game/engine';
-import { botActionKey, heuristicStandardBot, runBotTurn } from '@/game/bot';
+import {
+  botActionKey,
+  getBotCoreInstrumentation,
+  heuristicStandardBot,
+  resetBotCoreInstrumentation,
+  runBotTurn,
+} from '@/game/bot';
 
 const PLAYERS = [
   { id: 'p1', name: 'Bot 1', controller: 'bot' as const },
@@ -55,6 +61,29 @@ describe('bot runner integration', () => {
     expect(result.completedTurn).toBe(true);
     expect(result.steps).toBeGreaterThan(0);
     expect(result.game.state.activePlayerIndex).toBe(1);
+    randomSpy.mockRestore();
+  });
+
+  it('tracks and resets core bot runner instrumentation', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.6);
+    resetBotCoreInstrumentation();
+    const game = createGame(PLAYERS);
+
+    const result = runBotTurn(game, heuristicStandardBot);
+    expect(result.steps).toBeGreaterThan(0);
+
+    const after = getBotCoreInstrumentation();
+    expect(after.runBotTurnCalls).toBeGreaterThan(0);
+    expect(after.runBotStepCalls).toBeGreaterThan(0);
+    expect(after.strategyChooseActionCalls).toBeGreaterThan(0);
+    expect(after.applyBotActionAttempts).toBeGreaterThan(0);
+    expect(after.runBotTurnMsTotal).toBeGreaterThanOrEqual(0);
+
+    resetBotCoreInstrumentation();
+    const reset = getBotCoreInstrumentation();
+    expect(reset.runBotTurnCalls).toBe(0);
+    expect(reset.runBotStepCalls).toBe(0);
+    expect(reset.strategyChooseActionCalls).toBe(0);
     randomSpy.mockRestore();
   });
 });

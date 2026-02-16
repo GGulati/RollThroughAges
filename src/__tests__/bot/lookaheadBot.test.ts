@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createGame } from '@/game/engine';
 import { GamePhase } from '@/game';
-import { botActionKey, getLegalBotActions, lookaheadStandardBot, runBotTurn } from '@/game/bot';
+import {
+  botActionKey,
+  getLegalBotActions,
+  getLookaheadInstrumentation,
+  lookaheadStandardBot,
+  resetLookaheadInstrumentation,
+  runBotTurn,
+} from '@/game/bot';
 
 const PLAYERS = [
   { id: 'p1', name: 'Bot 1', controller: 'bot' as const },
@@ -63,6 +70,30 @@ describe('lookahead bot', () => {
     expect(result.completedTurn).toBe(true);
     expect(result.steps).toBeGreaterThan(0);
     expect(result.game.state.activePlayerIndex).toBe(1);
+    randomSpy.mockRestore();
+  });
+
+  it('tracks and resets lookahead instrumentation counters', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    resetLookaheadInstrumentation();
+    const game = createGame(PLAYERS);
+
+    const result = runBotTurn(game, lookaheadStandardBot);
+    expect(result.steps).toBeGreaterThan(0);
+
+    const after = getLookaheadInstrumentation();
+    expect(after.core.runBotTurnCalls).toBeGreaterThan(0);
+    expect(after.core.strategyChooseActionCalls).toBeGreaterThan(0);
+    expect(after.evaluateActionValueCalls).toBeGreaterThan(0);
+    const extensionKey = 'lookahead-standard.lookahead.evaluateActionValueCalls';
+    expect((after.core.strategyExtensionMetrics[extensionKey] ?? 0)).toBeGreaterThan(0);
+    expect(after.core.runBotTurnMsTotal).toBeGreaterThanOrEqual(0);
+
+    resetLookaheadInstrumentation();
+    const reset = getLookaheadInstrumentation();
+    expect(reset.core.runBotTurnCalls).toBe(0);
+    expect(reset.evaluateActionValueCalls).toBe(0);
+    expect(Object.keys(reset.core.strategyExtensionMetrics)).toHaveLength(0);
     randomSpy.mockRestore();
   });
 });
