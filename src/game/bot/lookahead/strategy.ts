@@ -306,19 +306,111 @@ function enumerateFaceCombinations(count: number, faces: number): number[][] {
   return combinations;
 }
 
-function limitOutcomesDeterministically<T>(
-  outcomes: T[],
+function decodeFaceCombination(
+  encodedIndex: number,
+  count: number,
+  faces: number,
+): number[] {
+  const decoded = Array<number>(count).fill(0);
+  let value = encodedIndex;
+  for (let i = count - 1; i >= 0; i -= 1) {
+    decoded[i] = value % faces;
+    value = Math.floor(value / faces);
+  }
+  return decoded;
+}
+
+function hashString(value: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function seededUnit(seed: number, index: number): number {
+  const mixed = (seed ^ Math.imul(index + 1, 374761393)) >>> 0;
+  const next = Math.imul(mixed ^ (mixed >>> 13), 1274126177) >>> 0;
+  return (next & 0x7fffffff) / 0x80000000;
+}
+
+type SampledOutcome = {
+  faces: number[];
+  probability: number;
+};
+
+function sampleFaceCombinationsStratified(
+  count: number,
+  faces: number,
   limit: number,
-): T[] {
-  if (outcomes.length <= limit || limit <= 0) {
-    return outcomes;
+  seedKey: string,
+): SampledOutcome[] {
+  const totalOutcomes = Math.pow(faces, count);
+  if (limit <= 0 || totalOutcomes <= limit) {
+    return enumerateFaceCombinations(count, faces).map((combination) => ({
+      faces: combination,
+      probability: 1 / Math.max(1, totalOutcomes),
+    }));
   }
-  const selected: T[] = [];
-  const step = outcomes.length / limit;
+
+  const seeded = hashString(seedKey);
+  const samples: SampledOutcome[] = [];
   for (let i = 0; i < limit; i += 1) {
-    selected.push(outcomes[Math.floor(i * step)]);
+    const start = Math.floor((i * totalOutcomes) / limit);
+    const end = Math.floor(((i + 1) * totalOutcomes) / limit);
+    const width = Math.max(1, end - start);
+    const offset = Math.floor(seededUnit(seeded, i) * width);
+    const sampledIndex = start + Math.min(width - 1, offset);
+    samples.push({
+      faces: decodeFaceCombination(sampledIndex, count, faces),
+      probability: width / totalOutcomes,
+    });
   }
-  return selected;
+  return samples;
+}
+
+function getActionPreScore(
+  game: GameState,
+  action: BotAction,
+  config: LookaheadConfig,
+  rootPlayerId: string,
+): number {
+  if (action.type === 'rollDice' || action.type === 'rerollSingleDie') {
+    const probeBudget = createEvaluationBudget(
+      Math.max(1, Math.floor(config.maxEvaluations / 6)),
+    );
+    return evaluateChanceAction(game, action, config, rootPlayerId, 1, probeBudget);
+  }
+
+  const result = applyBotAction(game, action);
+  if (!result.applied) {
+    return Number.NEGATIVE_INFINITY;
+  }
+  return evaluateResolvedTurnUtility(result.game, rootPlayerId, config);
+}
+
+function getPrioritizedActions(
+  game: GameState,
+  actions: BotAction[],
+  config: LookaheadConfig,
+  rootPlayerId: string,
+  maximize: boolean,
+): BotAction[] {
+  const scored = actions.map((action) => ({
+    action,
+    preScore: getActionPreScore(game, action, config, rootPlayerId),
+  }));
+  scored.sort((a, b) => {
+    const preScoreDelta = maximize
+      ? b.preScore - a.preScore
+      : a.preScore - b.preScore;
+    if (preScoreDelta !== 0) {
+      return preScoreDelta;
+    }
+    return botActionKey(a.action).localeCompare(botActionKey(b.action));
+  });
+  return scored.map((entry) => entry.action);
 }
 
 function approximateRollUtility(
@@ -403,15 +495,21 @@ function evaluateChanceAction(
   }
 
   const faceCount = game.settings.diceFaces.length;
-  const outcomes = enumerateFaceCombinations(rerolledDieIndices.length, faceCount);
-  const boundedOutcomes = limitOutcomesDeterministically(
-    outcomes,
+  const sampledOutcomes = sampleFaceCombinationsStratified(
+    rerolledDieIndices.length,
+    faceCount,
     config.maxChanceOutcomesPerAction,
+    `${game.state.turn.activePlayerId}:${game.state.turn.rollsUsed}:${action.type}:${rerolledDieIndices.join(',')}`,
   );
-  const probability = 1 / Math.max(1, boundedOutcomes.length);
-  const chanceOutcomes: ChanceOutcome[] = boundedOutcomes.map((faces) => ({
-    probability,
-    game: applyRollOutcome(game, rerolledDieIndices, faces, config, action.type),
+  const chanceOutcomes: ChanceOutcome[] = sampledOutcomes.map((sample) => ({
+    probability: sample.probability,
+    game: applyRollOutcome(
+      game,
+      rerolledDieIndices,
+      sample.faces,
+      config,
+      action.type,
+    ),
   }));
 
   let total = 0;
@@ -452,15 +550,20 @@ function evaluateActionValue(
     return evaluateResolvedTurnUtilityBudgeted(game, rootPlayerId, config, budget);
   }
 
-  const legalActions = getLegalBotActions(game)
-    .sort((a, b) => botActionKey(a).localeCompare(botActionKey(b)))
-    .slice(0, config.maxActionsPerNode);
-  if (legalActions.length === 0) {
+  const allLegalActions = getLegalBotActions(game);
+  if (allLegalActions.length === 0) {
     return evaluateResolvedTurnUtilityBudgeted(game, rootPlayerId, config, budget);
   }
 
   const activePlayer = game.state.players[game.state.activePlayerIndex];
   const maximize = activePlayer.id === rootPlayerId;
+  const legalActions = getPrioritizedActions(
+    game,
+    allLegalActions,
+    config,
+    rootPlayerId,
+    maximize,
+  ).slice(0, config.maxActionsPerNode);
   let best = maximize ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY;
   for (const action of legalActions) {
     if ((budget.remainingByPhase[game.state.phase] ?? 0) <= 0) {
@@ -493,9 +596,13 @@ function pickBestLookaheadAction(
   if (!rootPlayerId) {
     return null;
   }
-  const legalActions = getLegalBotActions(game)
-    .sort((a, b) => botActionKey(a).localeCompare(botActionKey(b)))
-    .slice(0, config.maxActionsPerNode);
+  const legalActions = getPrioritizedActions(
+    game,
+    getLegalBotActions(game),
+    config,
+    rootPlayerId,
+    true,
+  ).slice(0, config.maxActionsPerNode);
   if (legalActions.length === 0) {
     return null;
   }
