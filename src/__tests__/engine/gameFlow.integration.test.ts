@@ -370,6 +370,37 @@ describe('Game Flow Integration Tests', () => {
 
       expect(isGameOver(game)).toBe(true);
     });
+
+    it('waits for turn parity when a mid-round threshold is reached', () => {
+      let game = createGame([
+        { id: 'p1', name: 'Player 1', controller: 'human' },
+        { id: 'p2', name: 'Player 2', controller: 'human' },
+        { id: 'p3', name: 'Player 3', controller: 'human' },
+        { id: 'p4', name: 'Player 4', controller: 'human' },
+      ]);
+
+      // Move to Player 2 turn start.
+      game = endTurn(game);
+      expect(game.state.activePlayerIndex).toBe(1);
+
+      const devCount = game.settings.endCondition.numDevelopments!;
+      const devIds = game.settings.developmentDefinitions
+        .slice(0, devCount)
+        .map((d) => d.id);
+      game = updateActivePlayer(game, (player) => ({
+        ...player,
+        developments: devIds,
+      }));
+
+      // Trigger reached by Player 2, but Player 3 and 4 still get final turns.
+      expect(isGameOver(game)).toBe(false);
+      game = endTurn(game); // P2 -> P3
+      expect(isGameOver(game)).toBe(false);
+      game = endTurn(game); // P3 -> P4
+      expect(isGameOver(game)).toBe(false);
+      game = endTurn(game); // P4 -> P1 (parity restored)
+      expect(isGameOver(game)).toBe(true);
+    });
   });
 
   describe('Score Updates', () => {
@@ -579,7 +610,7 @@ describe('Game Flow Integration Tests', () => {
   });
 
   describe('Leadership Roll Limit', () => {
-    it('allows a fourth roll for players with Leadership', () => {
+    it('does not allow extra full rolls for players with Leadership', () => {
       let game = createGame([
         { id: 'p1', name: 'Player 1', controller: 'human' },
         { id: 'p2', name: 'Player 2', controller: 'human' },
@@ -598,7 +629,7 @@ describe('Game Flow Integration Tests', () => {
         game = performRoll(game);
       }
 
-      expect(game.state.turn.rollsUsed).toBe(4);
+      expect(game.state.turn.rollsUsed).toBe(game.settings.maxDiceRolls);
     });
   });
 });

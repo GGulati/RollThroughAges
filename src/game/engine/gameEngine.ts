@@ -282,6 +282,12 @@ export function isGameOver(game: GameState): boolean {
     return true;
   }
 
+  const isTurnParityBoundary =
+    game.state.phase === GamePhase.RollDice && game.state.activePlayerIndex === 0;
+  if (!isTurnParityBoundary) {
+    return false;
+  }
+
   for (const player of game.state.players) {
     if (
       game.settings.endCondition.numDevelopments &&
