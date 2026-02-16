@@ -178,14 +178,14 @@ function getPlayerPositionValue(
       : 0;
 
   return (
-    breakdown.total * 100 +
-    completedCities * 12 +
-    cityProgress * 2.5 +
-    monumentProgress * 3 +
-    goodsValue * 0.6 +
-    player.food * 0.8 +
-    turnResourcePosition -
-    foodRiskPenalty
+    breakdown.total * config.utilityWeights.scoreTotal +
+    completedCities * config.utilityWeights.completedCities +
+    cityProgress * config.utilityWeights.cityProgress +
+    monumentProgress * config.utilityWeights.monumentProgress +
+    goodsValue * config.utilityWeights.goodsValue +
+    player.food * config.utilityWeights.food +
+    turnResourcePosition * config.utilityWeights.turnResourcePosition -
+    foodRiskPenalty * config.utilityWeights.foodRiskPenalty
   );
 }
 
