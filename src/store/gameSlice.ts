@@ -317,7 +317,12 @@ const gameSlice = createSlice({
       }
 
       const beforeSnapshot = state.game.state;
-      state.game = applyMutationWithHistory(state.game, endTurnEngine);
+      const endedGame = endTurnEngine(state.game);
+      state.game = {
+        ...endedGame,
+        history: [],
+        future: [],
+      };
       state.lastError = null;
       if (state.game) {
         appendLog(

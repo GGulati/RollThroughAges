@@ -33,6 +33,7 @@ function reduce(
 
 describe('gameSlice', () => {
   it('caps history at 20 entries', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.55);
     let state = reduce(undefined, startGame({ players: PLAYERS }));
 
     for (let i = 0; i < 25; i += 1) {
@@ -41,6 +42,7 @@ describe('gameSlice', () => {
 
     expect(state.game).not.toBeNull();
     expect(state.game!.history).toHaveLength(20);
+    randomSpy.mockRestore();
   });
 
   it('clears future after a fresh mutation', () => {
@@ -60,27 +62,36 @@ describe('gameSlice', () => {
     randomSpy.mockRestore();
   });
 
-  it('supports multi-step undo and redo', () => {
+  it('does not allow undo or redo across turn boundaries', () => {
     const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.1);
     let state = reduce(undefined, startGame({ players: PLAYERS }));
 
-    const roundAtStart = state.game!.state.round;
-
-    state = reduce(state, rollDice());
+    state = reduce(state, keepDie({ dieIndex: 0 }));
+    expect(state.game!.history.length).toBeGreaterThan(0);
+    state = {
+      ...state,
+      game: {
+        ...state.game!,
+        state: {
+          ...state.game!.state,
+          phase: GamePhase.EndTurn,
+        },
+      },
+    };
     state = reduce(state, endTurn());
-    const roundAfterEndTurn = state.game!.state.round;
-    const playerAfterEndTurn = state.game!.state.turn.activePlayerId;
+    expect(state.game!.history).toHaveLength(0);
+    expect(state.game!.future).toHaveLength(0);
 
     state = reduce(state, undo());
-    state = reduce(state, undo());
-
-    expect(state.game!.state.round).toBe(roundAtStart);
-
+    expect(state.lastError).toEqual({
+      code: 'UNDO_NOT_AVAILABLE',
+      message: 'There are no moves to undo.',
+    });
     state = reduce(state, redo());
-    state = reduce(state, redo());
-
-    expect(state.game!.state.round).toBe(roundAfterEndTurn);
-    expect(state.game!.state.turn.activePlayerId).toBe(playerAfterEndTurn);
+    expect(state.lastError).toEqual({
+      code: 'REDO_NOT_AVAILABLE',
+      message: 'There are no moves to redo.',
+    });
 
     randomSpy.mockRestore();
   });
