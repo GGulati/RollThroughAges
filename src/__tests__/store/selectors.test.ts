@@ -307,6 +307,46 @@ describe('store selectors', () => {
     ).toBe(true);
   });
 
+  it('includes exchange-derived coins in total purchasing power', () => {
+    const store = createTestStore();
+    store.dispatch(startGame({ players: PLAYERS }));
+    const root = store.getState();
+    const game = root.game.game!;
+    const activeIndex = game.state.activePlayerIndex;
+    const stateWithGranaries = {
+      ...root,
+      game: {
+        ...root.game,
+        game: {
+          ...game,
+          state: {
+            ...game.state,
+            phase: GamePhase.Development,
+            players: game.state.players.map((player, index) =>
+              index === activeIndex
+                ? {
+                    ...player,
+                    food: 5,
+                    developments: [...player.developments, 'granaries'],
+                  }
+                : player,
+            ),
+            turn: {
+              ...game.state.turn,
+              turnProduction: {
+                ...game.state.turn.turnProduction,
+                coins: 0,
+              },
+            },
+          },
+        },
+      },
+    };
+
+    const developmentPanel = selectDevelopmentPanelModel(stateWithGranaries);
+    expect(developmentPanel.totalPurchasingPower).toBe(30);
+  });
+
   it('keeps purchased developments visible in catalog', () => {
     const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.67); // 7 coins
     const store = createTestStore();

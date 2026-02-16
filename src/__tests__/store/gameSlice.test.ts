@@ -12,6 +12,7 @@ import {
   redo,
   resolveProduction,
   rollDice,
+  skipDevelopment,
   startGame,
   undo,
 } from '@/store/gameSlice';
@@ -317,6 +318,42 @@ describe('gameSlice', () => {
     randomSpy.mockRestore();
   });
 
+  it('does not auto-skip development when exchange effects can generate coins', () => {
+    let state = reduce(undefined, startGame({ players: PLAYERS }));
+    const game = state.game!;
+    const activeIndex = game.state.activePlayerIndex;
+    const exchangeDice: DieState[] = [
+      { diceFaceIndex: 5, productionIndex: 0, lockDecision: 'kept' },
+      { diceFaceIndex: 5, productionIndex: 0, lockDecision: 'kept' },
+      { diceFaceIndex: 5, productionIndex: 0, lockDecision: 'kept' },
+    ];
+    state = {
+      ...state,
+      game: {
+        ...game,
+        state: {
+          ...game.state,
+          phase: GamePhase.ResolveProduction,
+          players: game.state.players.map((player, index) =>
+            index === activeIndex
+              ? { ...player, developments: [...player.developments, 'granaries'], food: 0 }
+              : player,
+          ),
+          turn: {
+            ...game.state.turn,
+            dice: exchangeDice,
+            pendingChoices: 0,
+          },
+        },
+      },
+    };
+
+    state = reduce(state, resolveProduction());
+
+    expect(state.lastError).toBeNull();
+    expect(state.game!.state.phase).toBe('development');
+  });
+
   it('blocks buying more than one development per turn', () => {
     const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.67); // 7 coins
     let state = reduce(undefined, startGame({ players: PLAYERS }));
@@ -443,6 +480,23 @@ describe('gameSlice', () => {
     randomSpy.mockRestore();
   });
 
+  it('skips development and advances to end turn when no discard is required', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.67); // 7 coins
+    let state = reduce(undefined, startGame({ players: PLAYERS }));
+
+    state = reduce(state, keepDie({ dieIndex: 0 }));
+    state = reduce(state, keepDie({ dieIndex: 1 }));
+    state = reduce(state, keepDie({ dieIndex: 2 }));
+    expect(state.game!.state.phase).toBe('development');
+
+    state = reduce(state, skipDevelopment());
+
+    expect(state.lastError).toBeNull();
+    expect(state.game!.state.phase).toBe('endTurn');
+
+    randomSpy.mockRestore();
+  });
+
   it('applies discard selection and advances discard phase to end-turn', () => {
     let state = reduce(undefined, startGame({ players: PLAYERS }));
     const game = state.game!;
@@ -486,7 +540,6 @@ describe('gameSlice', () => {
     let state = reduce(undefined, startGame({ players: PLAYERS }));
     const game = state.game!;
     const activeIndex = game.state.activePlayerIndex;
-    const activePlayer = game.state.players[activeIndex];
     const shortageDice: DieState[] = [
       { diceFaceIndex: 2, productionIndex: 0, lockDecision: 'kept' }, // 2 food
       { diceFaceIndex: 4, productionIndex: 0, lockDecision: 'kept' }, // 7 coins

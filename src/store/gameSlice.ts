@@ -6,7 +6,6 @@ import {
   allocateWorkersToCity,
   allocateWorkersToMonument,
   calculateGoodsOverflow,
-  canAffordDevelopment,
   exchangeResources as exchangeResourcesEngine,
   getCityWorkerCost,
   getBuildOptions,
@@ -19,6 +18,7 @@ import {
   getExchangeResourceAmount,
   getMaxRollsAllowed,
   getAvailableDevelopments,
+  getTotalPurchasingPower,
   keepDie as keepDieEngine,
   performRoll,
   purchaseDevelopment,
@@ -156,29 +156,32 @@ function getNextPostDevelopmentPhase(
   activePlayer = game.state.players[game.state.activePlayerIndex],
   turn = game.state.turn,
 ): GamePhase {
+  const potentialExchangeCoinGain = getAvailableExchangeEffects(
+    activePlayer,
+    game.settings,
+  ).reduce((sum, exchange) => {
+    if (exchange.to.toLowerCase() !== 'coins') {
+      return sum;
+    }
+    const sourceAmount = getExchangeResourceAmount(
+      activePlayer,
+      turn,
+      game.settings,
+      exchange.from,
+    );
+    return sourceAmount > 0 ? sum + sourceAmount * exchange.rate : sum;
+  }, 0);
+  const potentialPurchasingPower =
+    getTotalPurchasingPower(activePlayer, turn) + potentialExchangeCoinGain;
   const canAffordAnyDevelopment = getAvailableDevelopments(
     activePlayer,
     game.settings,
-  ).some((development) =>
-    canAffordDevelopment(activePlayer, turn, development.id, game.settings),
-  );
+  ).some((development) => potentialPurchasingPower >= development.cost);
   if (canAffordAnyDevelopment) {
     return GamePhase.Development;
   }
 
-  const hasAnyUsableExchange = getAvailableExchangeEffects(
-    activePlayer,
-    game.settings,
-  ).some(
-    (exchange) =>
-      getExchangeResourceAmount(
-        activePlayer,
-        turn,
-        game.settings,
-        exchange.from,
-      ) > 0,
-  );
-  if (hasAnyUsableExchange) {
+  if (potentialExchangeCoinGain > 0) {
     return GamePhase.Development;
   }
 
@@ -933,6 +936,52 @@ const gameSlice = createSlice({
         )} coins, goods spent ${spentGoodsText}; total developments ${activePlayer.developments.length}.`,
       );
     },
+    skipDevelopment: (state) => {
+      if (!state.game) {
+        setError(state, 'NO_GAME', 'Start a game before skipping development.');
+        return;
+      }
+      if (state.game.state.phase !== GamePhase.Development) {
+        setError(
+          state,
+          'INVALID_PHASE',
+          'Development can only be skipped during the development phase.',
+        );
+        return;
+      }
+
+      const nextGame = applyMutationWithHistory(state.game, (game) => {
+        const activePlayer = game.state.players[game.state.activePlayerIndex];
+        const nextPhase = getPostDevelopmentCompletionPhase(
+          activePlayer,
+          game.settings,
+        );
+        if (nextPhase === game.state.phase) {
+          return game;
+        }
+
+        return {
+          ...game,
+          state: {
+            ...game.state,
+            phase: nextPhase,
+          },
+        };
+      });
+
+      if (!nextGame) {
+        setError(
+          state,
+          'INVALID_PHASE',
+          'Development can only be skipped during the development phase.',
+        );
+        return;
+      }
+
+      state.game = nextGame;
+      state.lastError = null;
+      appendLog(state, `Skipped development purchases -> phase ${nextGame.state.phase}.`);
+    },
     applyExchange: (
       state,
       action: PayloadAction<{ from: string; to: string; amount: number }>,
@@ -1132,6 +1181,7 @@ export const {
   buildCity,
   buildMonument,
   buyDevelopment,
+  skipDevelopment,
   applyExchange,
   addTestingResources,
   discardGoods,

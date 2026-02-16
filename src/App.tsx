@@ -5,6 +5,7 @@ import {
   buildCity,
   buildMonument,
   buyDevelopment,
+  skipDevelopment,
   discardGoods,
   endTurn,
   applyExchange,
@@ -73,9 +74,6 @@ function App() {
   const [playerCount, setPlayerCount] = useState<number>(MIN_PLAYERS);
   const [isDiceReferenceExpanded, setIsDiceReferenceExpanded] = useState(false);
   const [goodsToKeepByType, setGoodsToKeepByType] = useState<Record<string, number>>(
-    {},
-  );
-  const [exchangeAmountByKey, setExchangeAmountByKey] = useState<Record<string, number>>(
     {},
   );
   const [sectionPreferencesByPlayer, setSectionPreferencesByPlayer] = useState<
@@ -176,36 +174,12 @@ function App() {
     });
   }, [discardPanel.goodsOptions]);
 
-  useEffect(() => {
-    setExchangeAmountByKey((current) => {
-      const next: Record<string, number> = {};
-      exchangePanel.exchanges.forEach((exchange) => {
-        const existing = current[exchange.key];
-        const defaultValue = exchange.sourceAmount > 0 ? 1 : 0;
-        next[exchange.key] =
-          existing === undefined
-            ? defaultValue
-            : Math.max(0, Math.min(exchange.sourceAmount, Math.floor(existing)));
-      });
-      return next;
-    });
-  }, [exchangePanel.exchanges]);
-
   const updateGoodsToKeep = (goodsType: string, value: string) => {
     const parsed = Number(value);
     const sanitized = Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
     setGoodsToKeepByType((current) => ({
       ...current,
       [goodsType]: sanitized,
-    }));
-  };
-
-  const updateExchangeAmount = (exchangeKey: string, value: string) => {
-    const parsed = Number(value);
-    const sanitized = Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
-    setExchangeAmountByKey((current) => ({
-      ...current,
-      [exchangeKey]: sanitized,
     }));
   };
 
@@ -388,16 +362,6 @@ function App() {
             </p>
             <p>
               <strong>Phase:</strong> {turnStatus.phase ?? '-'}
-            </p>
-            <p>
-              <strong>Rolls Used:</strong> {dicePanel.rollsUsed}/
-              {dicePanel.maxRollsAllowed}
-            </p>
-            <p>
-              <strong>Game Over:</strong> {endgameStatus.isGameOver ? 'Yes' : 'No'}
-            </p>
-            <p>
-              <strong>Current Points:</strong> {turnStatus.activePlayerPoints}
             </p>
             <div className="actions">
               <button
@@ -701,7 +665,16 @@ function App() {
             </section>
 
             <section className="app-panel">
-              <h2>Development Panel</h2>
+              <div className="title-row">
+                <h2>Development Panel</h2>
+                <button
+                  type="button"
+                  onClick={() => dispatch(skipDevelopment())}
+                  disabled={!developmentPanel.canSkip}
+                >
+                  Skip Development
+                </button>
+              </div>
               <p>{developmentPanel.reason ?? 'Choose a development to purchase.'}</p>
               <p>Coins available: {effectiveCoinsAvailable}</p>
               <p className="inline-note">
@@ -709,63 +682,6 @@ function App() {
                 {selectedGoodsCoins > 0 ? ` + goods value ${selectedGoodsCoins}` : ''}
               </p>
               <p>Total purchasing power: {developmentPanel.totalPurchasingPower}</p>
-              <p className="choice-label">Exchange Effects</p>
-              <p>{exchangePanel.reason ?? 'Apply exchanges as needed.'}</p>
-              {exchangePanel.exchanges.length > 0 ? (
-                <div className="development-list">
-                  {exchangePanel.exchanges.map((exchange) => {
-                    const amount = exchangeAmountByKey[exchange.key] ?? 0;
-                    return (
-                      <article key={exchange.key} className="development-card">
-                        <p className="development-title">
-                          {exchange.developmentName}: {exchange.from}
-                          {' -> '}
-                          {exchange.to}
-                        </p>
-                        <p className="development-effect">
-                          Rate: 1 {exchange.from} = {exchange.rate} {exchange.to}
-                        </p>
-                        <p className="inline-note">Available: {exchange.sourceAmount}</p>
-                        <label
-                          className="choice-label"
-                          htmlFor={`exchange-amount-${exchange.key}`}
-                        >
-                          Amount to exchange
-                        </label>
-                        <input
-                          id={`exchange-amount-${exchange.key}`}
-                          type="number"
-                          min={0}
-                          max={exchange.sourceAmount}
-                          value={amount}
-                          onChange={(event) =>
-                            updateExchangeAmount(exchange.key, event.target.value)
-                          }
-                        />
-                        <button
-                          type="button"
-                          onClick={() =>
-                            dispatch(
-                              applyExchange({
-                                from: exchange.from,
-                                to: exchange.to,
-                                amount,
-                              }),
-                            )
-                          }
-                          disabled={
-                            !exchange.canApply ||
-                            amount <= 0 ||
-                            amount > exchange.sourceAmount
-                          }
-                        >
-                          Apply Exchange
-                        </button>
-                      </article>
-                    );
-                  })}
-                </div>
-              ) : null}
               <p className="choice-label">Goods To Spend</p>
               <p>
                 Selected:{' '}
@@ -786,6 +702,44 @@ function App() {
                   </button>
                 ))}
               </div>
+              {exchangePanel.exchanges.length > 0 ? (
+                <>
+                  <p className="choice-label">Exchange Effects</p>
+                  <p>{exchangePanel.reason ?? 'Apply exchanges as needed.'}</p>
+                  <div className="development-list">
+                    {exchangePanel.exchanges.map((exchange) => {
+                      return (
+                        <article key={exchange.key} className="development-card">
+                          <p className="development-title">
+                            {exchange.developmentName}: {exchange.from}
+                            {' -> '}
+                            {exchange.to}
+                          </p>
+                          <p className="development-effect">
+                            Rate: 1 {exchange.from} = {exchange.rate} {exchange.to}
+                          </p>
+                          <p className="inline-note">Available: {exchange.sourceAmount}</p>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              dispatch(
+                                applyExchange({
+                                  from: exchange.from,
+                                  to: exchange.to,
+                                  amount: 1,
+                                }),
+                              )
+                            }
+                            disabled={!exchange.canApply}
+                          >
+                            Exchange 1 {exchange.from}
+                          </button>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : null}
               <div className="collapsible-header">
                 <p className="choice-label">Development Options</p>
                 <button

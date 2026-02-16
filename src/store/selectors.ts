@@ -1,6 +1,7 @@
 import { createSelector } from '@reduxjs/toolkit';
 import { GamePhase } from '@/game';
 import { SpecialEffect } from '@/game/construction';
+import { GameSettings, PlayerState, TurnState } from '@/game/game';
 import {
   getBuildOptions,
   getCompletedMonumentCount,
@@ -33,6 +34,25 @@ import {
 import { RootState } from './store';
 
 const selectGameSlice = (state: RootState) => state.game;
+
+function getPotentialExchangeCoinGain(
+  activePlayer: PlayerState,
+  turn: TurnState,
+  settings: GameSettings,
+): number {
+  return getAvailableExchangeEffects(activePlayer, settings).reduce((sum, exchange) => {
+    if (exchange.to.toLowerCase() !== 'coins') {
+      return sum;
+    }
+    const sourceAmount = getExchangeResourceAmount(
+      activePlayer,
+      turn,
+      settings,
+      exchange.from,
+    );
+    return sourceAmount > 0 ? sum + sourceAmount * exchange.rate : sum;
+  }, 0);
+}
 
 function formatSpecialEffectText(effect: SpecialEffect | undefined): string | null {
   if (!effect) {
@@ -576,6 +596,8 @@ export const selectDevelopmentPanelModel = createSelector(selectGame, (game) => 
       isActionAllowed: false,
       reason: 'Start a game to purchase developments.',
       canPurchase: false,
+      canSkip: false,
+      skipReason: 'Start a game to skip development.',
       coinsAvailable: 0,
       totalPurchasingPower: 0,
       goodsSpendOptions: [] as Array<{
@@ -645,6 +667,7 @@ export const selectDevelopmentPanelModel = createSelector(selectGame, (game) => 
     };
   });
   const canPurchase = isActionAllowed && availableDevelopments.length > 0;
+  const canSkip = game.state.phase === GamePhase.Development;
   const reason = hasPurchasedDevelopment
     ? 'Only one development can be purchased each turn.'
     : !isActionAllowed
@@ -652,13 +675,20 @@ export const selectDevelopmentPanelModel = createSelector(selectGame, (game) => 
     : availableDevelopments.length === 0
       ? 'All developments purchased.'
       : null;
+  const skipReason = canSkip
+    ? null
+    : 'Development can only be skipped during the development phase.';
 
   return {
     isActionAllowed,
     reason,
     canPurchase,
+    canSkip,
+    skipReason,
     coinsAvailable: game.state.turn.turnProduction.coins,
-    totalPurchasingPower: getTotalPurchasingPower(activePlayer, game.state.turn),
+    totalPurchasingPower:
+      getTotalPurchasingPower(activePlayer, game.state.turn) +
+      getPotentialExchangeCoinGain(activePlayer, game.state.turn, game.settings),
     goodsSpendOptions,
     availableDevelopments,
     developmentCatalog,
