@@ -4,6 +4,7 @@ import { SpecialEffect } from '@/game/construction';
 import { GameSettings, PlayerState, TurnState } from '@/game/game';
 import {
   getBuildOptions,
+  getAvailableMonuments,
   getCompletedMonumentCount,
   getDevelopmentCount,
   getAvailableDevelopments,
@@ -24,6 +25,7 @@ import {
   getTriggeredDisaster,
   getExchangeResourceAmount,
   getMaxRollsAllowed,
+  getSingleDieRerollsAllowed,
   getRewrittenDisasterTargeting,
   getGoodsLimit,
   getTotalGoodsQuantity,
@@ -204,6 +206,8 @@ export const selectDicePanelModel = createSelector(selectGame, (game) => {
       rollsUsed: 0,
       maxRollsAllowed: 0,
       rerollsRemaining: 0,
+      singleDieRerollsRemaining: 0,
+      hasSingleDieRerollEffect: false,
       canKeepDie: false,
       canSelectProduction: false,
     };
@@ -221,6 +225,13 @@ export const selectDicePanelModel = createSelector(selectGame, (game) => {
     0,
     getMaxRollsAllowed(activePlayer, game.settings) - game.state.turn.rollsUsed,
   );
+  const singleDieRerollsRemaining = Math.max(
+    0,
+    getSingleDieRerollsAllowed(activePlayer, game.settings) -
+      game.state.turn.singleDieRerollsUsed,
+  );
+  const hasSingleDieRerollEffect =
+    getSingleDieRerollsAllowed(activePlayer, game.settings) > 0;
   const diceCards = game.state.turn.dice.map((die, index) => {
     const face = game.settings.diceFaces[die.diceFaceIndex];
     const optionCount = face.production.length;
@@ -241,6 +252,10 @@ export const selectDicePanelModel = createSelector(selectGame, (game) => {
       hasChoice: optionCount > 1,
       canKeep: canKeepDie && die.lockDecision !== 'skull',
       canChooseOption: canSelectProduction && optionCount > 1,
+      canSingleDieReroll:
+        game.state.phase === GamePhase.RollDice &&
+        singleDieRerollsRemaining > 0 &&
+        die.lockDecision !== 'skull',
     };
   });
   const referenceFaces = game.settings.diceFaces.map((face) => ({
@@ -256,6 +271,8 @@ export const selectDicePanelModel = createSelector(selectGame, (game) => {
     rollsUsed: game.state.turn.rollsUsed,
     maxRollsAllowed: getMaxRollsAllowed(activePlayer, game.settings),
     rerollsRemaining,
+    singleDieRerollsRemaining,
+    hasSingleDieRerollEffect,
     canKeepDie,
     canSelectProduction,
   };
@@ -558,7 +575,10 @@ export const selectBuildPanelModel = createSelector(selectGame, (game) => {
       canBuild: canBuild && cityTargets.some((target) => target.cityIndex === cityIndex),
     };
   });
-  const monumentCatalog = game.settings.monumentDefinitions.map((monument) => {
+  const monumentCatalog = getAvailableMonuments(
+    game.settings.players.length,
+    game.settings,
+  ).map((monument) => {
     const progress = activePlayer.monuments[monument.id];
     const workersCommitted = progress?.completed
       ? monument.requirements.workerCost

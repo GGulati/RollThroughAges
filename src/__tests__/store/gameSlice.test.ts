@@ -11,6 +11,7 @@ import {
   keepDie,
   redo,
   resolveProduction,
+  rerollSingleDie,
   rollDice,
   skipDevelopment,
   startGame,
@@ -586,5 +587,46 @@ describe('gameSlice', () => {
     expect(state.game!.state.turn.turnProduction.workers).toBe(workersBefore + 10);
     expect(state.game!.state.turn.turnProduction.coins).toBe(coinsBefore + 100);
     expect(state.game!.history.length).toBeGreaterThan(0);
+  });
+
+  it('allows one single-die reroll from Leadership without increasing full-roll limit', () => {
+    let state = reduce(undefined, startGame({ players: PLAYERS }));
+    const game = state.game!;
+    const activeIndex = game.state.activePlayerIndex;
+    state = {
+      ...state,
+      game: {
+        ...game,
+        state: {
+          ...game.state,
+          phase: GamePhase.RollDice,
+          players: game.state.players.map((player, index) =>
+            index === activeIndex
+              ? { ...player, developments: [...player.developments, 'leadership'] }
+              : player,
+          ),
+          turn: {
+            ...game.state.turn,
+            rollsUsed: game.settings.maxDiceRolls,
+            singleDieRerollsUsed: 0,
+            dice: [
+              { diceFaceIndex: 0, productionIndex: 0, lockDecision: 'unlocked' },
+              { diceFaceIndex: 0, productionIndex: 0, lockDecision: 'unlocked' },
+              { diceFaceIndex: 0, productionIndex: 0, lockDecision: 'unlocked' },
+            ],
+          },
+        },
+      },
+    };
+
+    state = reduce(state, rollDice());
+    expect(state.lastError?.code).toBe('ROLL_NOT_ALLOWED');
+
+    state = reduce(state, rerollSingleDie({ dieIndex: 0 }));
+    expect(state.lastError).toBeNull();
+    expect(state.game!.state.turn.singleDieRerollsUsed).toBe(1);
+
+    state = reduce(state, rerollSingleDie({ dieIndex: 1 }));
+    expect(state.lastError?.code).toBe('ROLL_NOT_ALLOWED');
   });
 });

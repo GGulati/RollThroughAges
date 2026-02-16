@@ -83,6 +83,7 @@ export type EndCondition = {
 export interface TurnState {
     activePlayerId: PlayerId;
     rollsUsed: number;
+    singleDieRerollsUsed: number;
     dice: DieState[];
     pendingChoices: number;
     foodShortage: number;

@@ -12,6 +12,7 @@ import {
   addTestingResources,
   keepDie,
   redo,
+  rerollSingleDie,
   rollDice,
   selectProduction,
   startGame,
@@ -431,7 +432,12 @@ function App() {
           <section className={getPanelClassName('production')}>
             <h2>Production</h2>
             <div className="title-actions">
-              <p>Rerolls available: {rerollEmoji}</p>
+              <p>
+                Rerolls available: {rerollEmoji}
+                {dicePanel.singleDieRerollsRemaining > 0
+                  ? ` • Single-die: ${dicePanel.singleDieRerollsRemaining}`
+                  : ''}
+              </p>
               <button
                 type="button"
                 onClick={() => dispatch(rollDice())}
@@ -441,7 +447,7 @@ function App() {
               </button>
             </div>
             <article className="outcome-card">
-              <p className="development-title">Turn Outcome ({diceOutcome.summary ?? 'Projected'})</p>
+              <p className="development-title">Total ({diceOutcome.summary ?? 'Projected'})</p>
               <p className="scoreboard-row">🍖 Food: +{diceOutcome.food.produced}</p>
               <p className="scoreboard-row">🪙 Coins: +{diceOutcome.coinsProduced}</p>
               <p className="scoreboard-row">👷 Workers: +{diceOutcome.workersProduced}</p>
@@ -497,6 +503,17 @@ function App() {
                   ) : null}
                   <p className="die-badge">{getLockBadge(die.lockDecision)}</p>
                   <div className="panel-actions">
+                    {dicePanel.hasSingleDieRerollEffect ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          dispatch(rerollSingleDie({ dieIndex: die.index }))
+                        }
+                        disabled={!die.canSingleDieReroll}
+                      >
+                        Reroll This Die
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => dispatch(keepDie({ dieIndex: die.index }))}

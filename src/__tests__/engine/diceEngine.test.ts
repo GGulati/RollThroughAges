@@ -12,6 +12,7 @@ import {
   countPendingChoices,
   canRoll,
   getMaxRollsAllowed,
+  getSingleDieRerollsAllowed,
   calculateDiceProduction,
   emptyProduction,
 } from '../../game/engine/diceEngine';
@@ -246,19 +247,10 @@ describe('diceEngine', () => {
       expect(canRoll(turn, settings)).toBe(false);
     });
 
-    it('allows one extra roll with Leadership', () => {
+    it('does not allow extra full rolls with Leadership', () => {
       const player = createTestPlayer('p1', settings, { developments: ['leadership'] });
       const turn = createTestTurn('p1', {
         rollsUsed: settings.maxDiceRolls,
-        dice: createTestDice([0, 1, 2]),
-      });
-      expect(canRoll(turn, settings, player)).toBe(true);
-    });
-
-    it('stops rolling after Leadership bonus is used', () => {
-      const player = createTestPlayer('p1', settings, { developments: ['leadership'] });
-      const turn = createTestTurn('p1', {
-        rollsUsed: settings.maxDiceRolls + 1,
         dice: createTestDice([0, 1, 2]),
       });
       expect(canRoll(turn, settings, player)).toBe(false);
@@ -271,9 +263,34 @@ describe('diceEngine', () => {
       expect(getMaxRollsAllowed(player, settings)).toBe(settings.maxDiceRolls);
     });
 
-    it('returns max rolls + 1 with Leadership', () => {
+    it('returns default max rolls with Leadership', () => {
       const player = createTestPlayer('p1', settings, { developments: ['leadership'] });
-      expect(getMaxRollsAllowed(player, settings)).toBe(settings.maxDiceRolls + 1);
+      expect(getMaxRollsAllowed(player, settings)).toBe(settings.maxDiceRolls);
+    });
+
+    it('is not affected by diceReroll count from special effects', () => {
+      const customSettings = createTestSettings(2);
+      customSettings.developmentDefinitions = customSettings.developmentDefinitions.map((dev) =>
+        dev.id === 'leadership'
+          ? { ...dev, specialEffect: { type: 'diceReroll' as const, count: 2 } }
+          : dev,
+      );
+      const player = createTestPlayer('p1', customSettings, {
+        developments: ['leadership'],
+      });
+      expect(getMaxRollsAllowed(player, customSettings)).toBe(customSettings.maxDiceRolls);
+    });
+  });
+
+  describe('getSingleDieRerollsAllowed', () => {
+    it('returns 0 without Leadership', () => {
+      const player = createTestPlayer('p1', settings);
+      expect(getSingleDieRerollsAllowed(player, settings)).toBe(0);
+    });
+
+    it('returns 1 with Leadership', () => {
+      const player = createTestPlayer('p1', settings, { developments: ['leadership'] });
+      expect(getSingleDieRerollsAllowed(player, settings)).toBe(1);
     });
 
     it('uses diceReroll count from special effects (data-driven)', () => {
@@ -286,9 +303,7 @@ describe('diceEngine', () => {
       const player = createTestPlayer('p1', customSettings, {
         developments: ['leadership'],
       });
-      expect(getMaxRollsAllowed(player, customSettings)).toBe(
-        customSettings.maxDiceRolls + 2,
-      );
+      expect(getSingleDieRerollsAllowed(player, customSettings)).toBe(2);
     });
   });
 

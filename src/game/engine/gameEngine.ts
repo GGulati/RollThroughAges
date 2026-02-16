@@ -16,12 +16,14 @@ import {
 import {
   createInitialDice,
   rollUnlockedDice,
+  rerollSingleDie,
   getDiceCount,
   canRoll,
   countPendingChoices,
   emptyProduction,
   areAllDiceLocked,
   getMaxRollsAllowed,
+  getSingleDieRerollsAllowed,
 } from './diceEngine';
 import { hasGoodsOverflow, validateKeepGoods, applyKeepGoods } from './goodsEngine';
 import { GoodsTrack } from '../goods';
@@ -99,6 +101,7 @@ export function createInitialTurn(
     activePlayerId: playerId,
     // First roll is automatic at turn start.
     rollsUsed: 1,
+    singleDieRerollsUsed: 0,
     dice: createInitialDice(diceCount, settings),
     pendingChoices: 0,
     foodShortage: 0,
@@ -373,6 +376,46 @@ export function performRoll(game: GameState): GameState {
       ...state,
       turn: newTurn,
       phase: newPhase,
+    },
+  };
+}
+
+/**
+ * Perform a single-die reroll action (Leadership-style effect).
+ */
+export function performSingleDieReroll(
+  game: GameState,
+  dieIndex: number
+): GameState {
+  const { state, settings } = game;
+  const activePlayer = state.players[state.activePlayerIndex];
+  const rerollsAllowed = getSingleDieRerollsAllowed(activePlayer, settings);
+  if (state.phase !== GamePhase.RollDice) {
+    return game;
+  }
+  if (
+    dieIndex < 0 ||
+    dieIndex >= state.turn.dice.length ||
+    state.turn.singleDieRerollsUsed >= rerollsAllowed
+  ) {
+    return game;
+  }
+
+  const targetDie = state.turn.dice[dieIndex];
+  if (!targetDie || targetDie.lockDecision === 'skull') {
+    return game;
+  }
+
+  const newDice = rerollSingleDie(state.turn.dice, dieIndex, settings);
+  return {
+    ...game,
+    state: {
+      ...state,
+      turn: {
+        ...state.turn,
+        dice: newDice,
+        singleDieRerollsUsed: state.turn.singleDieRerollsUsed + 1,
+      },
     },
   };
 }

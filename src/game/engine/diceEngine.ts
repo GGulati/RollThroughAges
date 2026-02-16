@@ -163,13 +163,39 @@ export function canRoll(
 }
 
 /**
+ * Re-roll a specific die (used by single-die reroll effects such as Leadership).
+ */
+export function rerollSingleDie(
+  dice: DieState[],
+  dieIndex: number,
+  settings: GameSettings
+): DieState[] {
+  return dice.map((die, idx) => {
+    if (idx !== dieIndex || die.lockDecision === 'skull') {
+      return die;
+    }
+    return createDie(settings);
+  });
+}
+
+/**
  * Get max roll count for this turn, including Leadership bonus.
  */
 export function getMaxRollsAllowed(
+  _player: PlayerState | undefined,
+  settings: GameSettings
+): number {
+  return settings.maxDiceRolls;
+}
+
+/**
+ * Get available single-die rerolls from owned diceReroll effects.
+ */
+export function getSingleDieRerollsAllowed(
   player: PlayerState | undefined,
   settings: GameSettings
 ): number {
-  return settings.maxDiceRolls + getDiceRerollBonus(player, settings);
+  return getDiceRerollBonus(player, settings);
 }
 
 /**

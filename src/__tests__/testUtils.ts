@@ -61,6 +61,7 @@ export function createTestTurn(
   return {
     activePlayerId: playerId,
     rollsUsed: 0,
+    singleDieRerollsUsed: 0,
     dice: [],
     pendingChoices: 0,
     foodShortage: 0,

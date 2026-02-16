@@ -17,11 +17,13 @@ import {
   findGoodsTypeByName,
   getExchangeResourceAmount,
   getMaxRollsAllowed,
+  getSingleDieRerollsAllowed,
   getAvailableDevelopments,
   getTotalPurchasingPower,
   keepDie as keepDieEngine,
   performRoll,
   purchaseDevelopment,
+  performSingleDieReroll as performSingleDieRerollEngine,
   redo as redoEngine,
   resolveDiscardGoods,
   resolveProduction as resolveProductionEngine,
@@ -312,6 +314,64 @@ const gameSlice = createSlice({
           afterSnapshot.players[afterSnapshot.activePlayerIndex],
           resolvedGame.settings,
         )}) -> phase ${afterSnapshot.phase}.`,
+      );
+    },
+    rerollSingleDie: (state, action: PayloadAction<{ dieIndex: number }>) => {
+      if (!state.game) {
+        setError(state, 'NO_GAME', 'Start a game before rerolling a die.');
+        return;
+      }
+      if (state.game.state.phase !== GamePhase.RollDice) {
+        setError(
+          state,
+          'INVALID_PHASE',
+          'Single-die rerolls are only available during the roll phase.',
+        );
+        return;
+      }
+
+      const activePlayer = state.game.state.players[state.game.state.activePlayerIndex];
+      const rerollsAllowed = getSingleDieRerollsAllowed(activePlayer, state.game.settings);
+      if (state.game.state.turn.singleDieRerollsUsed >= rerollsAllowed) {
+        setError(
+          state,
+          'ROLL_NOT_ALLOWED',
+          'No single-die rerolls are available right now.',
+        );
+        return;
+      }
+      const die = state.game.state.turn.dice[action.payload.dieIndex];
+      if (!die || die.lockDecision === 'skull') {
+        setError(
+          state,
+          'INVALID_DIE_INDEX',
+          'That die cannot be rerolled.',
+        );
+        return;
+      }
+
+      // Random outcomes are intentionally non-undoable.
+      const nextGame = applyMutationWithoutHistory(state.game, (game) =>
+        performSingleDieRerollEngine(game, action.payload.dieIndex),
+      );
+      if (!nextGame) {
+        setError(
+          state,
+          'ROLL_NOT_ALLOWED',
+          'No single-die rerolls are available right now.',
+        );
+        return;
+      }
+
+      state.game = nextGame;
+      state.lastError = null;
+      const remaining = Math.max(
+        0,
+        rerollsAllowed - nextGame.state.turn.singleDieRerollsUsed,
+      );
+      appendLog(
+        state,
+        `Single-die reroll on die ${action.payload.dieIndex + 1} applied; ${remaining} remaining.`,
       );
     },
     endTurn: (state) => {
@@ -1187,6 +1247,7 @@ const gameSlice = createSlice({
 export const {
   startGame,
   rollDice,
+  rerollSingleDie,
   endTurn,
   keepDie,
   selectProduction,

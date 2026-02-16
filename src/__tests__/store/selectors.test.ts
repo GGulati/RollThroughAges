@@ -191,6 +191,16 @@ describe('store selectors', () => {
     randomSpy.mockRestore();
   });
 
+  it('filters monument catalog by minimum player count', () => {
+    const store = createTestStore();
+    store.dispatch(startGame({ players: PLAYERS })); // 2 players
+
+    const buildPanel = selectBuildPanelModel(store.getState());
+    const monumentIds = buildPanel.monumentCatalog.map((entry) => entry.monumentId);
+    expect(monumentIds).not.toContain('greatPyramid'); // min 3 players
+    expect(monumentIds).not.toContain('hangingGardens'); // min 4 players
+  });
+
   it('updates stored goods summary after resolving goods production', () => {
     const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.01); // 1 Good
     const store = createTestStore();
