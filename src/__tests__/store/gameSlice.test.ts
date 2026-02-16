@@ -602,6 +602,89 @@ describe('gameSlice', () => {
     expect(state.lastError).toBeNull();
     expect(state.game!.state.turn.foodShortage).toBe(1);
     expect(state.game!.state.players[activeIndex].disasterPenalties).toBeGreaterThan(0);
+    expect(
+      state.actionLog.some((line) => line.includes('Food shortage: -1 VP (1 unfed cities).')),
+    ).toBe(true);
+  });
+
+  it('logs applied disaster effects during production resolution', () => {
+    let state = reduce(undefined, startGame({ players: PLAYERS }));
+    const game = state.game!;
+    const activeIndex = game.state.activePlayerIndex;
+    const droughtDice: DieState[] = [
+      { diceFaceIndex: 1, productionIndex: 0, lockDecision: 'kept' }, // 1 skull
+      { diceFaceIndex: 1, productionIndex: 0, lockDecision: 'kept' }, // 1 skull
+      { diceFaceIndex: 0, productionIndex: 0, lockDecision: 'kept' }, // 0 skull
+    ];
+    state = {
+      ...state,
+      game: {
+        ...game,
+        state: {
+          ...game.state,
+          phase: GamePhase.ResolveProduction,
+          players: game.state.players.map((player, index) =>
+            index === activeIndex ? { ...player, food: 10 } : player,
+          ),
+          turn: {
+            ...game.state.turn,
+            dice: droughtDice,
+            pendingChoices: 0,
+          },
+        },
+      },
+    };
+
+    state = reduce(state, resolveProduction());
+
+    expect(state.lastError).toBeNull();
+    expect(
+      state.actionLog.some((line) => line.includes('Drought affected Player 1: -2 VP.')),
+    ).toBe(true);
+  });
+
+  it('logs ignored disasters when immunity applies', () => {
+    let state = reduce(undefined, startGame({ players: PLAYERS }));
+    const game = state.game!;
+    const activeIndex = game.state.activePlayerIndex;
+    const droughtDice: DieState[] = [
+      { diceFaceIndex: 1, productionIndex: 0, lockDecision: 'kept' }, // 1 skull
+      { diceFaceIndex: 1, productionIndex: 0, lockDecision: 'kept' }, // 1 skull
+      { diceFaceIndex: 0, productionIndex: 0, lockDecision: 'kept' }, // 0 skull
+    ];
+    state = {
+      ...state,
+      game: {
+        ...game,
+        state: {
+          ...game.state,
+          phase: GamePhase.ResolveProduction,
+          players: game.state.players.map((player, index) =>
+            index === activeIndex
+              ? {
+                  ...player,
+                  food: 10,
+                  developments: [...player.developments, 'irrigation'],
+                }
+              : player,
+          ),
+          turn: {
+            ...game.state.turn,
+            dice: droughtDice,
+            pendingChoices: 0,
+          },
+        },
+      },
+    };
+
+    state = reduce(state, resolveProduction());
+
+    expect(state.lastError).toBeNull();
+    expect(
+      state.actionLog.some((line) =>
+        line.includes('Drought ignored for Player 1 (Irrigation).'),
+      ),
+    ).toBe(true);
   });
 
   it('adds testing workers and coins to turn production', () => {

@@ -6,6 +6,7 @@ import {
   allocateWorkersToCity,
   allocateWorkersToMonument,
   calculateGoodsOverflow,
+  calculateGoodsValue,
   exchangeResources as exchangeResourcesEngine,
   getCityWorkerCost,
   getBuildOptions,
@@ -19,9 +20,13 @@ import {
   endTurn as endTurnEngine,
   findGoodsTypeByName,
   getExchangeResourceAmount,
+  getAffectedPlayerIndices,
   getMaxRollsAllowed,
+  getRewrittenDisasterTargeting,
   getSingleDieRerollsAllowed,
+  getTriggeredDisaster,
   getAvailableDevelopments,
+  hasDisasterImmunity,
   keepDie as keepDieEngine,
   performRoll,
   purchaseDevelopment,
@@ -32,7 +37,7 @@ import {
   selectProduction as selectProductionEngine,
   undo as undoEngine,
 } from '@/game/engine';
-import { GameState, GameStateSnapshot } from '@/game';
+import { GameSettings, GameState, GameStateSnapshot, PlayerState } from '@/game';
 import { GameActionErrorCode, GameSliceState } from './gameState';
 
 const MAX_HISTORY_ENTRIES = 20;
@@ -88,6 +93,44 @@ function getTotalGoods(player: GameStateSnapshot['players'][number]): number {
     total += quantity;
   }
   return total;
+}
+
+function getDisasterImmunitySource(
+  player: PlayerState,
+  disasterId: string,
+  settings: GameSettings,
+): string | null {
+  const immunityDevelopment = settings.developmentDefinitions.find(
+    (development) =>
+      player.developments.includes(development.id) &&
+      development.specialEffect.type === 'disasterImmunity' &&
+      development.specialEffect.disasterId === disasterId,
+  );
+  if (immunityDevelopment) {
+    return immunityDevelopment.name;
+  }
+
+  const immunityMonument = settings.monumentDefinitions.find(
+    (monument) =>
+      monument.specialEffect?.type === 'disasterImmunity' &&
+      monument.specialEffect.disasterId === disasterId &&
+      Boolean(player.monuments[monument.id]?.completed),
+  );
+  return immunityMonument?.requirements.name ?? null;
+}
+
+function getDisasterRewriteSource(
+  player: PlayerState,
+  disasterId: string,
+  settings: GameSettings,
+): string | null {
+  const rewriteDevelopment = settings.developmentDefinitions.find(
+    (development) =>
+      player.developments.includes(development.id) &&
+      development.specialEffect.type === 'rewriteDisasterTargeting' &&
+      development.specialEffect.disasterId === disasterId,
+  );
+  return rewriteDevelopment?.name ?? null;
 }
 
 function cloneSnapshot(snapshot: GameStateSnapshot): GameStateSnapshot {
@@ -580,6 +623,10 @@ const gameSlice = createSlice({
         return;
       }
 
+      const beforeGame = state.game;
+      const beforeSnapshot = beforeGame.state;
+      const beforePlayers = beforeSnapshot.players;
+      const activePlayerIndex = beforeSnapshot.activePlayerIndex;
       const nextGame = applyMutationWithHistory(state.game, (game) =>
         autoAdvanceForcedPhases(resolveProductionPhase(game)),
       );
@@ -601,6 +648,104 @@ const gameSlice = createSlice({
           nextGame.state.turn.turnProduction,
         )}, food shortage ${nextGame.state.turn.foodShortage}) -> phase ${nextGame.state.phase}.`,
       );
+
+      if (nextGame.state.turn.foodShortage > 0) {
+        appendLog(
+          state,
+          `Food shortage: -${nextGame.state.turn.foodShortage} VP (${nextGame.state.turn.foodShortage} unfed cities).`,
+        );
+      }
+
+      const skullCount = nextGame.state.turn.turnProduction.skulls;
+      const triggeredDisaster = getTriggeredDisaster(skullCount, nextGame.settings);
+      if (!triggeredDisaster) {
+        return;
+      }
+
+      const activePlayerBefore = beforePlayers[activePlayerIndex];
+      const rewrittenTargeting = getRewrittenDisasterTargeting(
+        activePlayerBefore,
+        triggeredDisaster.id,
+        nextGame.settings,
+      );
+      const rewriteSource = rewrittenTargeting
+        ? getDisasterRewriteSource(
+            activePlayerBefore,
+            triggeredDisaster.id,
+            nextGame.settings,
+          )
+        : null;
+      if (rewrittenTargeting && rewrittenTargeting !== triggeredDisaster.affectedPlayers) {
+        appendLog(
+          state,
+          `${triggeredDisaster.name} targeting changed to ${rewrittenTargeting}${
+            rewriteSource ? ` (${rewriteSource})` : ''
+          }.`,
+        );
+      }
+
+      const affectedIndices = getAffectedPlayerIndices(
+        triggeredDisaster,
+        activePlayerIndex,
+        beforePlayers.length,
+        activePlayerBefore,
+        nextGame.settings,
+      );
+      if (affectedIndices.length === 0) {
+        appendLog(state, `${triggeredDisaster.name}: no affected players.`);
+        return;
+      }
+
+      for (const playerIndex of affectedIndices) {
+        const beforePlayer = beforePlayers[playerIndex];
+        const afterPlayer = nextGame.state.players[playerIndex];
+        const playerName = getPlayerName(nextGame, beforePlayer.id);
+        const penaltyDelta = Math.max(
+          0,
+          afterPlayer.disasterPenalties - beforePlayer.disasterPenalties,
+        );
+        const goodsLost = Math.max(0, getTotalGoods(beforePlayer) - getTotalGoods(afterPlayer));
+        const goodsValueLost = Math.max(
+          0,
+          calculateGoodsValue(beforePlayer.goods) - calculateGoodsValue(afterPlayer.goods),
+        );
+
+        if (penaltyDelta === 0 && goodsLost === 0) {
+          const hasImmunity = hasDisasterImmunity(
+            beforePlayer,
+            triggeredDisaster.id,
+            nextGame.settings,
+          );
+          if (hasImmunity) {
+            const immunitySource = getDisasterImmunitySource(
+              beforePlayer,
+              triggeredDisaster.id,
+              nextGame.settings,
+            );
+            appendLog(
+              state,
+              `${triggeredDisaster.name} ignored for ${playerName}${
+                immunitySource ? ` (${immunitySource})` : ''
+              }.`,
+            );
+          } else {
+            appendLog(state, `${triggeredDisaster.name} had no effect on ${playerName}.`);
+          }
+          continue;
+        }
+
+        const effectParts: string[] = [];
+        if (penaltyDelta > 0) {
+          effectParts.push(`-${penaltyDelta} VP`);
+        }
+        if (goodsLost > 0) {
+          effectParts.push(`goods cleared (${goodsLost} lost, ${goodsValueLost} coin value)`);
+        }
+        appendLog(
+          state,
+          `${triggeredDisaster.name} affected ${playerName}: ${effectParts.join(', ')}.`,
+        );
+      }
     },
     buildCity: (state, action: PayloadAction<{ cityIndex: number }>) => {
       if (!state.game) {
