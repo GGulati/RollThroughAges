@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { getHeadlessScoreSummary, runHeadlessBotMatch } from '@/game/bot';
+import { getHeadlessScoreSummary, runHeadlessBotMatch } from '@/game/automation';
 import { PlayerConfig } from '@/game';
 
 const BOT_PLAYERS: PlayerConfig[] = [

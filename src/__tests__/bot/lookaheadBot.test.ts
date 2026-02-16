@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createGame } from '@/game/engine';
 import { GamePhase } from '@/game';
+import { runBotTurn } from '@/game/automation';
 import {
   botActionKey,
   getLegalBotActions,
   getLookaheadInstrumentation,
   lookaheadStandardBot,
   resetLookaheadInstrumentation,
-  runBotTurn,
 } from '@/game/bot';
 
 const PLAYERS = [

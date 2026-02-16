@@ -1,8 +1,7 @@
 import {
-  BotCoreInstrumentation,
-  HeadlessBotInstrumentation,
   HeuristicConfig,
 } from '@/game/bot';
+import { BotCoreInstrumentation, HeadlessBotInstrumentation } from '@/game/automation';
 import { PlayerEndStateSummary } from '@/game/reporting';
 
 export type ControllerOption =

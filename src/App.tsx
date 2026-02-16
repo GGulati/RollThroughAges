@@ -2,19 +2,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GamePhase, PlayerConfig } from '@/game';
 import {
   BotAction,
-  getBotCoreInstrumentation,
-  getHeadlessBotInstrumentation,
   HeuristicConfig,
   HEURISTIC_STANDARD_CONFIG,
   LookaheadConfig,
   createHeuristicBot,
   createLookaheadBot,
-  getHeadlessScoreSummary,
   LOOKAHEAD_STANDARD_CONFIG,
+} from '@/game/bot';
+import {
+  getBotCoreInstrumentation,
+  getHeadlessBotInstrumentation,
+  getHeadlessScoreSummary,
   resetBotCoreInstrumentation,
   resetHeadlessBotInstrumentation,
   runHeadlessBotMatch,
-} from '@/game/bot';
+} from '@/game/automation';
 import { GameOverScreen } from '@/screens/GameOverScreen';
 import { GameplayScreen } from '@/screens/GameplayScreen';
 import { SetupScreen } from '@/screens/SetupScreen';

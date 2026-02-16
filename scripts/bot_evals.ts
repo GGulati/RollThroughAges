@@ -1,15 +1,17 @@
 import { resolve } from 'node:path';
 import { writeFileSync } from 'node:fs';
 import {
+  HEURISTIC_STANDARD_CONFIG,
+} from '../src/game/bot/index.ts';
+import {
   CORE_BOT_METRIC_KEYS,
   getBotCoreInstrumentation,
   getHeadlessBotInstrumentation,
   getHeadlessScoreSummary,
-  HEURISTIC_STANDARD_CONFIG,
   resetBotCoreInstrumentation,
   resetHeadlessBotInstrumentation,
   runHeadlessBotMatch,
-} from '../src/game/bot/index.ts';
+} from '../src/game/automation/index.ts';
 import { PlayerConfig } from '../src/game/index.ts';
 import {
   BotType,

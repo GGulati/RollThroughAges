@@ -1,11 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createGame } from '@/game/engine';
+import { getBotCoreInstrumentation, resetBotCoreInstrumentation, runBotTurn } from '@/game/automation';
 import {
   botActionKey,
-  getBotCoreInstrumentation,
   heuristicStandardBot,
-  resetBotCoreInstrumentation,
-  runBotTurn,
 } from '@/game/bot';
 
 const PLAYERS = [

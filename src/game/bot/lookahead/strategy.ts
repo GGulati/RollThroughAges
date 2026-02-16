@@ -10,7 +10,11 @@ import { applyBotAction } from '../actionAdapter';
 import { botActionKey } from '../actionKey';
 import { getLegalBotActions } from '../candidates';
 import { chooseHeuristicBotAction } from '../heuristic';
-import { BotCoreInstrumentation, getBotCoreInstrumentation, resetBotCoreInstrumentation } from '../runner';
+import {
+  BotCoreInstrumentation,
+  getBotCoreInstrumentation,
+  resetBotCoreInstrumentation,
+} from '../../automation/runner';
 import { BotAction, BotContext, BotStrategy } from '../types';
 import { LookaheadConfig, LOOKAHEAD_STANDARD_CONFIG } from './config';
 
@@ -373,7 +377,7 @@ function enumerateFaceCombinationsFromCandidates(candidateFacesByDie: number[][]
     return [[]];
   }
   const combinations: number[][] = [];
-  const current: number[] = new Array(candidateFacesByDie.length).fill(0);
+  const current = Array<number>(candidateFacesByDie.length).fill(0);
 
   const walk = (index: number) => {
     if (index >= candidateFacesByDie.length) {

@@ -2,7 +2,7 @@ import { performance } from 'node:perf_hooks';
 import {
   getHeadlessScoreSummary,
   runHeadlessBotMatch,
-} from '../src/game/bot/index.ts';
+} from '../src/game/automation/index.ts';
 import { PlayerConfig } from '../src/game/index.ts';
 import {
   average,

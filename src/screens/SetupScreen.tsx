@@ -1,4 +1,5 @@
-import { CORE_BOT_METRIC_KEYS, HeuristicConfig, LookaheadConfig } from '@/game/bot';
+import { HeuristicConfig, LookaheadConfig } from '@/game/bot';
+import { CORE_BOT_METRIC_KEYS } from '@/game/automation';
 import { PlayerEndStateCard } from '@/components/PlayerEndStateCard';
 import {
   BotSpeedOption,

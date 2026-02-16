@@ -4,10 +4,9 @@ import { performance } from 'node:perf_hooks';
 import { availableParallelism, cpus } from 'node:os';
 import Piscina from 'piscina';
 import {
-  getHeadlessScoreSummary,
   HEURISTIC_STANDARD_CONFIG,
-  runHeadlessBotMatch,
 } from '../src/game/bot/index.ts';
+import { getHeadlessScoreSummary, runHeadlessBotMatch } from '../src/game/automation/index.ts';
 import { PlayerConfig } from '../src/game/index.ts';
 import {
   average,

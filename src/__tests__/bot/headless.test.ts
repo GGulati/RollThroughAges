@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   getHeadlessBotInstrumentation,
   getHeadlessScoreSummary,
-  lookaheadStandardBot,
   resetHeadlessBotInstrumentation,
   runHeadlessBotMatch,
+} from '@/game/automation';
+import {
+  lookaheadStandardBot,
 } from '@/game/bot';
 
 describe('headless bot match', () => {

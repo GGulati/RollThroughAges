@@ -1,10 +1,10 @@
 import { isGameOver } from '../engine';
 import { autoAdvanceForcedPhases } from '../engine';
 import { GameState } from '../game';
-import { BotAction, BotContext, BotStrategy } from './types';
-import { getLegalBotActions } from './candidates';
-import { botActionKey } from './actionKey';
-import { applyBotAction } from './actionAdapter';
+import { BotAction, BotContext, BotStrategy } from '../bot/types';
+import { getLegalBotActions } from '../bot/candidates';
+import { botActionKey } from '../bot/actionKey';
+import { applyBotAction } from '../bot/actionAdapter';
 
 export const CORE_BOT_METRIC_KEYS = [
   'runBotStepCalls',

@@ -2,10 +2,10 @@ import { determineWinners, getPlayerEndStateSummaries, isGameOver } from '../eng
 import { GameState, PlayerConfig } from '../game';
 import { PlayerEndStateSummary } from '../reporting';
 import { createGame } from '../engine/gameEngine';
-import { heuristicStandardBot } from './heuristic';
-import { BotStrategy } from './types';
+import { heuristicStandardBot } from '../bot/heuristic';
+import { BotStrategy } from '../bot/types';
 import { runBotTurn } from './runner';
-import { botActionKey } from './actionKey';
+import { botActionKey } from '../bot/actionKey';
 
 export type HeadlessBotInstrumentation = {
   runHeadlessBotGameCalls: number;
