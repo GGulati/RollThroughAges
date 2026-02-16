@@ -119,6 +119,35 @@ function App() {
   const isMonumentsExpanded = isBuildStep || activePlayerPreferences.monuments;
   const isDevelopmentsExpanded =
     isDevelopmentStep || activePlayerPreferences.developments;
+  const cityCatalogSorted = [...buildPanel.cityCatalog].sort((a, b) => {
+    if (a.completed === b.completed) {
+      return 0;
+    }
+    return a.completed ? 1 : -1;
+  });
+  const monumentOrder = new Map(
+    buildPanel.monumentCatalog.map((monument, index) => [monument.monumentId, index]),
+  );
+  const monumentCatalogSorted = [...buildPanel.monumentCatalog].sort((a, b) => {
+    if (a.completed === b.completed) {
+      return (monumentOrder.get(a.monumentId) ?? 0) - (monumentOrder.get(b.monumentId) ?? 0);
+    }
+    return a.completed ? 1 : -1;
+  });
+  const developmentOrder = new Map(
+    developmentPanel.developmentCatalog.map((development, index) => [
+      development.id,
+      index,
+    ]),
+  );
+  const developmentCatalogSorted = [...developmentPanel.developmentCatalog].sort(
+    (a, b) => {
+      if (a.purchased === b.purchased) {
+        return (developmentOrder.get(a.id) ?? 0) - (developmentOrder.get(b.id) ?? 0);
+      }
+      return a.purchased ? 1 : -1;
+    },
+  );
   const topScore = turnStatus.playerPoints.reduce(
     (best, entry) => Math.max(best, entry.points),
     Number.NEGATIVE_INFINITY,
@@ -515,7 +544,7 @@ function App() {
                 </div>
                 {isCitiesExpanded ? (
                   <div className="development-list">
-                    {buildPanel.cityCatalog.map((city) => (
+                    {cityCatalogSorted.map((city) => (
                       <article key={`city-card-${city.cityIndex}`} className="development-card">
                         <p className="development-title">
                           {city.label} ({city.workersCommitted}/{city.workerCost})
@@ -526,19 +555,38 @@ function App() {
                             ? `Adds 1 die when built. Cost ${city.workerCost} workers.`
                             : 'Starting city.'}
                         </p>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            dispatch(buildCity({ cityIndex: city.cityIndex }))
-                          }
-                          disabled={!city.canBuild}
-                        >
-                          {city.completed ? 'Built' : 'Build City'}
-                        </button>
+                        {!city.completed ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              dispatch(buildCity({ cityIndex: city.cityIndex }))
+                            }
+                            disabled={!city.canBuild}
+                          >
+                            Build City
+                          </button>
+                        ) : null}
                       </article>
                     ))}
                   </div>
-                ) : null}
+                ) : (
+                  <div className="development-list">
+                    {buildPanel.cityCatalog
+                      .filter((city) => city.completed)
+                      .map((city) => (
+                        <article key={`city-collapsed-${city.cityIndex}`} className="development-card">
+                          <p className="development-title">
+                            {city.label} ({city.workersCommitted}/{city.workerCost}) • Built
+                          </p>
+                          <p className="development-effect">
+                            {city.workerCost > 0
+                              ? `Adds 1 die when built. Cost ${city.workerCost} workers.`
+                              : 'Starting city.'}
+                          </p>
+                        </article>
+                      ))}
+                  </div>
+                )}
                 <div className="collapsible-header">
                   <p className="choice-label">Monuments</p>
                   <button
@@ -551,7 +599,7 @@ function App() {
                 </div>
                 {isMonumentsExpanded ? (
                   <div className="development-list">
-                    {buildPanel.monumentCatalog.map((monument) => (
+                    {monumentCatalogSorted.map((monument) => (
                       <article
                         key={`monument-card-${monument.monumentId}`}
                         className="development-card"
@@ -563,19 +611,39 @@ function App() {
                         <p className="development-effect">
                           Points: {monument.pointsText} (first/later completion)
                         </p>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            dispatch(buildMonument({ monumentId: monument.monumentId }))
-                          }
-                          disabled={!monument.canBuild}
-                        >
-                          {monument.completed ? 'Completed' : 'Build Monument'}
-                        </button>
+                        {!monument.completed ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              dispatch(buildMonument({ monumentId: monument.monumentId }))
+                            }
+                            disabled={!monument.canBuild}
+                          >
+                            Build Monument
+                          </button>
+                        ) : null}
                       </article>
                     ))}
                   </div>
-                ) : null}
+                ) : (
+                  <div className="development-list">
+                    {buildPanel.monumentCatalog
+                      .filter((monument) => monument.completed)
+                      .map((monument) => (
+                        <article
+                          key={`monument-collapsed-${monument.monumentId}`}
+                          className="development-card"
+                        >
+                          <p className="development-title">
+                            {monument.label} ({monument.workersCommitted}/{monument.workerCost}) • Completed
+                          </p>
+                          <p className="development-effect">
+                            Points: {monument.pointsText} (first/later completion)
+                          </p>
+                        </article>
+                      ))}
+                  </div>
+                )}
               </div>
             </section>
 
@@ -677,7 +745,7 @@ function App() {
               </div>
               {isDevelopmentsExpanded ? (
                 <div className="development-list">
-                  {developmentPanel.developmentCatalog.map((development) => {
+                  {developmentCatalogSorted.map((development) => {
                     const canAffordWithSelection =
                       effectiveCoinsAvailable >= development.cost;
                     return (
@@ -687,29 +755,43 @@ function App() {
                         {development.purchased ? ' • Purchased' : ''}
                       </p>
                       <p className="development-effect">{development.effectDescription}</p>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          dispatch(
-                            buyDevelopment({
-                              developmentId: development.id,
-                              goodsTypeNames: selectedGoodsToSpend,
-                            }),
-                          )
-                        }
-                        disabled={
-                          !developmentPanel.isActionAllowed ||
-                          development.purchased ||
-                          !canAffordWithSelection
-                        }
-                      >
-                        {development.purchased ? 'Purchased' : 'Buy Development'}
-                      </button>
+                      {!development.purchased ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            dispatch(
+                              buyDevelopment({
+                                developmentId: development.id,
+                                goodsTypeNames: selectedGoodsToSpend,
+                              }),
+                            )
+                          }
+                          disabled={
+                            !developmentPanel.isActionAllowed ||
+                            !canAffordWithSelection
+                          }
+                        >
+                          Buy Development
+                        </button>
+                      ) : null}
                       </article>
                     );
                   })}
                 </div>
-              ) : null}
+              ) : (
+                <div className="development-list">
+                  {developmentPanel.developmentCatalog
+                    .filter((development) => development.purchased)
+                    .map((development) => (
+                      <article key={`development-collapsed-${development.id}`} className="development-card">
+                        <p className="development-title">
+                          {development.name} ({development.cost}🪙, +{development.points} VP) • Purchased
+                        </p>
+                        <p className="development-effect">{development.effectDescription}</p>
+                      </article>
+                    ))}
+                </div>
+              )}
             </section>
           </section>
 
