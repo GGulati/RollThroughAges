@@ -32,10 +32,16 @@ import {
 } from '@/store/selectors';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 
-const DEFAULT_PLAYERS = [
-  { id: 'p1', name: 'Player 1', controller: 'human' as const },
-  { id: 'p2', name: 'Player 2', controller: 'human' as const },
-];
+const MIN_PLAYERS = 2;
+const MAX_PLAYERS = 4;
+
+function createPlayers(count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `p${index + 1}`,
+    name: `Player ${index + 1}`,
+    controller: 'human' as const,
+  }));
+}
 
 type ConstructionSection = 'cities' | 'monuments' | 'developments';
 
@@ -63,6 +69,7 @@ function App() {
   const canUndo = useAppSelector(selectCanUndo);
   const canRedo = useAppSelector(selectCanRedo);
   const [selectedGoodsToSpend, setSelectedGoodsToSpend] = useState<string[]>([]);
+  const [playerCount, setPlayerCount] = useState<number>(MIN_PLAYERS);
   const [goodsToKeepByType, setGoodsToKeepByType] = useState<Record<string, number>>(
     {},
   );
@@ -182,12 +189,31 @@ function App() {
       <section className="app-layout">
         <div className="title-row">
           <h1>Roll Through the Ages</h1>
-          <button
-            type="button"
-            onClick={() => dispatch(startGame({ players: DEFAULT_PLAYERS }))}
-          >
-            {turnStatus.isGameActive ? 'Restart Game' : 'Start Game'}
-          </button>
+          <div className="title-actions">
+            <label className="player-count-control" htmlFor="player-count-select">
+              <span>Players</span>
+              <select
+                id="player-count-select"
+                value={playerCount}
+                onChange={(event) => setPlayerCount(Number(event.target.value))}
+              >
+                {Array.from(
+                  { length: MAX_PLAYERS - MIN_PLAYERS + 1 },
+                  (_, index) => MIN_PLAYERS + index,
+                ).map((count) => (
+                  <option key={count} value={count}>
+                    {count}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={() => dispatch(startGame({ players: createPlayers(playerCount) }))}
+            >
+              {turnStatus.isGameActive ? 'Restart Game' : 'Start Game'}
+            </button>
+          </div>
         </div>
         <div className="board-grid">
           <section className="app-panel" aria-live="polite">

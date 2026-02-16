@@ -35,6 +35,19 @@ body,
   margin: 0;
 }
 
+.title-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.player-count-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 .board-grid {
   display: grid;
   grid-template-columns: repeat(1, minmax(0, 1fr));
