@@ -227,7 +227,7 @@ export const selectDicePanelModel = createSelector(selectGame, (game) => {
     const selectedOption =
       die.productionIndex >= 0 && die.productionIndex < optionCount
         ? die.productionIndex
-        : 0;
+        : null;
 
     return {
       index,

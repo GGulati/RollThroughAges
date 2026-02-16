@@ -78,6 +78,14 @@ body,
   border-radius: 0.75rem;
   padding: 1rem;
   box-shadow: 0 8px 12px -4px rgb(0 0 0 / 0.12);
+  transition: box-shadow 140ms ease, background-color 140ms ease;
+}
+
+.app-panel.is-active-phase {
+  background: #f0f9ff;
+  box-shadow:
+    0 0 0 2px #0ea5e9,
+    0 10px 16px -6px rgb(14 165 233 / 0.3);
 }
 
 .app-panel h1 {

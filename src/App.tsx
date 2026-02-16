@@ -46,6 +46,7 @@ function createPlayers(count: number) {
 }
 
 type ConstructionSection = 'cities' | 'monuments' | 'developments';
+type PhasePanel = 'turnStatus' | 'production' | 'build' | 'development' | 'discard';
 
 type SectionPreferences = Record<ConstructionSection, boolean>;
 
@@ -156,6 +157,26 @@ function App() {
     topScore === Number.NEGATIVE_INFINITY
       ? []
       : turnStatus.playerPoints.filter((entry) => entry.points === topScore);
+  const activePhasePanel: PhasePanel | null = useMemo(() => {
+    switch (turnStatus.phase) {
+      case GamePhase.RollDice:
+      case GamePhase.DecideDice:
+      case GamePhase.ResolveProduction:
+        return 'production';
+      case GamePhase.Build:
+        return 'build';
+      case GamePhase.Development:
+        return 'development';
+      case GamePhase.DiscardGoods:
+        return 'discard';
+      case GamePhase.EndTurn:
+        return 'turnStatus';
+      default:
+        return null;
+    }
+  }, [turnStatus.phase]);
+  const getPanelClassName = (panel: PhasePanel) =>
+    activePhasePanel === panel ? 'app-panel is-active-phase' : 'app-panel';
 
   const toggleGoodsSpend = (goodsType: string) => {
     setSelectedGoodsToSpend((current) =>
@@ -332,7 +353,7 @@ function App() {
               </div>
             </section>
             <section className="app-panel">
-              <h2>Testing Panel</h2>
+              <h2>Testing</h2>
               <p className="inline-note">Testing-only shortcuts for quick e2e validation.</p>
               <div className="panel-actions">
                 <button
@@ -350,7 +371,7 @@ function App() {
               </div>
             </section>
             <div className="board-grid">
-          <section className="app-panel" aria-live="polite">
+          <section className={getPanelClassName('turnStatus')} aria-live="polite">
             <h2>Turn Status</h2>
             <p>
               <strong>Round:</strong>{' '}
@@ -407,8 +428,8 @@ function App() {
             ) : null}
           </section>
 
-          <section className="app-panel">
-            <h2>Dice Panel 🎲</h2>
+          <section className={getPanelClassName('production')}>
+            <h2>Production</h2>
             <p>Rerolls available: {rerollEmoji}</p>
             <p>Pending choices: {productionPanel.pendingProductionChoices}</p>
             <article className="outcome-card">
@@ -525,8 +546,8 @@ function App() {
           </section>
 
           <section className="panel-pair">
-            <section className="app-panel">
-              <h2>Build Panel</h2>
+            <section className={getPanelClassName('build')}>
+              <h2>Build</h2>
               <p>
                 {buildPanel.canBuild
                   ? 'Build targets available.'
@@ -664,9 +685,9 @@ function App() {
               </div>
             </section>
 
-            <section className="app-panel">
+            <section className={getPanelClassName('development')}>
               <div className="title-row">
-                <h2>Development Panel</h2>
+                <h2>Development</h2>
                 <button
                   type="button"
                   onClick={() => dispatch(skipDevelopment())}
@@ -803,8 +824,8 @@ function App() {
           </section>
 
           <section className="panel-pair">
-            <section className="app-panel">
-              <h2>Discard Panel</h2>
+            <section className={getPanelClassName('discard')}>
+              <h2>Discard</h2>
               <p>{discardPanel.reason ?? 'Choose goods to keep and apply discard.'}</p>
               <p>
                 Goods limit:{' '}
