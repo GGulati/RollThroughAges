@@ -1,5 +1,4 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { basename, resolve } from 'node:path';
 import {
   createHeuristicBot,
   getHeadlessScoreSummary,
@@ -8,72 +7,75 @@ import {
   runHeadlessBotMatch,
 } from '../src/game/bot/index.ts';
 import { PlayerConfig } from '../src/game/index.ts';
-
-type StrategyLabel = 'A' | 'B';
+import { formatNum, loadConfig, parseNumber } from './helpers.ts';
 
 type CliOptions = {
-  pairs: number;
+  rounds: number;
   players: number;
-  configAPath?: string;
-  configBPath?: string;
+  configPaths: string[];
   maxTurns: number;
   maxStepsPerTurn: number;
-  minWinRate: number;
-  minVpDelta: number;
 };
 
-type GameEvaluation = {
-  pairIndex: number;
-  gameIndex: number;
-  averageScoreA: number;
-  averageScoreB: number;
-  deltaAminusB: number;
-  winner: StrategyLabel | 'Tie';
-  completed: boolean;
-  turnsPlayed: number;
-  stallReason: string | null;
+type ConfigEntry = {
+  id: string;
+  label: string;
+  config: HeuristicConfig;
+  source: string;
 };
 
-type DeepPartial<T> = {
-  [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K];
+type ConfigStats = {
+  appearances: number;
+  totalVp: number;
+  topFinishes: number;
+  winShare: number;
+};
+
+type Standing = {
+  id: string;
+  label: string;
+  source: string;
+  appearances: number;
+  avgVp: number;
+  topFinishes: number;
+  topFinishRate: number;
+  winShareRate: number;
+};
+
+type StallRecord = {
+  round: number;
+  rotation: number;
+  reason: string;
+  seatConfigs: string[];
 };
 
 function printUsage(): void {
-  console.log('Usage: npx tsx scripts/eval-configs.ts [options]');
+  console.log('Usage: npx tsx scripts/bot_evals.ts [options]');
   console.log('');
   console.log('Options:');
-  console.log('  --pairs <n>               Number of A/B seat-swapped pairs (default: 10)');
-  console.log('  --players <n>             Player count, 2-4 (default: 2)');
-  console.log('  --config-a <path>         JSON file for Config A (optional)');
-  console.log('  --config-b <path>         JSON file for Config B (optional)');
+  console.log('  --configs <list>          Comma-separated config paths (up to 4)');
+  console.log('                            Example: --configs a.json,b.json,c.json,d.json');
+  console.log('                            Omit to use standard config for all players.');
+  console.log('  --players <n>             Player count, 2-4 (default: from --configs count, else 2)');
+  console.log('  --rounds <n>              Number of seat-rotation rounds (default: 10)');
   console.log('  --max-turns <n>           Max turns per game (default: 500)');
   console.log('  --max-steps-per-turn <n>  Max bot steps per turn (default: 300)');
-  console.log('  --min-win-rate <0..1>     Clear margin win-rate threshold (default: 0.6)');
-  console.log('  --min-vp-delta <n>        Clear margin VP delta threshold (default: 3)');
   console.log('  --help                    Show this help');
   console.log('');
-  console.log('Example:');
-  console.log(
-    '  npx tsx scripts/eval-configs.ts --pairs 10 --players 2 --config-a config/a.json --config-b config/b.json',
-  );
-}
-
-function parseNumber(value: string, name: string): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
-    throw new Error(`Invalid numeric value for ${name}: ${value}`);
-  }
-  return parsed;
+  console.log('Notes:');
+  console.log('  - Each round runs one game per seat rotation, so total games = rounds * players.');
+  console.log('  - If fewer configs than players are provided, configs repeat cyclically.');
 }
 
 function parseArgs(argv: string[]): CliOptions {
+  let parsedConfigPaths: string[] = [];
+  let playersFromArg: number | undefined;
   const options: CliOptions = {
-    pairs: 10,
+    rounds: 10,
     players: 2,
+    configPaths: [],
     maxTurns: 500,
     maxStepsPerTurn: 300,
-    minWinRate: 0.6,
-    minVpDelta: 3,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -89,20 +91,19 @@ function parseArgs(argv: string[]): CliOptions {
     }
 
     switch (arg) {
-      case '--pairs':
-        options.pairs = parseNumber(next, '--pairs');
+      case '--configs':
+        parsedConfigPaths = next
+          .split(',')
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 0);
         i += 1;
         break;
       case '--players':
-        options.players = parseNumber(next, '--players');
+        playersFromArg = parseNumber(next, '--players');
         i += 1;
         break;
-      case '--config-a':
-        options.configAPath = next;
-        i += 1;
-        break;
-      case '--config-b':
-        options.configBPath = next;
+      case '--rounds':
+        options.rounds = parseNumber(next, '--rounds');
         i += 1;
         break;
       case '--max-turns':
@@ -113,267 +114,226 @@ function parseArgs(argv: string[]): CliOptions {
         options.maxStepsPerTurn = parseNumber(next, '--max-steps-per-turn');
         i += 1;
         break;
-      case '--min-win-rate':
-        options.minWinRate = parseNumber(next, '--min-win-rate');
-        i += 1;
-        break;
-      case '--min-vp-delta':
-        options.minVpDelta = parseNumber(next, '--min-vp-delta');
-        i += 1;
-        break;
       default:
         throw new Error(`Unknown argument: ${arg}`);
     }
   }
 
-  if (!Number.isInteger(options.pairs) || options.pairs <= 0) {
-    throw new Error('--pairs must be a positive integer.');
+  if (parsedConfigPaths.length > 4) {
+    throw new Error('--configs supports at most 4 config paths.');
   }
-  if (
-    !Number.isInteger(options.players) ||
-    options.players < 2 ||
-    options.players > 4
-  ) {
+  options.configPaths = parsedConfigPaths;
+  options.players = playersFromArg ?? (parsedConfigPaths.length > 0 ? parsedConfigPaths.length : 2);
+
+  if (!Number.isInteger(options.players) || options.players < 2 || options.players > 4) {
     throw new Error('--players must be an integer from 2 to 4.');
+  }
+  if (!Number.isInteger(options.rounds) || options.rounds <= 0) {
+    throw new Error('--rounds must be a positive integer.');
   }
   if (!Number.isInteger(options.maxTurns) || options.maxTurns <= 0) {
     throw new Error('--max-turns must be a positive integer.');
   }
-  if (
-    !Number.isInteger(options.maxStepsPerTurn) ||
-    options.maxStepsPerTurn <= 0
-  ) {
+  if (!Number.isInteger(options.maxStepsPerTurn) || options.maxStepsPerTurn <= 0) {
     throw new Error('--max-steps-per-turn must be a positive integer.');
-  }
-  if (options.minWinRate <= 0 || options.minWinRate >= 1) {
-    throw new Error('--min-win-rate must be between 0 and 1 (exclusive).');
-  }
-  if (options.minVpDelta < 0) {
-    throw new Error('--min-vp-delta must be >= 0.');
   }
 
   return options;
 }
 
-function mergeConfig(
-  base: HeuristicConfig,
-  override: DeepPartial<HeuristicConfig>,
-): HeuristicConfig {
-  return {
-    productionWeights: {
-      ...base.productionWeights,
-      ...override.productionWeights,
-    },
-    developmentWeights: {
-      ...base.developmentWeights,
-      ...override.developmentWeights,
-    },
-    foodPolicyWeights: {
-      ...base.foodPolicyWeights,
-      ...override.foodPolicyWeights,
-    },
-    buildWeights: {
-      ...base.buildWeights,
-      ...override.buildWeights,
-    },
-    preferExchangeBeforeDevelopment:
-      override.preferExchangeBeforeDevelopment ??
-      base.preferExchangeBeforeDevelopment,
-  };
-}
-
-function loadConfig(path: string | undefined): HeuristicConfig {
-  if (!path) {
-    return HEURISTIC_STANDARD_CONFIG;
+function buildConfigPool(paths: string[]): ConfigEntry[] {
+  if (paths.length === 0) {
+    return [
+      {
+        id: 'standard',
+        label: 'standard',
+        source: 'HEURISTIC_STANDARD_CONFIG',
+        config: HEURISTIC_STANDARD_CONFIG,
+      },
+    ];
   }
-  const resolved = resolve(path);
-  const raw = readFileSync(resolved, 'utf8');
-  const parsed = JSON.parse(raw) as DeepPartial<HeuristicConfig>;
-  return mergeConfig(HEURISTIC_STANDARD_CONFIG, parsed);
+
+  return paths.map((path, index) => ({
+    id: `cfg${index + 1}`,
+    label: basename(path).replace(/\.json$/i, ''),
+    source: resolve(path),
+    config: loadConfig(path),
+  }));
 }
 
-function createPlayersForGame(
-  playerCount: number,
-  firstSeatStrategy: StrategyLabel,
+function createPlayers(
+  players: number,
+  configPool: ConfigEntry[],
+  rotation: number,
 ): {
-  players: PlayerConfig[];
-  strategyByPlayerId: Record<string, StrategyLabel>;
+  playerConfigs: PlayerConfig[];
+  configByPlayerId: Record<string, ConfigEntry>;
 } {
-  const players: PlayerConfig[] = [];
-  const strategyByPlayerId: Record<string, StrategyLabel> = {};
-  const other: StrategyLabel = firstSeatStrategy === 'A' ? 'B' : 'A';
+  const playerConfigs: PlayerConfig[] = [];
+  const configByPlayerId: Record<string, ConfigEntry> = {};
 
-  for (let i = 0; i < playerCount; i += 1) {
-    const strategy = i % 2 === 0 ? firstSeatStrategy : other;
-    const id = `${strategy.toLowerCase()}-${i + 1}`;
-    players.push({
-      id,
-      name: `${strategy} Bot ${i + 1}`,
+  for (let seat = 0; seat < players; seat += 1) {
+    const configIndex = (seat + rotation) % configPool.length;
+    const config = configPool[configIndex];
+    const playerId = `p${seat + 1}`;
+    playerConfigs.push({
+      id: playerId,
+      name: `${config.label} (P${seat + 1})`,
       controller: 'bot',
     });
-    strategyByPlayerId[id] = strategy;
+    configByPlayerId[playerId] = config;
   }
 
-  return { players, strategyByPlayerId };
-}
-
-function average(values: number[]): number {
-  if (values.length === 0) {
-    return 0;
-  }
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-function evaluateGame(
-  pairIndex: number,
-  gameIndex: number,
-  players: PlayerConfig[],
-  strategyByPlayerId: Record<string, StrategyLabel>,
-  configA: HeuristicConfig,
-  configB: HeuristicConfig,
-  options: CliOptions,
-): GameEvaluation {
-  const strategyByPlayer = Object.fromEntries(
-    players.map((player) => [
-      player.id,
-      strategyByPlayerId[player.id] === 'A'
-        ? createHeuristicBot(configA, 'heuristic-a')
-        : createHeuristicBot(configB, 'heuristic-b'),
-    ]),
-  );
-
-  const result = runHeadlessBotMatch(players, {
-    strategyByPlayerId: strategyByPlayer,
-    maxTurns: options.maxTurns,
-    maxStepsPerTurn: options.maxStepsPerTurn,
-  });
-  const summary = getHeadlessScoreSummary(result.finalGame);
-  const scoresA: number[] = [];
-  const scoresB: number[] = [];
-  for (const entry of summary) {
-    const strategy = strategyByPlayerId[entry.playerId];
-    if (strategy === 'A') {
-      scoresA.push(entry.total);
-    } else if (strategy === 'B') {
-      scoresB.push(entry.total);
-    }
-  }
-
-  const averageScoreA = average(scoresA);
-  const averageScoreB = average(scoresB);
-  const delta = averageScoreA - averageScoreB;
-  const winner: StrategyLabel | 'Tie' =
-    delta > 0 ? 'A' : delta < 0 ? 'B' : 'Tie';
-
-  return {
-    pairIndex,
-    gameIndex,
-    averageScoreA,
-    averageScoreB,
-    deltaAminusB: delta,
-    winner,
-    completed: result.completed,
-    turnsPlayed: result.turnsPlayed,
-    stallReason: result.stallReason,
-  };
-}
-
-function format(num: number): string {
-  return num.toFixed(2);
+  return { playerConfigs, configByPlayerId };
 }
 
 function main(): void {
   const options = parseArgs(process.argv.slice(2));
-  const configA = loadConfig(options.configAPath);
-  const configB = loadConfig(options.configBPath);
+  const configPool = buildConfigPool(options.configPaths);
 
-  const evaluations: GameEvaluation[] = [];
-  for (let pair = 1; pair <= options.pairs; pair += 1) {
-    const game1Setup = createPlayersForGame(options.players, 'A');
-    evaluations.push(
-      evaluateGame(
-        pair,
-        1,
-        game1Setup.players,
-        game1Setup.strategyByPlayerId,
-        configA,
-        configB,
-        options,
-      ),
-    );
-
-    const game2Setup = createPlayersForGame(options.players, 'B');
-    evaluations.push(
-      evaluateGame(
-        pair,
-        2,
-        game2Setup.players,
-        game2Setup.strategyByPlayerId,
-        configA,
-        configB,
-        options,
-      ),
-    );
+  const statsByConfigId = new Map<string, ConfigStats>();
+  for (const config of configPool) {
+    statsByConfigId.set(config.id, {
+      appearances: 0,
+      totalVp: 0,
+      topFinishes: 0,
+      winShare: 0,
+    });
   }
 
-  const winsA = evaluations.filter((evaluation) => evaluation.winner === 'A').length;
-  const winsB = evaluations.filter((evaluation) => evaluation.winner === 'B').length;
-  const ties = evaluations.filter((evaluation) => evaluation.winner === 'Tie').length;
-  const decisiveGames = winsA + winsB;
-  const winRateA = decisiveGames > 0 ? winsA / decisiveGames : 0;
-  const winRateB = decisiveGames > 0 ? winsB / decisiveGames : 0;
-  const meanDelta = average(evaluations.map((evaluation) => evaluation.deltaAminusB));
-  const avgScoreA = average(evaluations.map((evaluation) => evaluation.averageScoreA));
-  const avgScoreB = average(evaluations.map((evaluation) => evaluation.averageScoreB));
-  const avgTurns = average(evaluations.map((evaluation) => evaluation.turnsPlayed));
-  const stalled = evaluations.filter((evaluation) => !evaluation.completed).length;
+  let totalGames = 0;
+  let incompleteGames = 0;
+  const stalls: StallRecord[] = [];
 
-  const aHasClearMargin =
-    winRateA >= options.minWinRate && meanDelta >= options.minVpDelta;
-  const bHasClearMargin =
-    winRateB >= options.minWinRate && meanDelta <= -options.minVpDelta;
+  for (let round = 0; round < options.rounds; round += 1) {
+    for (let rotation = 0; rotation < options.players; rotation += 1) {
+      const { playerConfigs, configByPlayerId } = createPlayers(
+        options.players,
+        configPool,
+        rotation,
+      );
+      const strategyByPlayerId = Object.fromEntries(
+        playerConfigs.map((player) => [
+          player.id,
+          createHeuristicBot(configByPlayerId[player.id].config, configByPlayerId[player.id].id),
+        ]),
+      );
 
-  console.log('=== Heuristic Config Evaluation ===');
-  console.log(`Pairs: ${options.pairs} (total games: ${evaluations.length})`);
-  console.log(`Players per game: ${options.players}`);
-  console.log(
-    `Config A: ${options.configAPath ? resolve(options.configAPath) : 'HEURISTIC_STANDARD_CONFIG'}`,
-  );
-  console.log(
-    `Config B: ${options.configBPath ? resolve(options.configBPath) : 'HEURISTIC_STANDARD_CONFIG'}`,
-  );
-  console.log('');
-  console.log('Per-game result uses average VP of each strategy seats in that game.');
-  console.log('');
-  console.log(`Wins A: ${winsA}`);
-  console.log(`Wins B: ${winsB}`);
-  console.log(`Ties: ${ties}`);
-  console.log(`Win rate A (decisive games): ${(winRateA * 100).toFixed(1)}%`);
-  console.log(`Win rate B (decisive games): ${(winRateB * 100).toFixed(1)}%`);
-  console.log(`Average VP A: ${format(avgScoreA)}`);
-  console.log(`Average VP B: ${format(avgScoreB)}`);
-  console.log(`Mean VP delta (A - B): ${format(meanDelta)}`);
-  console.log(`Average turns: ${format(avgTurns)}`);
-  console.log(`Incomplete games: ${stalled}/${evaluations.length}`);
-  console.log('');
-  console.log(
-    `Clear-margin rule: win rate >= ${(options.minWinRate * 100).toFixed(
-      1,
-    )}% and |mean VP delta| >= ${format(options.minVpDelta)}`,
-  );
-  if (aHasClearMargin) {
-    console.log('Result: Config A wins by a clear margin.');
-  } else if (bHasClearMargin) {
-    console.log('Result: Config B wins by a clear margin.');
-  } else {
-    console.log('Result: No clear-margin winner yet.');
-  }
+      const result = runHeadlessBotMatch(playerConfigs, {
+        strategyByPlayerId,
+        maxTurns: options.maxTurns,
+        maxStepsPerTurn: options.maxStepsPerTurn,
+      });
+      totalGames += 1;
+      if (!result.completed) {
+        incompleteGames += 1;
+        stalls.push({
+          round: round + 1,
+          rotation: rotation + 1,
+          reason: result.stallReason ?? 'Unknown stall reason',
+          seatConfigs: playerConfigs.map((player) => configByPlayerId[player.id].label),
+        });
+      }
 
-  if (stalled > 0) {
-    const firstStall = evaluations.find((evaluation) => !evaluation.completed);
-    if (firstStall?.stallReason) {
-      console.log(`Sample stall reason: ${firstStall.stallReason}`);
+      const summary = getHeadlessScoreSummary(result.finalGame);
+      const topScore = Math.max(...summary.map((entry) => entry.total));
+      const topPlayers = summary.filter((entry) => entry.total === topScore);
+      const sharedWin = topPlayers.length > 0 ? 1 / topPlayers.length : 0;
+
+      for (const entry of summary) {
+        const config = configByPlayerId[entry.playerId];
+        const stats = statsByConfigId.get(config.id);
+        if (!stats) {
+          continue;
+        }
+        stats.appearances += 1;
+        stats.totalVp += entry.total;
+        if (entry.total === topScore) {
+          stats.topFinishes += 1;
+          stats.winShare += sharedWin;
+        }
+      }
     }
+  }
+
+  const standings: Standing[] = configPool.map((config) => {
+    const stats = statsByConfigId.get(config.id)!;
+    const avgVp = stats.appearances > 0 ? stats.totalVp / stats.appearances : 0;
+    const topFinishRate =
+      stats.appearances > 0 ? stats.topFinishes / stats.appearances : 0;
+    const winShareRate = stats.appearances > 0 ? stats.winShare / stats.appearances : 0;
+    return {
+      id: config.id,
+      label: config.label,
+      source: config.source,
+      appearances: stats.appearances,
+      avgVp,
+      topFinishes: stats.topFinishes,
+      topFinishRate,
+      winShareRate,
+    };
+  });
+
+  standings.sort(
+    (a, b) =>
+      b.avgVp - a.avgVp ||
+      b.winShareRate - a.winShareRate ||
+      b.topFinishRate - a.topFinishRate ||
+      a.label.localeCompare(b.label),
+  );
+
+  console.log('=== Bot Config Evaluation ===');
+  console.log(`Players: ${options.players}`);
+  console.log(`Configs in pool: ${configPool.length}`);
+  console.log(`Rounds: ${options.rounds}`);
+  console.log(`Seat rotations per round: ${options.players}`);
+  console.log(`Total games: ${totalGames}`);
+  console.log(`Incomplete games: ${incompleteGames}/${totalGames}`);
+  console.log('');
+  console.log('Standings');
+  console.log('Config                 Avg VP   Win Share   Top Finish Rate   Appearances');
+  console.log('--------------------------------------------------------------------------');
+  for (const standing of standings) {
+    console.log(
+      `${standing.label.padEnd(22)} ${formatNum(standing.avgVp).padStart(7)} ${formatNum(
+        standing.winShareRate * 100,
+      ).padStart(10)}% ${formatNum((standing.topFinishRate * 100)).padStart(15)}% ${String(
+        standing.appearances,
+      ).padStart(12)}`,
+    );
+  }
+  console.log('');
+  console.log('Config Sources');
+  for (const standing of standings) {
+    console.log(`- ${standing.label}: ${standing.source}`);
+  }
+
+  if (stalls.length > 0) {
+    const reasonCounts = new Map<string, number>();
+    for (const stall of stalls) {
+      reasonCounts.set(stall.reason, (reasonCounts.get(stall.reason) ?? 0) + 1);
+    }
+
+    console.log('');
+    console.log('Stall Reasons (All Occurrences)');
+    console.log('--------------------------------');
+    stalls.forEach((stall, index) => {
+      console.log(
+        `${index + 1}. round=${stall.round}, rotation=${stall.rotation}, seats=[${stall.seatConfigs.join(
+          ', ',
+        )}]`,
+      );
+      console.log(`   reason: ${stall.reason}`);
+    });
+
+    console.log('');
+    console.log('Stall Reason Summary');
+    console.log('--------------------');
+    Array.from(reasonCounts.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .forEach(([reason, count]) => {
+        console.log(`${count}x ${reason}`);
+      });
   }
 }
 
