@@ -34,9 +34,9 @@
 
 ### Stage 5 - Bot & Modes
 - **S5.1 Mode toggles**: Add menu to choose how many human vs bot players there are.
-- **S5.2 Bot platform**: Implement pluggable bot interfaces and shared legal-action generation.
-- **S5.3 Bot strategies**: Implement at least two deterministic approaches (for example heuristic and lookahead/risk-aware).
-- **S5.4 Bot tuning/tests**: Simulate batches to validate legality, determinism, and decision budgets.
+- **S5.2 Engine-first bot platform**: Implement pluggable bot interfaces and shared legal-action generation directly on engine/domain types.
+- **S5.3 Bot strategies**: Implement at least two deterministic approaches (for example heuristic and lookahead/risk-aware) that run headlessly.
+- **S5.4 UI adapter + bot tuning/tests**: Add thin Redux/UI orchestration for human-bot play; validate legality, determinism, and decision budgets.
 - **Detailed breakdown**: See `planning/stage5-implementation-breakdown.md`.
 
 ### Stage 6 - Polish & Delivery

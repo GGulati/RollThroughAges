@@ -3,11 +3,14 @@
 ## Scope
 Stage 5 adds game modes and bot opponents while preserving shared engine legality:
 - pass-and-play vs bot mode setup
+- engine-first bot core that can run fully headless (no Redux/UI dependency)
+- thin Redux adapter for human-bot UI orchestration
 - pluggable bot strategies (multiple decision approaches)
 - legality, determinism, and performance tests for repeatable behavior
 
 ## Baseline Assumptions (Locked)
 - Bot turns must use the same reducer/engine actions as human turns.
+- Bot core must depend on engine/domain only; Redux is adapter-only.
 - Bot behavior must be deterministic for a given state and config (no hidden randomness).
 - Undo/redo boundaries remain unchanged (random roll outcomes are still non-undoable).
 - No separate rule path for bots; bots only choose legal actions from existing options.
@@ -22,6 +25,9 @@ Stage 5 framework should support these strategy types without rewriting turn orc
 
 ## Shared Platform Changes Needed (Cross-Cutting)
 These are required regardless of chosen bot type.
+- **Engine action interface/adapter**:
+  - bot chooses engine-level actions (not Redux actions)
+  - shared action application path for headless and UI modes
 - **Bot strategy interface**:
   - single `chooseAction(context)` contract
   - stable input/output types for all phases
@@ -42,6 +48,9 @@ These are required regardless of chosen bot type.
 - **Execution safety wrapper**:
   - guards against invalid actions
   - fallback behavior when no legal action is returned
+- **Headless turn/game runner**:
+  - pure loop that runs bot-vs-bot games using engine state transitions only
+  - no `App.tsx`/Redux dependency
 - **Observability hooks**:
   - action-log reason tags (`why action chosen`)
   - optional debug trace mode for bot decisions
@@ -77,11 +86,12 @@ Allow starting games with a mix of human and bot controllers.
 
 ### S5.2 Deterministic Bot Policy (v1)
 **Goal**
-Implement bot platform interfaces and first strategy implementation.
+Implement engine-only bot platform interfaces and first strategy implementation.
 
 **Tasks**
 - Add `BotStrategy` interface and action-candidate generator.
 - Add bot decision context/evaluation helpers.
+- Add engine-level bot action adapter (`choose -> validate -> apply`) with no store/UI coupling.
 - Implement first strategy (`heuristic-standard`) with deterministic priorities by phase:
   - Dice: choose production options, lock strategy, reroll decisions.
   - Build: allocate workers to highest-priority legal target.
@@ -92,24 +102,24 @@ Implement bot platform interfaces and first strategy implementation.
 
 **Files**
 - `src/game/bot/` (new module folder)
-- `src/store/gameSlice.ts` (or thunks/listener wiring)
-- `src/store/selectors.ts` (bot-ready derived options, if needed)
+- `src/game/engine/` (shared action application helpers if needed)
 
 **Tests**
 - Unit tests for bot policy decisions per phase with fixture states.
-- Integration tests for one full bot turn across key phase paths.
+- Integration tests for one full bot turn via engine-only harness.
 
 **Acceptance**
 - Bot platform compiles with one concrete strategy.
 - Bot completes full turns without invalid-action errors.
 - Behavior is stable/repeatable for the same input state and profile config.
+- Bot can run headlessly without Redux/UI.
 
 ### S5.3 Turn Automation + UI Integration
 **Goal**
-Run bot turns automatically when the active player is a bot, while keeping UI understandable.
+Add thin Redux/UI orchestration for human-bot play while reusing engine bot core.
 
 **Tasks**
-- Trigger bot execution when turn changes to bot-controlled player.
+- Trigger bot execution when turn changes to bot-controlled player via adapter calls into engine bot core.
 - Add clear UX cues:
   - active player controller indicator
   - optional "Bot is taking turn..." status
@@ -120,7 +130,7 @@ Run bot turns automatically when the active player is a bot, while keeping UI un
 **Files**
 - `src/App.tsx`
 - `src/store/gameSlice.ts` (or middleware/listener)
-- `src/store/selectors.ts`
+- `src/store/selectors.ts` (UI status only)
 
 **Tests**
 - Integration test for human -> bot handoff and bot -> human handoff.
@@ -167,6 +177,9 @@ Add multiple bot types/profiles without compromising legal play.
 Prove Stage 5 composition works end-to-end with mixed controllers.
 
 **Tasks**
+- Add engine-only stage-gate tests:
+  - run at least one full bot-vs-bot game headlessly
+  - verify legal progression and deterministic outcomes for fixed profile
 - Add stage-gate integration tests:
   - start mixed human/bot game
   - complete at least one full human turn and one full bot turn
@@ -174,10 +187,12 @@ Prove Stage 5 composition works end-to-end with mixed controllers.
 - Add Playwright smoke scenario covering one observed bot turn in UI.
 
 **Files**
+- `src/__tests__/integration/stage5-headless-bot.integration.test.ts`
 - `src/__tests__/integration/stage5-bot-mode.integration.test.tsx`
 - `planning/e2e-testing.md` (reference scenario additions if needed)
 
 **Acceptance**
+- Headless bot execution works without Redux/UI wiring.
 - Mixed-mode gameplay works end-to-end.
 - Bot execution is legal, deterministic, and visible to players.
 
@@ -198,6 +213,8 @@ Run after each slice:
 
 ## Stage 5 Exit Criteria
 - Mixed human/bot setup is configurable and persisted in game start flow.
+- Engine-first bot core supports fully headless bot execution.
+- Redux/UI bot orchestration is a thin adapter over the same core.
 - Bot framework supports multiple strategy families through one interface.
 - At least two distinct bot approaches are implemented (for example heuristic + risk-aware, or heuristic + lookahead).
 - Deterministic bot profiles can complete full legal turns via existing reducer/engine actions.
