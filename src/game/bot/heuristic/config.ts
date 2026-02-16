@@ -41,11 +41,11 @@ export type HeuristicConfig = {
 
 export const HEURISTIC_STANDARD_CONFIG: HeuristicConfig = {
   productionWeights: {
-    workers: 4.5,
+    workers: 6.75,
     coins: 1,
-    food: 3.2,
-    goods: 6,
-    skulls: -10.8,
+    food: 5.12,
+    goods: 8.4,
+    skulls: -14.58,
   },
   developmentWeights: {
     points: 1,
@@ -53,21 +53,21 @@ export const HEURISTIC_STANDARD_CONFIG: HeuristicConfig = {
   },
   foodPolicyWeights: {
     foodDeficitPriorityPerUnit: 3,
-    starvationPenaltyPerUnit: 20,
+    starvationPenaltyPerUnit: 32,
     forceRerollOnFoodShortage: true,
   },
   buildWeights: {
     cityProgress: 2,
     cityWorkersUsed: 0.1,
     cityExtraDieFutureValue: 0.27,
-    cityDeferredCompletionValueScale: 0.32,
-    monumentPoints: 2.85,
+    cityDeferredCompletionValueScale: 0.51,
+    monumentPoints: 4.28,
     monumentPointEfficiency: 3,
-    monumentProgress: 1.5,
-    monumentWorkersUsed: 0.1,
-    monumentSpecialEffect: 1,
-    monumentDeferredCompletionValueScale: 0.75,
+    monumentProgress: 2.4,
+    monumentWorkersUsed: 0.18,
+    monumentSpecialEffect: 1.7,
+    monumentDeferredCompletionValueScale: 1.13,
     monumentDeferredMaxTurnsToComplete: 2,
   },
-  preferExchangeBeforeDevelopment: false,
+  preferExchangeBeforeDevelopment: true,
 };
