@@ -1,9 +1,11 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { GamePhase } from '@/game';
+import { GamePhase, PlayerConfig } from '@/game';
 import {
   BotAction,
+  HeuristicConfig,
+  HEURISTIC_STANDARD_CONFIG,
+  createHeuristicBot,
   getHeadlessScoreSummary,
-  heuristicStandardBot,
   runHeadlessBotMatch,
 } from '@/game/bot';
 import './index.css';
@@ -44,8 +46,9 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks';
 
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 4;
-type ControllerOption = 'human' | 'bot';
+type ControllerOption = 'human' | 'heuristicStandard' | 'heuristicCustom';
 type BotSpeedOption = 'normal' | 'fast' | 'veryFast';
+type BotProfile = 'heuristicStandard' | 'heuristicCustom';
 type HeadlessSimulationSummary = {
   completed: boolean;
   turnsPlayed: number;
@@ -61,14 +64,27 @@ const BOT_SPEED_DELAY_MS: Record<BotSpeedOption, number> = {
   veryFast: 250,
 };
 
+function cloneStandardHeuristicConfig(): HeuristicConfig {
+  return {
+    productionWeights: { ...HEURISTIC_STANDARD_CONFIG.productionWeights },
+    developmentWeights: { ...HEURISTIC_STANDARD_CONFIG.developmentWeights },
+    buildPriority: [...HEURISTIC_STANDARD_CONFIG.buildPriority],
+    preferExchangeBeforeDevelopment:
+      HEURISTIC_STANDARD_CONFIG.preferExchangeBeforeDevelopment,
+  };
+}
+
 function createPlayers(
   count: number,
   controllers: Record<number, ControllerOption>,
-) {
+): PlayerConfig[] {
   return Array.from({ length: count }, (_, index) => ({
     id: `p${index + 1}`,
     name: `Player ${index + 1}`,
-    controller: controllers[index + 1] ?? 'human',
+    controller:
+      controllers[index + 1] === 'human'
+        ? ('human' as const)
+        : ('bot' as const),
   }));
 }
 
@@ -109,7 +125,14 @@ function App() {
     3: 'human',
     4: 'human',
   });
+  const [activeGameBotProfilesByPlayerId, setActiveGameBotProfilesByPlayerId] =
+    useState<Record<string, BotProfile>>({});
   const [botSpeed, setBotSpeed] = useState<BotSpeedOption>('normal');
+  const [isHeuristicSettingsExpanded, setIsHeuristicSettingsExpanded] =
+    useState(false);
+  const [heuristicConfig, setHeuristicConfig] = useState<HeuristicConfig>(
+    cloneStandardHeuristicConfig(),
+  );
   const [isDiceReferenceExpanded, setIsDiceReferenceExpanded] = useState(false);
   const [goodsToKeepByType, setGoodsToKeepByType] = useState<Record<string, number>>(
     {},
@@ -123,6 +146,14 @@ function App() {
   const botTimerRef = useRef<number | null>(null);
   const [isBotResolving, setIsBotResolving] = useState(false);
   const botStepDelayMs = BOT_SPEED_DELAY_MS[botSpeed];
+  const configuredHeuristicBot = useMemo(
+    () => createHeuristicBot(heuristicConfig, 'heuristic-settings'),
+    [heuristicConfig],
+  );
+  const standardHeuristicBot = useMemo(
+    () => createHeuristicBot(HEURISTIC_STANDARD_CONFIG, 'heuristic-standard-fixed'),
+    [],
+  );
 
   const rerollEmoji =
     dicePanel.rerollsRemaining > 0
@@ -317,7 +348,13 @@ function App() {
 
     setIsBotResolving(true);
     botTimerRef.current = window.setTimeout(() => {
-      const action = heuristicStandardBot.chooseAction({ game });
+      const activePlayerId = game.state.turn.activePlayerId;
+      const profile = activeGameBotProfilesByPlayerId[activePlayerId];
+      const strategy =
+        profile === 'heuristicStandard'
+          ? standardHeuristicBot
+          : configuredHeuristicBot;
+      const action = strategy.chooseAction({ game });
       if (!action) {
         setIsBotResolving(false);
         return;
@@ -331,7 +368,15 @@ function App() {
         botTimerRef.current = null;
       }
     };
-  }, [botStepDelayMs, dispatchBotAction, game, isBotTurn]);
+  }, [
+    activeGameBotProfilesByPlayerId,
+    botStepDelayMs,
+    configuredHeuristicBot,
+    dispatchBotAction,
+    game,
+    isBotTurn,
+    standardHeuristicBot,
+  ]);
 
   const updateGoodsToKeep = (goodsType: string, value: string) => {
     const parsed = Number(value);
@@ -352,10 +397,74 @@ function App() {
     }));
   };
 
+  const getBotProfilesByPlayerId = (
+    players: ReturnType<typeof createPlayers>,
+    controllers: Record<number, ControllerOption>,
+  ): Record<string, BotProfile> => {
+    const profiles: Record<string, BotProfile> = {};
+    players.forEach((player, index) => {
+      const playerNumber = index + 1;
+      const selected = controllers[playerNumber] ?? 'human';
+      if (selected === 'heuristicStandard') {
+        profiles[player.id] = 'heuristicStandard';
+      } else if (selected === 'heuristicCustom') {
+        profiles[player.id] = 'heuristicCustom';
+      }
+    });
+    return profiles;
+  };
+
+  const updateProductionWeight = (
+    key: keyof HeuristicConfig['productionWeights'],
+    value: string,
+  ) => {
+    const parsed = Number(value);
+    const nextValue = Number.isFinite(parsed) ? parsed : 0;
+    setHeuristicConfig((current) => ({
+      ...current,
+      productionWeights: {
+        ...current.productionWeights,
+        [key]: nextValue,
+      },
+    }));
+  };
+
+  const updateDevelopmentWeight = (
+    key: keyof HeuristicConfig['developmentWeights'],
+    value: string,
+  ) => {
+    const parsed = Number(value);
+    const nextValue = Number.isFinite(parsed) ? parsed : 0;
+    setHeuristicConfig((current) => ({
+      ...current,
+      developmentWeights: {
+        ...current.developmentWeights,
+        [key]: nextValue,
+      },
+    }));
+  };
+
+  const updateBuildPriority = (first: 'city' | 'monument') => {
+    setHeuristicConfig((current) => ({
+      ...current,
+      buildPriority:
+        first === 'city' ? ['city', 'monument'] : ['monument', 'city'],
+    }));
+  };
+
   const runHeadlessSimulation = (
     players: ReturnType<typeof createPlayers>,
+    botProfilesByPlayerId: Record<string, BotProfile>,
   ) => {
-    const result = runHeadlessBotMatch(players);
+    const strategyByPlayerId = Object.fromEntries(
+      players.map((player) => [
+        player.id,
+        botProfilesByPlayerId[player.id] === 'heuristicStandard'
+          ? standardHeuristicBot
+          : configuredHeuristicBot,
+      ]),
+    );
+    const result = runHeadlessBotMatch(players, { strategyByPlayerId });
     const scores = getHeadlessScoreSummary(result.finalGame).sort(
       (a, b) => b.total - a.total,
     );
@@ -372,12 +481,17 @@ function App() {
 
   const startConfiguredGame = () => {
     const selectedPlayers = createPlayers(playerCount, playerControllers);
+    const botProfilesByPlayerId = getBotProfilesByPlayerId(
+      selectedPlayers,
+      playerControllers,
+    );
     const allBots = selectedPlayers.every((player) => player.controller === 'bot');
     if (allBots) {
-      runHeadlessSimulation(selectedPlayers);
+      runHeadlessSimulation(selectedPlayers, botProfilesByPlayerId);
       return;
     }
 
+    setActiveGameBotProfilesByPlayerId(botProfilesByPlayerId);
     dispatch(
       startGame({
         players: selectedPlayers,
@@ -393,7 +507,10 @@ function App() {
       3: 'human',
       4: 'human',
     });
+    setActiveGameBotProfilesByPlayerId({});
     setBotSpeed('normal');
+    setIsHeuristicSettingsExpanded(false);
+    setHeuristicConfig(cloneStandardHeuristicConfig());
     dispatch(returnToSetup());
   };
 
@@ -420,7 +537,8 @@ function App() {
               }
             >
               <option value="human">Human</option>
-              <option value="bot">Bot</option>
+              <option value="heuristicStandard">Heuristic Bot</option>
+              <option value="heuristicCustom">Heuristic Bot (Custom)</option>
             </select>
           </label>
         );
@@ -494,6 +612,149 @@ function App() {
                   <option value="veryFast">Very Fast (0.25s)</option>
                 </select>
               </label>
+              <article className="development-card">
+                <div className="collapsible-header">
+                  <p className="choice-label">Heuristic Bot</p>
+                  <button
+                    type="button"
+                    className="section-toggle"
+                    onClick={() =>
+                      setIsHeuristicSettingsExpanded((current) => !current)
+                    }
+                  >
+                    {isHeuristicSettingsExpanded ? 'Collapse' : 'Expand'}
+                  </button>
+                </div>
+                {isHeuristicSettingsExpanded ? (
+                  <div className="development-list">
+                    <p className="choice-label">Production Weights</p>
+                    <label className="player-count-control" htmlFor="heuristic-food">
+                      <span>Food</span>
+                      <input
+                        id="heuristic-food"
+                        type="number"
+                        step="0.1"
+                        value={heuristicConfig.productionWeights.food}
+                        onChange={(event) =>
+                          updateProductionWeight('food', event.target.value)
+                        }
+                      />
+                    </label>
+                    <label className="player-count-control" htmlFor="heuristic-workers">
+                      <span>Workers</span>
+                      <input
+                        id="heuristic-workers"
+                        type="number"
+                        step="0.1"
+                        value={heuristicConfig.productionWeights.workers}
+                        onChange={(event) =>
+                          updateProductionWeight('workers', event.target.value)
+                        }
+                      />
+                    </label>
+                    <label className="player-count-control" htmlFor="heuristic-coins">
+                      <span>Coins</span>
+                      <input
+                        id="heuristic-coins"
+                        type="number"
+                        step="0.1"
+                        value={heuristicConfig.productionWeights.coins}
+                        onChange={(event) =>
+                          updateProductionWeight('coins', event.target.value)
+                        }
+                      />
+                    </label>
+                    <label className="player-count-control" htmlFor="heuristic-goods">
+                      <span>Goods</span>
+                      <input
+                        id="heuristic-goods"
+                        type="number"
+                        step="0.1"
+                        value={heuristicConfig.productionWeights.goods}
+                        onChange={(event) =>
+                          updateProductionWeight('goods', event.target.value)
+                        }
+                      />
+                    </label>
+                    <label className="player-count-control" htmlFor="heuristic-skulls">
+                      <span>Skulls</span>
+                      <input
+                        id="heuristic-skulls"
+                        type="number"
+                        step="0.1"
+                        value={heuristicConfig.productionWeights.skulls}
+                        onChange={(event) =>
+                          updateProductionWeight('skulls', event.target.value)
+                        }
+                      />
+                    </label>
+                    <p className="choice-label">Development Weights</p>
+                    <label className="player-count-control" htmlFor="heuristic-dev-points">
+                      <span>Points</span>
+                      <input
+                        id="heuristic-dev-points"
+                        type="number"
+                        step="0.1"
+                        value={heuristicConfig.developmentWeights.points}
+                        onChange={(event) =>
+                          updateDevelopmentWeight('points', event.target.value)
+                        }
+                      />
+                    </label>
+                    <label className="player-count-control" htmlFor="heuristic-dev-cost">
+                      <span>Cost</span>
+                      <input
+                        id="heuristic-dev-cost"
+                        type="number"
+                        step="0.01"
+                        value={heuristicConfig.developmentWeights.cost}
+                        onChange={(event) =>
+                          updateDevelopmentWeight('cost', event.target.value)
+                        }
+                      />
+                    </label>
+                    <label className="player-count-control" htmlFor="heuristic-build-priority">
+                      <span>Build Priority</span>
+                      <select
+                        id="heuristic-build-priority"
+                        value={heuristicConfig.buildPriority[0]}
+                        onChange={(event) =>
+                          updateBuildPriority(event.target.value as 'city' | 'monument')
+                        }
+                      >
+                        <option value="city">City first</option>
+                        <option value="monument">Monument first</option>
+                      </select>
+                    </label>
+                    <label
+                      className="player-count-control"
+                      htmlFor="heuristic-exchange-first"
+                    >
+                      <span>Prefer Exchange First</span>
+                      <input
+                        id="heuristic-exchange-first"
+                        type="checkbox"
+                        checked={heuristicConfig.preferExchangeBeforeDevelopment}
+                        onChange={(event) =>
+                          setHeuristicConfig((current) => ({
+                            ...current,
+                            preferExchangeBeforeDevelopment: event.target.checked,
+                          }))
+                        }
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="start-game-button"
+                      onClick={() =>
+                        setHeuristicConfig(cloneStandardHeuristicConfig())
+                      }
+                    >
+                      Reset Heuristic Defaults
+                    </button>
+                  </div>
+                ) : null}
+              </article>
             </section>
             {headlessSimulations.length > 0 ? (
               <section className="app-panel setup-panel">
