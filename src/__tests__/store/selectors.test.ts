@@ -361,6 +361,21 @@ describe('store selectors', () => {
     randomSpy.mockRestore();
   });
 
+  it('marks the triggered disaster as salient for the current turn', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.17); // 2 goods + skull
+    const store = createTestStore();
+    store.dispatch(startGame({ players: PLAYERS }));
+    store.dispatch(keepDie({ dieIndex: 0 }));
+    store.dispatch(keepDie({ dieIndex: 1 }));
+    store.dispatch(keepDie({ dieIndex: 2 }));
+
+    const disasterPanel = selectDisasterPanelModel(store.getState());
+    const salient = disasterPanel.disasters.find((entry) => entry.isTriggered);
+    expect(salient?.id).toBe('pestilence');
+
+    randomSpy.mockRestore();
+  });
+
   it('exposes discard overflow context and blocks end-turn when overflow exists', () => {
     const store = createTestStore();
     store.dispatch(startGame({ players: PLAYERS }));

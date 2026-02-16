@@ -187,6 +187,12 @@ body,
   background: #fff7f7;
 }
 
+.salient-disaster {
+  border-color: #dc2626;
+  background: #fee2e2;
+  box-shadow: 0 0 0 2px rgb(220 38 38 / 0.2);
+}
+
 .development-title {
   font-weight: 700;
   margin-bottom: 0.25rem !important;

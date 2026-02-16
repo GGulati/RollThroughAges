@@ -8,6 +8,7 @@ import {
   calculateGoodsOverflow,
   canAffordDevelopment,
   exchangeResources as exchangeResourcesEngine,
+  getCityWorkerCost,
   getBuildOptions,
   getAvailableExchangeEffects,
   areAllDiceLocked,
@@ -16,6 +17,7 @@ import {
   endTurn as endTurnEngine,
   findGoodsTypeByName,
   getExchangeResourceAmount,
+  getMaxRollsAllowed,
   getAvailableDevelopments,
   keepDie as keepDieEngine,
   performRoll,
@@ -46,6 +48,32 @@ function setError(state: GameSliceState, code: GameActionErrorCode, message: str
 
 function appendLog(state: GameSliceState, message: string): void {
   state.actionLog = [...state.actionLog, message];
+}
+
+function getPlayerName(game: GameState, playerId: string): string {
+  return game.settings.players.find((player) => player.id === playerId)?.name ?? playerId;
+}
+
+function countUnlockedDice(snapshot: GameStateSnapshot): number {
+  return snapshot.turn.dice.filter((die) => die.lockDecision === 'unlocked').length;
+}
+
+function formatTurnLocation(snapshot: GameStateSnapshot, game: GameState): string {
+  return `R${snapshot.round} ${getPlayerName(game, snapshot.turn.activePlayerId)} (${snapshot.phase})`;
+}
+
+function formatProductionSummary(
+  production: GameStateSnapshot['turn']['turnProduction'],
+): string {
+  return `food +${production.food}, coins +${production.coins}, workers +${production.workers}, goods +${production.goods}, skulls ${production.skulls}`;
+}
+
+function getTotalGoods(player: GameStateSnapshot['players'][number]): number {
+  let total = 0;
+  for (const quantity of player.goods.values()) {
+    total += quantity;
+  }
+  return total;
 }
 
 function cloneSnapshot(snapshot: GameStateSnapshot): GameStateSnapshot {
@@ -234,7 +262,9 @@ const gameSlice = createSlice({
       state.lastError = null;
       state.actionLog = [
         ...state.actionLog,
-        `Game started with ${action.payload.players.length} players.`,
+        `Game started with ${action.payload.players.length} players: ${action.payload.players
+          .map((player) => player.name)
+          .join(', ')}.`,
       ];
     },
     rollDice: (state) => {
@@ -250,9 +280,18 @@ const gameSlice = createSlice({
         return;
       }
 
-      state.game = autoResolveProductionIfReady(nextGame);
+      const resolvedGame = autoResolveProductionIfReady(nextGame);
+      const beforeSnapshot = state.game.state;
+      const afterSnapshot = resolvedGame.state;
+      state.game = resolvedGame;
       state.lastError = null;
-      appendLog(state, 'Rolled unlocked dice.');
+      appendLog(
+        state,
+        `Rolled ${countUnlockedDice(beforeSnapshot)} unlocked dice (roll ${afterSnapshot.turn.rollsUsed}/${getMaxRollsAllowed(
+          afterSnapshot.players[afterSnapshot.activePlayerIndex],
+          resolvedGame.settings,
+        )}) -> phase ${afterSnapshot.phase}.`,
+      );
     },
     endTurn: (state) => {
       if (!state.game) {
@@ -277,9 +316,21 @@ const gameSlice = createSlice({
         return;
       }
 
+      const beforeSnapshot = state.game.state;
       state.game = applyMutationWithHistory(state.game, endTurnEngine);
       state.lastError = null;
-      appendLog(state, 'Ended turn.');
+      if (state.game) {
+        appendLog(
+          state,
+          `Ended turn: ${getPlayerName(
+            state.game,
+            beforeSnapshot.turn.activePlayerId,
+          )} -> ${getPlayerName(state.game, state.game.state.turn.activePlayerId)} (${formatTurnLocation(
+            state.game.state,
+            state.game,
+          )}).`,
+        );
+      }
     },
     discardGoods: (
       state,
@@ -321,6 +372,7 @@ const gameSlice = createSlice({
       }
 
       let failureMessage = 'Unable to apply goods discard selection.';
+      const beforeSnapshot = state.game.state;
       const nextGame = applyMutationWithHistory(state.game, (game) => {
         const player = game.state.players[game.state.activePlayerIndex];
         const goodsToKeep = new Map(
@@ -344,7 +396,15 @@ const gameSlice = createSlice({
 
       state.game = nextGame;
       state.lastError = null;
-      appendLog(state, 'Applied goods discard selection.');
+      const beforePlayer = beforeSnapshot.players[beforeSnapshot.activePlayerIndex];
+      const afterPlayer = nextGame.state.players[nextGame.state.activePlayerIndex];
+      const totalBefore = getTotalGoods(beforePlayer);
+      const totalAfter = getTotalGoods(afterPlayer);
+      const discarded = Math.max(0, totalBefore - totalAfter);
+      appendLog(
+        state,
+        `Applied discard: kept ${totalAfter}/${totalBefore} goods (discarded ${discarded}), phase ${nextGame.state.phase}.`,
+      );
     },
     keepDie: (state, action: PayloadAction<{ dieIndex: number }>) => {
       if (!state.game) {
@@ -363,6 +423,7 @@ const gameSlice = createSlice({
 
       const { dieIndex } = action.payload;
       const die = state.game.state.turn.dice[dieIndex];
+      const previousLockState = die?.lockDecision;
       if (!die) {
         setError(state, 'INVALID_DIE_INDEX', 'That die does not exist.');
         return;
@@ -402,7 +463,13 @@ const gameSlice = createSlice({
 
       state.game = nextGame;
       state.lastError = null;
-      appendLog(state, `Toggled lock state for die ${dieIndex + 1}.`);
+      const currentLockState = nextGame.state.turn.dice[dieIndex]?.lockDecision;
+      appendLog(
+        state,
+        `Die ${dieIndex + 1} lock: ${previousLockState} -> ${currentLockState} (unlocked ${countUnlockedDice(
+          nextGame.state,
+        )}/${nextGame.state.turn.dice.length}).`,
+      );
     },
     selectProduction: (
       state,
@@ -485,9 +552,18 @@ const gameSlice = createSlice({
 
       state.game = nextGame;
       state.lastError = null;
+      const selectedFace =
+        nextGame.settings.diceFaces[nextGame.state.turn.dice[dieIndex].diceFaceIndex];
+      const selectedProduction = selectedFace.production[productionIndex];
       appendLog(
         state,
-        `Selected production option ${productionIndex + 1} for die ${dieIndex + 1}.`,
+        `Selected die ${dieIndex + 1} option ${productionIndex + 1}: ${formatProductionSummary({
+          goods: selectedProduction.goods,
+          food: selectedProduction.food,
+          workers: selectedProduction.workers,
+          coins: selectedProduction.coins,
+          skulls: selectedProduction.skulls,
+        })}; pending choices ${nextGame.state.turn.pendingChoices}.`,
       );
     },
     resolveProduction: (state) => {
@@ -537,7 +613,12 @@ const gameSlice = createSlice({
 
       state.game = nextGame;
       state.lastError = null;
-      appendLog(state, 'Resolved production.');
+      appendLog(
+        state,
+        `Resolved production (${formatProductionSummary(
+          nextGame.state.turn.turnProduction,
+        )}, food shortage ${nextGame.state.turn.foodShortage}) -> phase ${nextGame.state.phase}.`,
+      );
     },
     buildCity: (state, action: PayloadAction<{ cityIndex: number }>) => {
       if (!state.game) {
@@ -561,6 +642,7 @@ const gameSlice = createSlice({
         return;
       }
 
+      const workersBefore = state.game.state.turn.turnProduction.workers;
       const nextGame = applyMutationWithHistory(state.game, (game) => {
         const activeIndex = game.state.activePlayerIndex;
         const activePlayer = game.state.players[activeIndex];
@@ -615,7 +697,21 @@ const gameSlice = createSlice({
 
       state.game = nextGame;
       state.lastError = null;
-      appendLog(state, `Built city ${action.payload.cityIndex + 1}.`);
+      const activePlayer = nextGame.state.players[nextGame.state.activePlayerIndex];
+      const cityIndex = action.payload.cityIndex;
+      const cityProgress = activePlayer.cities[cityIndex];
+      const workerCost = getCityWorkerCost(cityIndex, nextGame.settings);
+      const workersAfter = nextGame.state.turn.turnProduction.workers;
+      const workersUsed = Math.max(0, workersBefore - workersAfter);
+      const progressText = cityProgress.completed
+        ? 'built'
+        : `${cityProgress.workersCommitted}/${workerCost}`;
+      appendLog(
+        state,
+        `Built city ${cityIndex + 1}: used ${workersUsed} worker${
+          workersUsed === 1 ? '' : 's'
+        }, now ${progressText}.`,
+      );
     },
     buildMonument: (state, action: PayloadAction<{ monumentId: string }>) => {
       if (!state.game) {
@@ -639,6 +735,7 @@ const gameSlice = createSlice({
         return;
       }
 
+      const workersBefore = state.game.state.turn.turnProduction.workers;
       const nextGame = applyMutationWithHistory(state.game, (game) => {
         const activeIndex = game.state.activePlayerIndex;
         const activePlayer = game.state.players[activeIndex];
@@ -694,7 +791,26 @@ const gameSlice = createSlice({
 
       state.game = nextGame;
       state.lastError = null;
-      appendLog(state, `Built monument ${action.payload.monumentId}.`);
+      const activePlayer = nextGame.state.players[nextGame.state.activePlayerIndex];
+      const monumentId = action.payload.monumentId;
+      const progress = activePlayer.monuments[monumentId];
+      const monumentDefinition = nextGame.settings.monumentDefinitions.find(
+        (monument) => monument.id === monumentId,
+      );
+      const workerCost = monumentDefinition?.requirements.workerCost ?? 0;
+      const workersAfter = nextGame.state.turn.turnProduction.workers;
+      const workersUsed = Math.max(0, workersBefore - workersAfter);
+      const progressText = progress.completed
+        ? 'completed'
+        : `${progress.workersCommitted}/${workerCost}`;
+      appendLog(
+        state,
+        `Built monument ${
+          monumentDefinition?.requirements.name ?? monumentId
+        }: used ${workersUsed} worker${
+          workersUsed === 1 ? '' : 's'
+        }, now ${progressText}.`,
+      );
     },
     buyDevelopment: (
       state,
@@ -720,6 +836,7 @@ const gameSlice = createSlice({
       let failureMessage =
         'That development purchase is not valid with current coins/goods.';
 
+      const coinsBefore = state.game.state.turn.turnProduction.coins;
       const nextGame = applyMutationWithHistory(state.game, (game) => {
         const activeIndex = game.state.activePlayerIndex;
         const activePlayer = game.state.players[activeIndex];
@@ -776,7 +893,22 @@ const gameSlice = createSlice({
 
       state.game = nextGame;
       state.lastError = null;
-      appendLog(state, `Purchased development ${action.payload.developmentId}.`);
+      const activePlayer = nextGame.state.players[nextGame.state.activePlayerIndex];
+      const purchasedDevelopment = nextGame.settings.developmentDefinitions.find(
+        (development) => development.id === action.payload.developmentId,
+      );
+      const coinsAfter = nextGame.state.turn.turnProduction.coins;
+      const spentGoodsText =
+        action.payload.goodsTypeNames.length > 0
+          ? action.payload.goodsTypeNames.join(', ')
+          : 'none';
+      appendLog(
+        state,
+        `Purchased development ${purchasedDevelopment?.name ?? action.payload.developmentId}: spent ${Math.max(
+          0,
+          coinsBefore - coinsAfter,
+        )} coins, goods spent ${spentGoodsText}; total developments ${activePlayer.developments.length}.`,
+      );
     },
     applyExchange: (
       state,
@@ -802,6 +934,21 @@ const gameSlice = createSlice({
         return;
       }
 
+      const exchangeAmount = Math.floor(action.payload.amount);
+      const beforePlayer = state.game.state.players[state.game.state.activePlayerIndex];
+      const beforeTurn = state.game.state.turn;
+      const sourceBefore = getExchangeResourceAmount(
+        beforePlayer,
+        beforeTurn,
+        state.game.settings,
+        action.payload.from,
+      );
+      const targetBefore = getExchangeResourceAmount(
+        beforePlayer,
+        beforeTurn,
+        state.game.settings,
+        action.payload.to,
+      );
       const nextGame = applyMutationWithHistory(state.game, (game) => {
         const activeIndex = game.state.activePlayerIndex;
         const activePlayer = game.state.players[activeIndex];
@@ -810,7 +957,7 @@ const gameSlice = createSlice({
           game.state.turn,
           action.payload.from,
           action.payload.to,
-          Math.floor(action.payload.amount),
+          exchangeAmount,
           game.settings,
         );
         if (!result) {
@@ -840,9 +987,22 @@ const gameSlice = createSlice({
 
       state.game = nextGame;
       state.lastError = null;
+      const activePlayer = nextGame.state.players[nextGame.state.activePlayerIndex];
+      const targetAfter = getExchangeResourceAmount(
+        activePlayer,
+        nextGame.state.turn,
+        nextGame.settings,
+        action.payload.to,
+      );
+      const sourceAfter = getExchangeResourceAmount(
+        activePlayer,
+        nextGame.state.turn,
+        nextGame.settings,
+        action.payload.from,
+      );
       appendLog(
         state,
-        `Exchanged ${Math.floor(action.payload.amount)} ${action.payload.from} for ${action.payload.to}.`,
+        `Exchanged ${exchangeAmount} ${action.payload.from} -> ${action.payload.to} (source ${sourceBefore}->${sourceAfter}, target ${targetBefore}->${targetAfter}).`,
       );
     },
     undo: (state) => {
@@ -857,9 +1017,16 @@ const gameSlice = createSlice({
         return;
       }
 
+      const beforeSnapshot = state.game.state;
       state.game = nextGame;
       state.lastError = null;
-      appendLog(state, 'Undid last action.');
+      appendLog(
+        state,
+        `Undo: ${formatTurnLocation(beforeSnapshot, state.game)} -> ${formatTurnLocation(
+          state.game.state,
+          state.game,
+        )}.`,
+      );
     },
     redo: (state) => {
       if (!state.game) {
@@ -873,9 +1040,16 @@ const gameSlice = createSlice({
         return;
       }
 
+      const beforeSnapshot = state.game.state;
       state.game = nextGame;
       state.lastError = null;
-      appendLog(state, 'Redid action.');
+      appendLog(
+        state,
+        `Redo: ${formatTurnLocation(beforeSnapshot, state.game)} -> ${formatTurnLocation(
+          state.game.state,
+          state.game,
+        )}.`,
+      );
     },
   },
 });

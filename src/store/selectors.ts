@@ -15,6 +15,7 @@ import {
   findGoodsTypeByName,
   getCitiesToFeed,
   getDisasterPreview,
+  getTriggeredDisaster,
   getExchangeResourceAmount,
   getMaxRollsAllowed,
   getRewrittenDisasterTargeting,
@@ -670,11 +671,14 @@ export const selectDisasterPanelModel = createSelector(selectGame, (game) => {
         skulls: number;
         effectText: string;
         targetsText: string;
+        isTriggered: boolean;
       }>,
     };
   }
 
   const activePlayer = game.state.players[game.state.activePlayerIndex];
+  const skulls = countSkulls(game.state.turn.dice, game.settings);
+  const triggeredDisasterId = getTriggeredDisaster(skulls, game.settings)?.id ?? null;
   const toTargetsText = (scope: 'self' | 'opponents' | 'all') => {
     if (scope === 'self') return 'You';
     if (scope === 'opponents') return 'Opponents';
@@ -724,6 +728,7 @@ export const selectDisasterPanelModel = createSelector(selectGame, (game) => {
         skulls: disaster.skulls,
         effectText,
         targetsText,
+        isTriggered: triggeredDisasterId === disaster.id,
       };
     }),
   };

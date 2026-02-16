@@ -396,7 +396,6 @@ function App() {
               <p className="scoreboard-row">📦 Goods: +{diceOutcome.goodsProduced}</p>
               <p className="scoreboard-row">
                 ☠️ Skulls: {diceOutcome.skulls}
-                {diceOutcome.disaster ? ` -> ${diceOutcome.disaster}` : ''}
               </p>
               {diceOutcome.penalties.foodPenalty > 0 ? (
                 <p className="outcome-penalty">
@@ -471,7 +470,10 @@ function App() {
             <p>Disasters trigger by total skulls rolled this turn.</p>
             <div className="disaster-list">
               {disasterPanel.disasters.map((disaster) => (
-                <article key={disaster.id} className="disaster-card">
+                <article
+                  key={disaster.id}
+                  className={disaster.isTriggered ? 'disaster-card salient-disaster' : 'disaster-card'}
+                >
                   <p className="development-title">
                     {getSkullDenotation(disaster.skulls)} {disaster.name}
                   </p>
