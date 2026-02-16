@@ -8,6 +8,12 @@ This repo includes:
 - Bot players (heuristic + lookahead)
 - Headless automation scripts for bot evaluation/tournaments/beam search
 
+## Live Demo
+
+- GitHub Pages: https://ggulati.github.io/RollThroughAges/
+
+![Roll Through the Ages screenshot](docs/screenshot.png)
+
 ## Tech Stack
 
 - React 19
