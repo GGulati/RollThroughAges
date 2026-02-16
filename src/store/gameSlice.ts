@@ -281,6 +281,11 @@ const gameSlice = createSlice({
   name: 'game',
   initialState,
   reducers: {
+    returnToSetup: (state) => {
+      state.game = null;
+      state.lastError = null;
+      state.actionLog = [];
+    },
     startGame: (state, action: PayloadAction<{ players: PlayerConfig[] }>) => {
       state.game = createGame(action.payload.players);
       state.lastError = null;
@@ -1245,6 +1250,7 @@ const gameSlice = createSlice({
 });
 
 export const {
+  returnToSetup,
   startGame,
   rollDice,
   rerollSingleDie,

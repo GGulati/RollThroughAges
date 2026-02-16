@@ -1,6 +1,11 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GamePhase } from '@/game';
-import { BotAction, chooseHeuristicBotAction } from '@/game/bot';
+import {
+  BotAction,
+  chooseHeuristicBotAction,
+  getHeadlessScoreSummary,
+  runHeadlessBotMatch,
+} from '@/game/bot';
 import './index.css';
 import {
   buildCity,
@@ -15,6 +20,7 @@ import {
   rerollSingleDie,
   rollDice,
   selectProduction,
+  returnToSetup,
   startGame,
   undo,
 } from '@/store/gameSlice';
@@ -40,6 +46,14 @@ const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 4;
 type ControllerOption = 'human' | 'bot';
 type BotSpeedOption = 'normal' | 'fast' | 'veryFast';
+type HeadlessSimulationSummary = {
+  completed: boolean;
+  turnsPlayed: number;
+  winners: string[];
+  scores: Array<{ playerId: string; playerName: string; total: number }>;
+  stallReason: string | null;
+  actionLog: string[];
+};
 
 const BOT_SPEED_DELAY_MS: Record<BotSpeedOption, number> = {
   normal: 1000,
@@ -103,6 +117,9 @@ function App() {
   const [sectionPreferencesByPlayer, setSectionPreferencesByPlayer] = useState<
     Record<string, SectionPreferences>
   >({});
+  const [headlessSimulations, setHeadlessSimulations] = useState<
+    HeadlessSimulationSummary[]
+  >([]);
   const botTimerRef = useRef<number | null>(null);
   const [isBotResolving, setIsBotResolving] = useState(false);
   const botStepDelayMs = BOT_SPEED_DELAY_MS[botSpeed];
@@ -335,6 +352,49 @@ function App() {
     }));
   };
 
+  const runHeadlessSimulation = () => {
+    const result = runHeadlessBotMatch(playerCount);
+    const scores = getHeadlessScoreSummary(result.finalGame).sort(
+      (a, b) => b.total - a.total,
+    );
+    const summary: HeadlessSimulationSummary = {
+      completed: result.completed,
+      turnsPlayed: result.turnsPlayed,
+      winners: result.winners,
+      scores,
+      stallReason: result.stallReason,
+      actionLog: result.actionLog,
+    };
+    setHeadlessSimulations((current) => [...current, summary]);
+  };
+
+  const startConfiguredGame = () => {
+    const selectedPlayers = createPlayers(playerCount, playerControllers);
+    const allBots = selectedPlayers.every((player) => player.controller === 'bot');
+    if (allBots) {
+      runHeadlessSimulation();
+      return;
+    }
+
+    dispatch(
+      startGame({
+        players: selectedPlayers,
+      }),
+    );
+  };
+
+  const handlePlayAgain = () => {
+    setPlayerCount(MIN_PLAYERS);
+    setPlayerControllers({
+      1: 'human',
+      2: 'human',
+      3: 'human',
+      4: 'human',
+    });
+    setBotSpeed('normal');
+    dispatch(returnToSetup());
+  };
+
   const renderControllerOptions = (idPrefix: string) => (
     <div className="development-list">
       {Array.from({ length: playerCount }, (_, index) => {
@@ -411,13 +471,7 @@ function App() {
               <button
                 className="start-game-button"
                 type="button"
-                onClick={() =>
-                  dispatch(
-                    startGame({
-                      players: createPlayers(playerCount, playerControllers),
-                    }),
-                  )
-                }
+                onClick={startConfiguredGame}
               >
                 Start Game
               </button>
@@ -439,88 +493,109 @@ function App() {
                 </select>
               </label>
             </section>
+            {headlessSimulations.length > 0 ? (
+              <section className="app-panel setup-panel">
+                <h2>AI Testing</h2>
+                <div className="development-list">
+                  {headlessSimulations.map((simulation, index) => (
+                    <article
+                      key={`headless-result-${index + 1}`}
+                      className="development-card"
+                    >
+                      <p className="development-title">
+                        Headless Result {index + 1}
+                      </p>
+                      <p className="scoreboard-row">
+                        Bots: {simulation.scores.length}
+                      </p>
+                      <p className="scoreboard-row">
+                        Status: {simulation.completed ? 'Completed' : 'Stopped Early'}
+                      </p>
+                      <p className="scoreboard-row">
+                        Turns played: {simulation.turnsPlayed}
+                      </p>
+                      <p className="scoreboard-row">
+                        Winners:{' '}
+                        {simulation.winners.length > 0
+                          ? simulation.winners.join(', ')
+                          : 'None'}
+                      </p>
+                      {simulation.stallReason ? (
+                        <p className="hint-text">{simulation.stallReason}</p>
+                      ) : null}
+                      <p className="choice-label">Final Scores</p>
+                      <ul className="inline-note">
+                        {simulation.scores.map((entry) => (
+                          <li key={`${entry.playerId}-${index + 1}`}>
+                            {entry.playerName}: {entry.total} VP
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="choice-label">Action Log</p>
+                      <textarea
+                        className="log-textbox"
+                        readOnly
+                        value={simulation.actionLog.join('\n')}
+                        aria-label={`Headless action log ${index + 1}`}
+                      />
+                    </article>
+                  ))}
+                </div>
+              </section>
+            ) : null}
           </>
         ) : null}
         {turnStatus.isGameActive && endgameStatus.isGameOver ? (
-          <section className="app-panel victory-panel">
-            <h2>Game Over</h2>
-            <p>
-              {winners.length > 1
-                ? `Tie at ${topScore} VP: ${winners.map((winner) => winner.playerName).join(', ')}`
-                : `Winner: ${winners[0]?.playerName ?? 'Unknown'} (${topScore} VP)`}
-            </p>
-            {endgameStatus.reasons.length > 0 ? (
-              <div>
-                <p className="choice-label">End Criteria Triggered</p>
-                <ul className="inline-note">
-                  {endgameStatus.reasons.map((reason) => (
-                    <li key={reason}>{reason}</li>
-                  ))}
-                </ul>
+          <>
+            <section className="app-panel victory-panel">
+              <h2>Game Over</h2>
+              <p>
+                {winners.length > 1
+                  ? `Tie at ${topScore} VP: ${winners.map((winner) => winner.playerName).join(', ')}`
+                  : `Winner: ${winners[0]?.playerName ?? 'Unknown'} (${topScore} VP)`}
+              </p>
+              {endgameStatus.reasons.length > 0 ? (
+                <div>
+                  <p className="choice-label">End Criteria Triggered</p>
+                  <ul className="inline-note">
+                    {endgameStatus.reasons.map((reason) => (
+                      <li key={reason}>{reason}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              <div className="scoreboard-list">
+                {turnStatus.playerPoints.map((entry) => (
+                  <article key={`victory-${entry.playerId}`} className="scoreboard-card">
+                    <p className="development-title">{entry.playerName}</p>
+                    <p className="scoreboard-row">Monuments: {entry.breakdown.monuments}</p>
+                    <p className="scoreboard-row">
+                      Developments: {entry.breakdown.developments}
+                    </p>
+                    <p className="scoreboard-row">Bonuses: {entry.breakdown.bonuses}</p>
+                    <p className="scoreboard-row">Penalties: -{entry.breakdown.penalties}</p>
+                    <p className="scoreboard-row">
+                      <strong>Total: {entry.breakdown.total}</strong>
+                    </p>
+                  </article>
+                ))}
               </div>
-            ) : null}
-            <div className="scoreboard-list">
-              {turnStatus.playerPoints.map((entry) => (
-                <article key={`victory-${entry.playerId}`} className="scoreboard-card">
-                  <p className="development-title">{entry.playerName}</p>
-                  <p className="scoreboard-row">Monuments: {entry.breakdown.monuments}</p>
-                  <p className="scoreboard-row">
-                    Developments: {entry.breakdown.developments}
-                  </p>
-                  <p className="scoreboard-row">Bonuses: {entry.breakdown.bonuses}</p>
-                  <p className="scoreboard-row">Penalties: -{entry.breakdown.penalties}</p>
-                  <p className="scoreboard-row">
-                    <strong>Total: {entry.breakdown.total}</strong>
-                  </p>
-                </article>
-              ))}
-            </div>
-            <div className="title-actions">
-              <label className="player-count-control" htmlFor="player-count-select-end">
-                <span>Players</span>
-                <select
-                  id="player-count-select-end"
-                  value={playerCount}
-                  onChange={(event) => setPlayerCount(Number(event.target.value))}
-                >
-                  {Array.from(
-                    { length: MAX_PLAYERS - MIN_PLAYERS + 1 },
-                    (_, index) => MIN_PLAYERS + index,
-                  ).map((count) => (
-                    <option key={count} value={count}>
-                      {count}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="player-count-control" htmlFor="bot-speed-select-end">
-                <span>Bot Speed</span>
-                <select
-                  id="bot-speed-select-end"
-                  value={botSpeed}
-                  onChange={(event) =>
-                    setBotSpeed(event.target.value as BotSpeedOption)
-                  }
-                >
-                  <option value="normal">Normal (1s)</option>
-                  <option value="fast">Fast (0.5s)</option>
-                  <option value="veryFast">Very Fast (0.25s)</option>
-                </select>
-              </label>
-              <button
-                type="button"
-                onClick={() =>
-                  dispatch(
-                    startGame({
-                      players: createPlayers(playerCount, playerControllers),
-                    }),
-                  )
-                }
-              >
-                Play Again
-              </button>
-            </div>
-          </section>
+              <div className="title-actions">
+                <button type="button" onClick={handlePlayAgain}>
+                  Play Again
+                </button>
+              </div>
+            </section>
+            <section className="app-panel">
+              <h2>Action Log</h2>
+              <textarea
+                className="log-textbox"
+                readOnly
+                value={actionLog.join('\n')}
+                aria-label="Action log history"
+              />
+            </section>
+          </>
         ) : null}
         {turnStatus.isGameActive && !endgameStatus.isGameOver ? (
           <>
