@@ -59,6 +59,11 @@ export function useAnimatedBotPhase({
       return;
     }
 
+    if (displayedPhase === null) {
+      setDisplayedPhase(phase);
+      return;
+    }
+
     const startPhase = displayedPhase ?? phase;
     if (startPhase === phase) {
       return;
