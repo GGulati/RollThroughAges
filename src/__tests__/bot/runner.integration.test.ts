@@ -72,18 +72,18 @@ describe('bot runner integration', () => {
     const result = runBotTurn(game, heuristicStandardBot);
     expect(result.steps).toBeGreaterThan(0);
 
-    const after = getBotCoreInstrumentation();
-    expect(after.runBotTurnCalls).toBeGreaterThan(0);
-    expect(after.runBotStepCalls).toBeGreaterThan(0);
-    expect(after.strategyChooseActionCalls).toBeGreaterThan(0);
-    expect(after.applyBotActionAttempts).toBeGreaterThan(0);
-    expect(after.runBotTurnMsTotal).toBeGreaterThanOrEqual(0);
+    const after = getBotCoreInstrumentation(heuristicStandardBot);
+    expect(after.metrics.runBotTurnCalls).toBeGreaterThan(0);
+    expect(after.metrics.runBotStepCalls).toBeGreaterThan(0);
+    expect(after.metrics.strategyChooseActionCalls).toBeGreaterThan(0);
+    expect(after.metrics.applyBotActionAttempts).toBeGreaterThan(0);
+    expect(after.metrics.runBotTurnMsTotal).toBeGreaterThanOrEqual(0);
 
-    resetBotCoreInstrumentation();
-    const reset = getBotCoreInstrumentation();
-    expect(reset.runBotTurnCalls).toBe(0);
-    expect(reset.runBotStepCalls).toBe(0);
-    expect(reset.strategyChooseActionCalls).toBe(0);
+    resetBotCoreInstrumentation(heuristicStandardBot);
+    const reset = getBotCoreInstrumentation(heuristicStandardBot);
+    expect(reset.metrics.runBotTurnCalls).toBe(0);
+    expect(reset.metrics.runBotStepCalls).toBe(0);
+    expect(reset.metrics.strategyChooseActionCalls).toBe(0);
     randomSpy.mockRestore();
   });
 });

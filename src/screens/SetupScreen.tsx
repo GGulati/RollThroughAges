@@ -1,4 +1,4 @@
-import { HeuristicConfig, LookaheadConfig } from '@/game/bot';
+import { CORE_BOT_METRIC_KEYS, HeuristicConfig, LookaheadConfig } from '@/game/bot';
 import { PlayerEndStateCard } from '@/components/PlayerEndStateCard';
 import {
   BotSpeedOption,
@@ -60,6 +60,12 @@ export function SetupScreen({
   onResetLookaheadDefaults,
   headlessSimulations,
 }: SetupScreenProps) {
+  const coreMetricKeys = new Set<string>(CORE_BOT_METRIC_KEYS as readonly string[]);
+  const getMetric = (metrics: Record<string, number>, key: string) => metrics[key] ?? 0;
+  const getExtensionMetrics = (metrics: Record<string, number>) =>
+    Object.fromEntries(
+      Object.entries(metrics).filter(([key]) => !coreMetricKeys.has(key)),
+    );
   const renderMetricRows = (metrics: Record<string, number>) =>
     Object.entries(metrics)
       .sort((a, b) => a[0].localeCompare(b[0]))
@@ -671,19 +677,32 @@ export function SetupScreen({
                 />
                 <p className="choice-label">Instrumentation</p>
                 <p className="scoreboard-row">
-                  Core: runBotTurnCalls={simulation.instrumentation.core.runBotTurnCalls}, steps=
-                  {simulation.instrumentation.core.runBotTurnStepsTotal}, chooseActionCalls=
-                  {simulation.instrumentation.core.strategyChooseActionCalls}
+                  Core: runBotTurnCalls={getMetric(
+                    simulation.instrumentation.core.metrics,
+                    'runBotTurnCalls',
+                  )}, steps=
+                  {getMetric(simulation.instrumentation.core.metrics, 'runBotTurnStepsTotal')},
+                  chooseActionCalls=
+                  {getMetric(
+                    simulation.instrumentation.core.metrics,
+                    'strategyChooseActionCalls',
+                  )}
                 </p>
                 <p className="scoreboard-row">
                   Core timing: runBotTurnMsTotal=
-                  {simulation.instrumentation.core.runBotTurnMsTotal}, runBotStepMsTotal=
-                  {simulation.instrumentation.core.runBotStepMsTotal}
+                  {getMetric(simulation.instrumentation.core.metrics, 'runBotTurnMsTotal')},
+                  runBotStepMsTotal=
+                  {getMetric(simulation.instrumentation.core.metrics, 'runBotStepMsTotal')}
                 </p>
                 <p className="scoreboard-row">
-                  Core apply: attempts={simulation.instrumentation.core.applyBotActionAttempts},
-                  successes={simulation.instrumentation.core.applyBotActionSuccesses}, fallbackSelections=
-                  {simulation.instrumentation.core.fallbackSelections}
+                  Core apply: attempts=
+                  {getMetric(simulation.instrumentation.core.metrics, 'applyBotActionAttempts')},
+                  successes=
+                  {getMetric(
+                    simulation.instrumentation.core.metrics,
+                    'applyBotActionSuccesses',
+                  )}, fallbackSelections=
+                  {getMetric(simulation.instrumentation.core.metrics, 'fallbackSelections')}
                 </p>
                 <p className="scoreboard-row">
                   Headless: runs={simulation.instrumentation.headless.runHeadlessBotGameCalls},
@@ -712,27 +731,31 @@ export function SetupScreen({
                           {playerName} ({actorStats.strategyId})
                         </p>
                         <p className="scoreboard-row">
-                          Turns={actorStats.runBotTurnCalls}, Completed=
-                          {actorStats.runBotTurnCompletedTurns}, Steps=
-                          {actorStats.runBotTurnStepsTotal}
+                          Turns={getMetric(actorStats.metrics, 'runBotTurnCalls')}, Completed=
+                          {getMetric(actorStats.metrics, 'runBotTurnCompletedTurns')}, Steps=
+                          {getMetric(actorStats.metrics, 'runBotTurnStepsTotal')}
                         </p>
                         <p className="scoreboard-row">
-                          Timing: runBotTurnMsTotal={actorStats.runBotTurnMsTotal},
-                          runBotStepMsTotal={actorStats.runBotStepMsTotal},
-                          chooseMsTotal={actorStats.strategyChooseActionMsTotal},
-                          applyMsTotal={actorStats.applyBotActionMsTotal},
-                          overheadMsTotal={actorStats.runBotTurnOverheadMsTotal}
+                          Timing: runBotTurnMsTotal=
+                          {getMetric(actorStats.metrics, 'runBotTurnMsTotal')},
+                          runBotStepMsTotal={getMetric(actorStats.metrics, 'runBotStepMsTotal')},
+                          chooseMsTotal=
+                          {getMetric(actorStats.metrics, 'strategyChooseActionMsTotal')},
+                          applyMsTotal={getMetric(actorStats.metrics, 'applyBotActionMsTotal')},
+                          overheadMsTotal=
+                          {getMetric(actorStats.metrics, 'runBotTurnOverheadMsTotal')}
                         </p>
                         <p className="scoreboard-row">
-                          Apply: attempts={actorStats.applyBotActionAttempts},
-                          successes={actorStats.applyBotActionSuccesses}, fallbackSelections=
-                          {actorStats.fallbackSelections}, fallbackApplyAttempts=
-                          {actorStats.fallbackApplyAttempts}
+                          Apply: attempts={getMetric(actorStats.metrics, 'applyBotActionAttempts')},
+                          successes={getMetric(actorStats.metrics, 'applyBotActionSuccesses')},
+                          fallbackSelections={getMetric(actorStats.metrics, 'fallbackSelections')},
+                          fallbackApplyAttempts=
+                          {getMetric(actorStats.metrics, 'fallbackApplyAttempts')}
                         </p>
-                        {Object.keys(actorStats.strategyExtensionMetrics).length > 0 ? (
+                        {Object.keys(getExtensionMetrics(actorStats.metrics)).length > 0 ? (
                           <>
                             <p className="choice-label">Extension Metrics</p>
-                            {renderMetricRows(actorStats.strategyExtensionMetrics)}
+                            {renderMetricRows(getExtensionMetrics(actorStats.metrics))}
                           </>
                         ) : null}
                       </article>

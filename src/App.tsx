@@ -482,7 +482,6 @@ function App() {
     players: ReturnType<typeof createPlayers>,
     botProfilesByPlayerId: Record<string, BotProfile>,
   ) => {
-    resetBotCoreInstrumentation();
     resetHeadlessBotInstrumentation();
     const strategyByPlayerId = Object.fromEntries(
       players.map((player) => [
@@ -493,10 +492,34 @@ function App() {
             ? configuredLookaheadBot
           : botProfilesByPlayerId[player.id] === 'lookaheadStandard'
             ? standardLookaheadBot
-          : configuredHeuristicBot,
+            : configuredHeuristicBot,
       ]),
     );
+    Object.values(strategyByPlayerId).forEach((strategy) =>
+      resetBotCoreInstrumentation(strategy),
+    );
     const result = runHeadlessBotMatch(players, { strategyByPlayerId });
+    const coreByActor = Object.values(strategyByPlayerId).reduce(
+      (acc, strategy) => {
+        const perStrategy = getBotCoreInstrumentation(strategy);
+        Object.entries(perStrategy.metrics).forEach(([key, value]) => {
+          acc.metrics[key] = (acc.metrics[key] ?? 0) + value;
+        });
+        Object.entries(perStrategy.byActorId).forEach(([actorId, actorStats]) => {
+          const existing = acc.byActorId[actorId] ?? {
+            strategyId: actorStats.strategyId,
+            metrics: {},
+          };
+          existing.strategyId = actorStats.strategyId;
+          Object.entries(actorStats.metrics).forEach(([key, value]) => {
+            existing.metrics[key] = (existing.metrics[key] ?? 0) + value;
+          });
+          acc.byActorId[actorId] = existing;
+        });
+        return acc;
+      },
+      { metrics: {}, byActorId: {} } as ReturnType<typeof getBotCoreInstrumentation>,
+    );
     const scores = getHeadlessScoreSummary(result.finalGame).sort(
       (a, b) => b.total - a.total,
     );
@@ -508,7 +531,7 @@ function App() {
       stallReason: result.stallReason,
       actionLog: result.actionLog,
       instrumentation: {
-        core: getBotCoreInstrumentation(),
+        core: coreByActor,
         headless: getHeadlessBotInstrumentation(),
       },
     };

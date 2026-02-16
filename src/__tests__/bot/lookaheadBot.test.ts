@@ -73,7 +73,7 @@ describe('lookahead bot', () => {
     randomSpy.mockRestore();
   });
 
-  it('tracks and resets lookahead instrumentation counters', () => {
+  it('tracks and resets lookahead instrumentation timings', () => {
     const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.5);
     resetLookaheadInstrumentation();
     const game = createGame(PLAYERS);
@@ -81,21 +81,19 @@ describe('lookahead bot', () => {
     const result = runBotTurn(game, lookaheadStandardBot);
     expect(result.steps).toBeGreaterThan(0);
 
-    const after = getLookaheadInstrumentation();
-    expect(after.core.runBotTurnCalls).toBeGreaterThan(0);
-    expect(after.core.strategyChooseActionCalls).toBeGreaterThan(0);
-    expect(after.evaluateActionValueCalls).toBeGreaterThan(0);
-    const actorStats = after.core.byActorId.p1;
+    const after = getLookaheadInstrumentation(lookaheadStandardBot);
+    expect(after.metrics.runBotTurnCalls).toBeGreaterThan(0);
+    expect(after.metrics.strategyChooseActionCalls).toBeGreaterThan(0);
+    const actorStats = after.byActorId.p1;
     expect(actorStats).toBeDefined();
-    const extensionKey = 'lookahead-standard.lookahead.evaluateActionValueCalls';
-    expect((actorStats?.strategyExtensionMetrics[extensionKey] ?? 0)).toBeGreaterThan(0);
-    expect(after.core.runBotTurnMsTotal).toBeGreaterThanOrEqual(0);
+    const extensionKey = 'lookahead-standard.lookahead.chooseActionMsTotal';
+    expect(actorStats?.metrics[extensionKey]).toBeDefined();
+    expect(after.metrics.runBotTurnMsTotal).toBeGreaterThanOrEqual(0);
 
-    resetLookaheadInstrumentation();
-    const reset = getLookaheadInstrumentation();
-    expect(reset.core.runBotTurnCalls).toBe(0);
-    expect(reset.evaluateActionValueCalls).toBe(0);
-    expect(Object.keys(reset.core.byActorId)).toHaveLength(0);
+    resetLookaheadInstrumentation(lookaheadStandardBot);
+    const reset = getLookaheadInstrumentation(lookaheadStandardBot);
+    expect(reset.metrics.runBotTurnCalls).toBe(0);
+    expect(Object.keys(reset.byActorId)).toHaveLength(0);
     randomSpy.mockRestore();
   });
 });

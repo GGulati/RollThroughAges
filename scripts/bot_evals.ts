@@ -1,13 +1,13 @@
 import { resolve } from 'node:path';
 import { writeFileSync } from 'node:fs';
 import {
+  CORE_BOT_METRIC_KEYS,
   getBotCoreInstrumentation,
   getHeadlessBotInstrumentation,
   getHeadlessScoreSummary,
-  getLookaheadInstrumentation,
   HEURISTIC_STANDARD_CONFIG,
+  resetBotCoreInstrumentation,
   resetHeadlessBotInstrumentation,
-  resetLookaheadInstrumentation,
   runHeadlessBotMatch,
 } from '../src/game/bot/index.ts';
 import { PlayerConfig } from '../src/game/index.ts';
@@ -80,7 +80,7 @@ type PerGameConfigInstrumentation = {
   applyBotActionSuccesses: number;
   fallbackSelections: number;
   fallbackApplyAttempts: number;
-  strategyExtensionMetrics: Record<string, number>;
+  extensionMetrics: Record<string, number>;
 };
 
 type PerGameInstrumentation = {
@@ -92,26 +92,20 @@ type PerGameInstrumentation = {
   scoresByPlayerId: Record<string, number>;
   byConfig: PerGameConfigInstrumentation[];
   headless: ReturnType<typeof getHeadlessBotInstrumentation>;
-  core: ReturnType<typeof getBotCoreInstrumentation>;
-  lookahead: ReturnType<typeof getLookaheadInstrumentation>;
+  coreByPlayerId: Record<string, ReturnType<typeof getBotCoreInstrumentation>>;
 };
 
-type AggregateConfigInstrumentation = {
-  configKey: string;
-  configLabel: string;
-  games: number;
-  runBotTurnCalls: number;
-  runBotTurnMsTotal: number;
-  runBotStepCalls: number;
-  runBotStepMsTotal: number;
-  strategyChooseActionCalls: number;
-  strategyChooseActionMsTotal: number;
-  applyBotActionAttempts: number;
-  applyBotActionSuccesses: number;
-  fallbackSelections: number;
-  fallbackApplyAttempts: number;
-  strategyExtensionMetrics: Record<string, number>;
-};
+const CORE_METRIC_KEY_SET = new Set<string>(CORE_BOT_METRIC_KEYS as readonly string[]);
+
+function getMetric(metrics: Record<string, number>, key: string): number {
+  return metrics[key] ?? 0;
+}
+
+function getExtensionMetrics(metrics: Record<string, number>): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(metrics).filter(([key]) => !CORE_METRIC_KEY_SET.has(key)),
+  );
+}
 
 function printUsage(): void {
   console.log('Usage: npx tsx scripts/bot_evals.ts [options]');
@@ -286,38 +280,6 @@ function main(): void {
   let incompleteGames = 0;
   const stalls: StallRecord[] = [];
   const perGameInstrumentation: PerGameInstrumentation[] = [];
-  const aggregateInstrumentationByConfig = new Map<
-    string,
-    AggregateConfigInstrumentation
-  >();
-
-  const getAggregateInstrumentation = (
-    configKey: string,
-    configLabel: string,
-  ): AggregateConfigInstrumentation => {
-    const existing = aggregateInstrumentationByConfig.get(configKey);
-    if (existing) {
-      return existing;
-    }
-    const created: AggregateConfigInstrumentation = {
-      configKey,
-      configLabel,
-      games: 0,
-      runBotTurnCalls: 0,
-      runBotTurnMsTotal: 0,
-      runBotStepCalls: 0,
-      runBotStepMsTotal: 0,
-      strategyChooseActionCalls: 0,
-      strategyChooseActionMsTotal: 0,
-      applyBotActionAttempts: 0,
-      applyBotActionSuccesses: 0,
-      fallbackSelections: 0,
-      fallbackApplyAttempts: 0,
-      strategyExtensionMetrics: {},
-    };
-    aggregateInstrumentationByConfig.set(configKey, created);
-    return created;
-  };
 
   for (let round = 0; round < options.rounds; round += 1) {
     for (let rotation = 0; rotation < options.players; rotation += 1) {
@@ -335,8 +297,10 @@ function main(): void {
           ),
         ]),
       );
-      resetLookaheadInstrumentation();
       resetHeadlessBotInstrumentation();
+      Object.values(strategyByPlayerId).forEach((strategy) =>
+        resetBotCoreInstrumentation(strategy),
+      );
 
       const result = runHeadlessBotMatch(playerConfigs, {
         strategyByPlayerId,
@@ -358,11 +322,17 @@ function main(): void {
       const scoreByPlayerId = Object.fromEntries(
         summary.map((entry) => [entry.playerId, entry.total]),
       );
-      const coreInstrumentation = getBotCoreInstrumentation();
       const headlessInstrumentation = getHeadlessBotInstrumentation();
-      const lookaheadInstrumentation = getLookaheadInstrumentation();
+      const coreByPlayerId = Object.fromEntries(
+        playerConfigs.map((player) => [
+          player.id,
+          getBotCoreInstrumentation(strategyByPlayerId[player.id]),
+        ]),
+      );
       const byConfig: PerGameConfigInstrumentation[] = playerConfigs.map((player) => {
-        const actorStats = coreInstrumentation.byActorId[player.id];
+        const playerCore = coreByPlayerId[player.id];
+        const actorStats = playerCore.byActorId[player.id];
+        const actorMetrics = actorStats?.metrics ?? {};
         const config = configByPlayerId[player.id];
         return {
           playerId: player.id,
@@ -370,17 +340,17 @@ function main(): void {
           configKey: config.key,
           configLabel: config.label,
           strategyId: actorStats?.strategyId ?? 'unknown',
-          runBotTurnCalls: actorStats?.runBotTurnCalls ?? 0,
-          runBotTurnMsTotal: actorStats?.runBotTurnMsTotal ?? 0,
-          runBotStepCalls: actorStats?.runBotStepCalls ?? 0,
-          runBotStepMsTotal: actorStats?.runBotStepMsTotal ?? 0,
-          strategyChooseActionCalls: actorStats?.strategyChooseActionCalls ?? 0,
-          strategyChooseActionMsTotal: actorStats?.strategyChooseActionMsTotal ?? 0,
-          applyBotActionAttempts: actorStats?.applyBotActionAttempts ?? 0,
-          applyBotActionSuccesses: actorStats?.applyBotActionSuccesses ?? 0,
-          fallbackSelections: actorStats?.fallbackSelections ?? 0,
-          fallbackApplyAttempts: actorStats?.fallbackApplyAttempts ?? 0,
-          strategyExtensionMetrics: { ...(actorStats?.strategyExtensionMetrics ?? {}) },
+          runBotTurnCalls: getMetric(actorMetrics, 'runBotTurnCalls'),
+          runBotTurnMsTotal: getMetric(actorMetrics, 'runBotTurnMsTotal'),
+          runBotStepCalls: getMetric(actorMetrics, 'runBotStepCalls'),
+          runBotStepMsTotal: getMetric(actorMetrics, 'runBotStepMsTotal'),
+          strategyChooseActionCalls: getMetric(actorMetrics, 'strategyChooseActionCalls'),
+          strategyChooseActionMsTotal: getMetric(actorMetrics, 'strategyChooseActionMsTotal'),
+          applyBotActionAttempts: getMetric(actorMetrics, 'applyBotActionAttempts'),
+          applyBotActionSuccesses: getMetric(actorMetrics, 'applyBotActionSuccesses'),
+          fallbackSelections: getMetric(actorMetrics, 'fallbackSelections'),
+          fallbackApplyAttempts: getMetric(actorMetrics, 'fallbackApplyAttempts'),
+          extensionMetrics: getExtensionMetrics(actorMetrics),
         };
       });
       perGameInstrumentation.push({
@@ -392,27 +362,7 @@ function main(): void {
         scoresByPlayerId: scoreByPlayerId,
         byConfig,
         headless: headlessInstrumentation,
-        core: coreInstrumentation,
-        lookahead: lookaheadInstrumentation,
-      });
-
-      byConfig.forEach((entry) => {
-        const aggregate = getAggregateInstrumentation(entry.configKey, entry.configLabel);
-        aggregate.games += 1;
-        aggregate.runBotTurnCalls += entry.runBotTurnCalls;
-        aggregate.runBotTurnMsTotal += entry.runBotTurnMsTotal;
-        aggregate.runBotStepCalls += entry.runBotStepCalls;
-        aggregate.runBotStepMsTotal += entry.runBotStepMsTotal;
-        aggregate.strategyChooseActionCalls += entry.strategyChooseActionCalls;
-        aggregate.strategyChooseActionMsTotal += entry.strategyChooseActionMsTotal;
-        aggregate.applyBotActionAttempts += entry.applyBotActionAttempts;
-        aggregate.applyBotActionSuccesses += entry.applyBotActionSuccesses;
-        aggregate.fallbackSelections += entry.fallbackSelections;
-        aggregate.fallbackApplyAttempts += entry.fallbackApplyAttempts;
-        Object.entries(entry.strategyExtensionMetrics).forEach(([metric, value]) => {
-          aggregate.strategyExtensionMetrics[metric] =
-            (aggregate.strategyExtensionMetrics[metric] ?? 0) + value;
-        });
+        coreByPlayerId,
       });
 
       const topScore = Math.max(...summary.map((entry) => entry.total));
@@ -516,36 +466,6 @@ function main(): void {
       });
   }
 
-  const aggregateInstrumentation = Array.from(aggregateInstrumentationByConfig.values())
-    .map((entry) => ({
-      ...entry,
-      avgRunBotTurnMs: entry.games > 0 ? entry.runBotTurnMsTotal / entry.games : 0,
-      avgRunBotStepMs: entry.games > 0 ? entry.runBotStepMsTotal / entry.games : 0,
-      avgChooseActionMs:
-        entry.games > 0 ? entry.strategyChooseActionMsTotal / entry.games : 0,
-    }))
-    .sort((a, b) => a.configLabel.localeCompare(b.configLabel));
-
-  console.log('');
-  console.log('Aggregate Instrumentation By Config');
-  console.log(
-    'Config                 Games   TurnMsTot  StepMsTot  ChooseMsTot  ApplyAttempts  ApplySuccess',
-  );
-  console.log(
-    '-----------------------------------------------------------------------------------------------',
-  );
-  aggregateInstrumentation.forEach((entry) => {
-    console.log(
-      `${entry.configLabel.padEnd(22)} ${String(entry.games).padStart(5)} ${formatNum(
-        entry.runBotTurnMsTotal,
-      ).padStart(10)} ${formatNum(entry.runBotStepMsTotal).padStart(10)} ${formatNum(
-        entry.strategyChooseActionMsTotal,
-      ).padStart(12)} ${String(entry.applyBotActionAttempts).padStart(14)} ${String(
-        entry.applyBotActionSuccesses,
-      ).padStart(13)}`,
-    );
-  });
-
   const instrumentationPath = resolve(options.instrumentationJson);
   writeFileSync(
     instrumentationPath,
@@ -557,7 +477,6 @@ function main(): void {
         standings,
         stalls,
         perGameInstrumentation,
-        aggregateInstrumentation,
       },
       null,
       2,
