@@ -55,10 +55,22 @@ body,
   gap: 0.6rem;
 }
 
+.start-game-button {
+  width: fit-content;
+  justify-self: start;
+}
+
 .board-grid {
   display: grid;
   grid-template-columns: repeat(1, minmax(0, 1fr));
   gap: 1rem;
+}
+
+.gameplay-shell {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
 }
 
 .panel-pair {

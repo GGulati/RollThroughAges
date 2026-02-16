@@ -4,4 +4,5 @@ export * from './disaster';
 export * from './goods';
 export * from './dice';
 export * from './gameDefinitionConsts';
+export * from './bot';
 

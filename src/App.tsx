@@ -1,5 +1,6 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GamePhase } from '@/game';
+import { BotAction, chooseHeuristicBotAction } from '@/game/bot';
 import './index.css';
 import {
   buildCity,
@@ -29,6 +30,7 @@ import {
   selectDicePanelModel,
   selectDiceOutcomeModel,
   selectEndgameStatus,
+  selectGame,
   selectProductionPanelModel,
   selectTurnStatus,
 } from '@/store/selectors';
@@ -37,6 +39,13 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks';
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 4;
 type ControllerOption = 'human' | 'bot';
+type BotSpeedOption = 'normal' | 'fast' | 'veryFast';
+
+const BOT_SPEED_DELAY_MS: Record<BotSpeedOption, number> = {
+  normal: 1000,
+  fast: 500,
+  veryFast: 250,
+};
 
 function createPlayers(
   count: number,
@@ -73,6 +82,7 @@ function App() {
   const disasterPanel = useAppSelector(selectDisasterPanelModel);
   const discardPanel = useAppSelector(selectDiscardPanelModel);
   const endgameStatus = useAppSelector(selectEndgameStatus);
+  const game = useAppSelector(selectGame);
   const canUndo = useAppSelector(selectCanUndo);
   const canRedo = useAppSelector(selectCanRedo);
   const [selectedGoodsToSpend, setSelectedGoodsToSpend] = useState<string[]>([]);
@@ -85,6 +95,7 @@ function App() {
     3: 'human',
     4: 'human',
   });
+  const [botSpeed, setBotSpeed] = useState<BotSpeedOption>('normal');
   const [isDiceReferenceExpanded, setIsDiceReferenceExpanded] = useState(false);
   const [goodsToKeepByType, setGoodsToKeepByType] = useState<Record<string, number>>(
     {},
@@ -92,6 +103,9 @@ function App() {
   const [sectionPreferencesByPlayer, setSectionPreferencesByPlayer] = useState<
     Record<string, SectionPreferences>
   >({});
+  const botTimerRef = useRef<number | null>(null);
+  const [isBotResolving, setIsBotResolving] = useState(false);
+  const botStepDelayMs = BOT_SPEED_DELAY_MS[botSpeed];
 
   const rerollEmoji =
     dicePanel.rerollsRemaining > 0
@@ -189,6 +203,72 @@ function App() {
   }, [turnStatus.phase]);
   const getPanelClassName = (panel: PhasePanel) =>
     activePhasePanel === panel ? 'app-panel is-active-phase' : 'app-panel';
+  const isBotTurn =
+    turnStatus.isGameActive &&
+    !endgameStatus.isGameOver &&
+    turnStatus.activePlayerController === 'bot';
+  const controlsLockedByBot = isBotTurn && isBotResolving;
+
+  const dispatchBotAction = useCallback(
+    (action: BotAction) => {
+      switch (action.type) {
+        case 'rollDice':
+          dispatch(rollDice());
+          return;
+        case 'rerollSingleDie':
+          dispatch(rerollSingleDie({ dieIndex: action.dieIndex }));
+          return;
+        case 'keepDie':
+          dispatch(keepDie({ dieIndex: action.dieIndex }));
+          return;
+        case 'selectProduction':
+          dispatch(
+            selectProduction({
+              dieIndex: action.dieIndex,
+              productionIndex: action.productionIndex,
+            }),
+          );
+          return;
+        case 'resolveProduction':
+          return;
+        case 'buildCity':
+          dispatch(buildCity({ cityIndex: action.cityIndex }));
+          return;
+        case 'buildMonument':
+          dispatch(buildMonument({ monumentId: action.monumentId }));
+          return;
+        case 'buyDevelopment':
+          dispatch(
+            buyDevelopment({
+              developmentId: action.developmentId,
+              goodsTypeNames: action.goodsTypeNames,
+            }),
+          );
+          return;
+        case 'skipDevelopment':
+          dispatch(skipDevelopment());
+          return;
+        case 'applyExchange':
+          dispatch(
+            applyExchange({
+              from: action.from,
+              to: action.to,
+              amount: action.amount,
+            }),
+          );
+          return;
+        case 'discardGoods':
+          dispatch(discardGoods({ goodsToKeepByType: action.goodsToKeepByType }));
+          return;
+        case 'endTurn':
+          dispatch(endTurn());
+          return;
+        default:
+          return;
+      }
+    },
+    [dispatch],
+  );
 
   const toggleGoodsSpend = (goodsType: string) => {
     setSelectedGoodsToSpend((current) =>
@@ -206,6 +286,35 @@ function App() {
       return next;
     });
   }, [discardPanel.goodsOptions]);
+
+  useEffect(() => {
+    if (botTimerRef.current !== null) {
+      window.clearTimeout(botTimerRef.current);
+      botTimerRef.current = null;
+    }
+
+    if (!isBotTurn || !game) {
+      setIsBotResolving(false);
+      return;
+    }
+
+    setIsBotResolving(true);
+    botTimerRef.current = window.setTimeout(() => {
+      const action = chooseHeuristicBotAction(game);
+      if (!action) {
+        setIsBotResolving(false);
+        return;
+      }
+      dispatchBotAction(action);
+    }, botStepDelayMs);
+
+    return () => {
+      if (botTimerRef.current !== null) {
+        window.clearTimeout(botTimerRef.current);
+        botTimerRef.current = null;
+      }
+    };
+  }, [botStepDelayMs, dispatchBotAction, game, isBotTurn]);
 
   const updateGoodsToKeep = (goodsType: string, value: string) => {
     const parsed = Number(value);
@@ -278,11 +387,9 @@ function App() {
           <h1>Roll Through the Ages</h1>
         </div>
         {!turnStatus.isGameActive ? (
-          <section className="app-panel setup-panel">
-            <h2>Start New Game</h2>
-            <p>Choose the number of players, then begin.</p>
-            {renderControllerOptions('setup')}
-            <div className="title-actions">
+          <>
+            <section className="app-panel setup-panel">
+              <h2>Start New Game</h2>
               <label className="player-count-control" htmlFor="player-count-select">
                 <span>Players</span>
                 <select
@@ -300,7 +407,9 @@ function App() {
                   ))}
                 </select>
               </label>
+              {renderControllerOptions('setup')}
               <button
+                className="start-game-button"
                 type="button"
                 onClick={() =>
                   dispatch(
@@ -312,8 +421,25 @@ function App() {
               >
                 Start Game
               </button>
-            </div>
-          </section>
+            </section>
+            <section className="app-panel setup-panel">
+              <h2>Settings</h2>
+              <label className="player-count-control" htmlFor="bot-speed-select">
+                <span>Bot Speed</span>
+                <select
+                  id="bot-speed-select"
+                  value={botSpeed}
+                  onChange={(event) =>
+                    setBotSpeed(event.target.value as BotSpeedOption)
+                  }
+                >
+                  <option value="normal">Normal (1s)</option>
+                  <option value="fast">Fast (0.5s)</option>
+                  <option value="veryFast">Very Fast (0.25s)</option>
+                </select>
+              </label>
+            </section>
+          </>
         ) : null}
         {turnStatus.isGameActive && endgameStatus.isGameOver ? (
           <section className="app-panel victory-panel">
@@ -367,6 +493,20 @@ function App() {
                   ))}
                 </select>
               </label>
+              <label className="player-count-control" htmlFor="bot-speed-select-end">
+                <span>Bot Speed</span>
+                <select
+                  id="bot-speed-select-end"
+                  value={botSpeed}
+                  onChange={(event) =>
+                    setBotSpeed(event.target.value as BotSpeedOption)
+                  }
+                >
+                  <option value="normal">Normal (1s)</option>
+                  <option value="fast">Fast (0.5s)</option>
+                  <option value="veryFast">Very Fast (0.25s)</option>
+                </select>
+              </label>
               <button
                 type="button"
                 onClick={() =>
@@ -384,7 +524,8 @@ function App() {
         ) : null}
         {turnStatus.isGameActive && !endgameStatus.isGameOver ? (
           <>
-            <div className="board-grid">
+            <fieldset className="gameplay-shell" disabled={controlsLockedByBot}>
+              <div className="board-grid">
           <section className={getPanelClassName('turnStatus')} aria-live="polite">
             <h2>Turn Status</h2>
             <p>
@@ -399,6 +540,11 @@ function App() {
               <strong>Controller:</strong>{' '}
               {turnStatus.activePlayerController ?? '-'}
             </p>
+            {controlsLockedByBot ? (
+              <p className="hint-text">
+                Bot is taking turn... ({botStepDelayMs / 1000}s per action)
+              </p>
+            ) : null}
             <p>
               <strong>Phase:</strong> {turnStatus.phase ?? '-'}
             </p>
@@ -911,8 +1057,9 @@ function App() {
                 aria-label="Action log history"
               />
             </section>
-          </section>
-            </div>
+            </section>
+              </div>
+            </fieldset>
           </>
         ) : null}
 
