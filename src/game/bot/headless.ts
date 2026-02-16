@@ -1,5 +1,6 @@
-import { determineWinners, getScoreBreakdown, isGameOver } from '../engine';
+import { determineWinners, getPlayerEndStateSummaries, isGameOver } from '../engine';
 import { GameState, PlayerConfig } from '../game';
+import { PlayerEndStateSummary } from '../reporting';
 import { createGame } from '../engine/gameEngine';
 import { heuristicStandardBot } from './heuristic';
 import { BotStrategy } from './types';
@@ -117,18 +118,6 @@ export function runHeadlessBotMatch(
   return runHeadlessBotGame(game, options);
 }
 
-export function getHeadlessScoreSummary(game: GameState): Array<{
-  playerId: string;
-  playerName: string;
-  total: number;
-}> {
-  return game.state.players.map((player) => {
-    const config = game.settings.players.find((entry) => entry.id === player.id);
-    const score = getScoreBreakdown(player, game.state.players, game.settings).total;
-    return {
-      playerId: player.id,
-      playerName: config?.name ?? player.id,
-      total: score,
-    };
-  });
+export function getHeadlessScoreSummary(game: GameState): PlayerEndStateSummary[] {
+  return getPlayerEndStateSummaries(game);
 }

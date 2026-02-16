@@ -8,6 +8,10 @@ import {
   getHeadlessScoreSummary,
   runHeadlessBotMatch,
 } from '@/game/bot';
+import { PlayerEndStateSummary } from '@/game/reporting';
+import { ActionLogPanel } from '@/components/ActionLogPanel';
+import { PlayerEndStateCard } from '@/components/PlayerEndStateCard';
+import { PlayerScoreCard } from '@/components/PlayerScoreCard';
 import './index.css';
 import {
   buildCity,
@@ -40,6 +44,7 @@ import {
   selectEndgameStatus,
   selectGame,
   selectProductionPanelModel,
+  selectPlayerEndStateSummaries,
   selectTurnStatus,
 } from '@/store/selectors';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -53,7 +58,7 @@ type HeadlessSimulationSummary = {
   completed: boolean;
   turnsPlayed: number;
   winners: string[];
-  scores: Array<{ playerId: string; playerName: string; total: number }>;
+  scores: PlayerEndStateSummary[];
   stallReason: string | null;
   actionLog: string[];
 };
@@ -102,6 +107,7 @@ const DEFAULT_SECTION_PREFERENCES: SectionPreferences = {
 function App() {
   const dispatch = useAppDispatch();
   const turnStatus = useAppSelector(selectTurnStatus);
+  const playerEndStateSummaries = useAppSelector(selectPlayerEndStateSummaries);
   const actionLog = useAppSelector(selectActionLog);
   const dicePanel = useAppSelector(selectDicePanelModel);
   const diceOutcome = useAppSelector(selectDiceOutcomeModel);
@@ -223,14 +229,14 @@ function App() {
       return a.purchased ? 1 : -1;
     },
   );
-  const topScore = turnStatus.playerPoints.reduce(
-    (best, entry) => Math.max(best, entry.points),
+  const topScore = playerEndStateSummaries.reduce(
+    (best, entry) => Math.max(best, entry.total),
     Number.NEGATIVE_INFINITY,
   );
   const winners =
     topScore === Number.NEGATIVE_INFINITY
       ? []
-      : turnStatus.playerPoints.filter((entry) => entry.points === topScore);
+      : playerEndStateSummaries.filter((entry) => entry.total === topScore);
   const activePhasePanel: PhasePanel | null = useMemo(() => {
     switch (turnStatus.phase) {
       case GamePhase.RollDice:
@@ -787,13 +793,15 @@ function App() {
                         <p className="hint-text">{simulation.stallReason}</p>
                       ) : null}
                       <p className="choice-label">Final Scores</p>
-                      <ul className="inline-note">
+                      <div className="scoreboard-list">
                         {simulation.scores.map((entry) => (
-                          <li key={`${entry.playerId}-${index + 1}`}>
-                            {entry.playerName}: {entry.total} VP
-                          </li>
+                          <PlayerEndStateCard
+                            key={`${entry.playerId}-${index + 1}`}
+                            entry={entry}
+                            itemKeyPrefix={`headless-result-${index + 1}`}
+                          />
                         ))}
-                      </ul>
+                      </div>
                       <p className="choice-label">Action Log</p>
                       <textarea
                         className="log-textbox"
@@ -828,19 +836,12 @@ function App() {
                 </div>
               ) : null}
               <div className="scoreboard-list">
-                {turnStatus.playerPoints.map((entry) => (
-                  <article key={`victory-${entry.playerId}`} className="scoreboard-card">
-                    <p className="development-title">{entry.playerName}</p>
-                    <p className="scoreboard-row">Monuments: {entry.breakdown.monuments}</p>
-                    <p className="scoreboard-row">
-                      Developments: {entry.breakdown.developments}
-                    </p>
-                    <p className="scoreboard-row">Bonuses: {entry.breakdown.bonuses}</p>
-                    <p className="scoreboard-row">Penalties: -{entry.breakdown.penalties}</p>
-                    <p className="scoreboard-row">
-                      <strong>Total: {entry.breakdown.total}</strong>
-                    </p>
-                  </article>
+                {playerEndStateSummaries.map((entry) => (
+                  <PlayerEndStateCard
+                    key={`victory-${entry.playerId}`}
+                    entry={entry}
+                    itemKeyPrefix="game-over"
+                  />
                 ))}
               </div>
               <div className="title-actions">
@@ -849,15 +850,7 @@ function App() {
                 </button>
               </div>
             </section>
-            <section className="app-panel">
-              <h2>Action Log</h2>
-              <textarea
-                className="log-textbox"
-                readOnly
-                value={actionLog.join('\n')}
-                aria-label="Action log history"
-              />
-            </section>
+            <ActionLogPanel entries={actionLog} ariaLabel="Action log history" />
           </>
         ) : null}
         {turnStatus.isGameActive && !endgameStatus.isGameOver ? (
@@ -915,16 +908,12 @@ function App() {
             {turnStatus.playerPoints.length > 0 ? (
               <div className="scoreboard-list">
                 {turnStatus.playerPoints.map((entry) => (
-                  <article key={entry.playerId} className="scoreboard-card">
-                    <p className="development-title">
-                      {entry.playerName} {entry.playerId === turnStatus.activePlayerId ? '• Active' : ''}
-                    </p>
-                    <p className="scoreboard-row">Monuments: {entry.breakdown.monuments}</p>
-                    <p className="scoreboard-row">Developments: {entry.breakdown.developments}</p>
-                    <p className="scoreboard-row">Bonuses: {entry.breakdown.bonuses}</p>
-                    <p className="scoreboard-row">Penalties: -{entry.breakdown.penalties}</p>
-                    <p className="scoreboard-row"><strong>Total: {entry.breakdown.total}</strong></p>
-                  </article>
+                  <PlayerScoreCard
+                    key={entry.playerId}
+                    playerName={entry.playerName}
+                    breakdown={entry.breakdown}
+                    isActive={entry.playerId === turnStatus.activePlayerId}
+                  />
                 ))}
               </div>
             ) : null}
@@ -1386,15 +1375,7 @@ function App() {
                 </div>
               ) : null}
             </section>
-            <section className="app-panel">
-              <h2>Action Log</h2>
-              <textarea
-                className="log-textbox"
-                readOnly
-                value={actionLog.join('\n')}
-                aria-label="Action log history"
-              />
-            </section>
+            <ActionLogPanel entries={actionLog} ariaLabel="Action log history" />
             </section>
               </div>
             </fieldset>

@@ -2,6 +2,7 @@ import { createSelector } from '@reduxjs/toolkit';
 import { GamePhase } from '@/game';
 import { SpecialEffect } from '@/game/construction';
 import { GameSettings, PlayerState, TurnState } from '@/game/game';
+import { ScoreBreakdownSummary } from '@/game/reporting';
 import {
   getBuildOptions,
   getAvailableMonuments,
@@ -28,6 +29,7 @@ import {
   getSingleDieRerollsAllowed,
   getRewrittenDisasterTargeting,
   getGoodsLimit,
+  getPlayerEndStateSummaries,
   getTotalGoodsQuantity,
   hasDisasterImmunity,
   getScoreBreakdown,
@@ -37,6 +39,13 @@ import {
 import { RootState } from './store';
 
 const selectGameSlice = (state: RootState) => state.game;
+
+type TurnPlayerPointsEntry = {
+  playerId: string;
+  playerName: string;
+  points: number;
+  breakdown: ScoreBreakdownSummary;
+};
 
 function getPotentialExchangeCoinGain(
   activePlayer: PlayerState,
@@ -111,6 +120,13 @@ function formatProductionEntry(entry: {
 
 export const selectGame = createSelector(selectGameSlice, (slice) => slice.game);
 
+export const selectPlayerEndStateSummaries = createSelector(selectGame, (game) => {
+  if (!game) {
+    return [];
+  }
+  return getPlayerEndStateSummaries(game);
+});
+
 export const selectLastError = createSelector(
   selectGameSlice,
   (slice) => slice.lastError,
@@ -145,18 +161,7 @@ export const selectTurnStatus = createSelector(
         activePlayerController: null as 'human' | 'bot' | null,
         rollsUsed: 0,
         activePlayerPoints: 0,
-        playerPoints: [] as Array<{
-          playerId: string;
-          playerName: string;
-          points: number;
-          breakdown: {
-            monuments: number;
-            developments: number;
-            bonuses: number;
-            penalties: number;
-            total: number;
-          };
-        }>,
+        playerPoints: [] as TurnPlayerPointsEntry[],
         errorMessage: lastError?.message ?? null,
       };
     }
