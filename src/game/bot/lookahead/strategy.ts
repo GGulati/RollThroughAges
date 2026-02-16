@@ -1,5 +1,10 @@
 import { ResourceProduction } from '../../dice';
-import { autoAdvanceForcedPhases, getMaxRollsAllowed, resolveProduction } from '../../engine';
+import {
+  autoAdvanceForcedPhases,
+  getGoodsValue,
+  getMaxRollsAllowed,
+  getScoreBreakdown,
+} from '../../engine';
 import { GAME_PHASE_ORDER, GamePhase, GameState } from '../../game';
 import { applyBotAction } from '../actionAdapter';
 import { botActionKey } from '../actionKey';
@@ -113,32 +118,100 @@ function withBestPendingProductionChoices(
   };
 }
 
-function evaluateResolvedTurnUtility(game: GameState, config: LookaheadConfig): number {
+function getPlayerPositionValue(
+  game: GameState,
+  playerId: string,
+  config: LookaheadConfig,
+): number {
+  const playerIndex = game.state.players.findIndex((entry) => entry.id === playerId);
+  if (playerIndex < 0) {
+    return 0;
+  }
+  const player = game.state.players[playerIndex];
+  const breakdown = getScoreBreakdown(player, game.state.players, game.settings);
+  const completedCities = player.cities.filter((city) => city.completed).length;
+  const cityProgress = player.cities.reduce((sum, city, cityIndex) => {
+    if (city.completed) {
+      return sum + 1;
+    }
+    const cityDefIndex = cityIndex - game.settings.startingCities;
+    if (cityDefIndex < 0 || cityDefIndex >= game.settings.cityDefinitions.length) {
+      return sum;
+    }
+    const workerCost = game.settings.cityDefinitions[cityDefIndex].workerCost;
+    if (workerCost <= 0) {
+      return sum;
+    }
+    return sum + Math.min(1, city.workersCommitted / workerCost);
+  }, 0);
+
+  const monumentProgress = game.settings.monumentDefinitions.reduce((sum, monument) => {
+    const progress = player.monuments[monument.id];
+    if (!progress) {
+      return sum;
+    }
+    if (progress.completed) {
+      return sum + 1;
+    }
+    const workerCost = monument.requirements.workerCost;
+    if (workerCost <= 0) {
+      return sum;
+    }
+    return sum + Math.min(1, progress.workersCommitted / workerCost);
+  }, 0);
+
+  const goodsValue = game.settings.goodsTypes.reduce((sum, goodsType) => {
+    const quantity = player.goods.get(goodsType) ?? 0;
+    return sum + getGoodsValue(goodsType, quantity);
+  }, 0);
+  const citiesToFeed = completedCities;
+  const foodDeficit = Math.max(0, citiesToFeed - player.food);
+  const foodRiskPenalty =
+    foodDeficit * config.heuristicFallbackConfig.foodPolicyWeights.starvationPenaltyPerUnit;
+  const turnResourcePosition =
+    game.state.turn.activePlayerId === player.id
+      ? scoreProductionChoice(
+          game.state.turn.turnProduction,
+          config.heuristicFallbackConfig.productionWeights,
+          getFoodUrgencyWeight(game, config),
+        )
+      : 0;
+
+  return (
+    breakdown.total * 100 +
+    completedCities * 12 +
+    cityProgress * 2.5 +
+    monumentProgress * 3 +
+    goodsValue * 0.6 +
+    player.food * 0.8 +
+    turnResourcePosition -
+    foodRiskPenalty
+  );
+}
+
+function evaluateResolvedTurnUtility(
+  game: GameState,
+  rootPlayerId: string,
+  config: LookaheadConfig,
+): number {
   if (config.maxEvaluations <= 0) {
     return 0;
   }
   const normalized = withBestPendingProductionChoices(game, config);
-  const resolved = resolveProduction(
-    normalized.state,
-    normalized.state.players,
-    normalized.settings,
-  );
-  const foodWeight =
-    getFoodUrgencyWeight(normalized, config) +
-    resolved.foodShortage * 4;
-  const productionScore = scoreProductionChoice(
-    resolved.turnProduction,
-    config.heuristicFallbackConfig.productionWeights,
-    foodWeight,
-  );
-  const starvationPenalty =
-    resolved.foodShortage *
-    config.heuristicFallbackConfig.foodPolicyWeights.starvationPenaltyPerUnit;
-  return productionScore - starvationPenalty;
+  const rootValue = getPlayerPositionValue(normalized, rootPlayerId, config);
+  const opponentValues = normalized.state.players
+    .filter((player) => player.id !== rootPlayerId)
+    .map((player) => getPlayerPositionValue(normalized, player.id, config));
+  const opponentAverage =
+    opponentValues.length > 0
+      ? opponentValues.reduce((sum, value) => sum + value, 0) / opponentValues.length
+      : 0;
+  return rootValue - opponentAverage;
 }
 
 function evaluateResolvedTurnUtilityBudgeted(
   game: GameState,
+  rootPlayerId: string,
   config: LookaheadConfig,
   budget: EvaluationBudget,
 ): number {
@@ -148,7 +221,7 @@ function evaluateResolvedTurnUtilityBudgeted(
     return 0;
   }
   budget.remainingByPhase[phase] = remaining - 1;
-  return evaluateResolvedTurnUtility(game, config);
+  return evaluateResolvedTurnUtility(game, rootPlayerId, config);
 }
 
 function createDieForFace(
@@ -257,7 +330,12 @@ function approximateRollUtility(
   budget: EvaluationBudget,
 ): number {
   const faceCount = game.settings.diceFaces.length;
-  const baseUtility = evaluateResolvedTurnUtilityBudgeted(game, config, budget);
+  const baseUtility = evaluateResolvedTurnUtilityBudgeted(
+    game,
+    rootPlayerId,
+    config,
+    budget,
+  );
   let totalDelta = 0;
 
   for (const dieIndex of rerolledDieIndices) {
@@ -371,14 +449,14 @@ function evaluateActionValue(
   budget: EvaluationBudget,
 ): number {
   if (depth <= 0 || (budget.remainingByPhase[game.state.phase] ?? 0) <= 0) {
-    return evaluateResolvedTurnUtilityBudgeted(game, config, budget);
+    return evaluateResolvedTurnUtilityBudgeted(game, rootPlayerId, config, budget);
   }
 
   const legalActions = getLegalBotActions(game)
     .sort((a, b) => botActionKey(a).localeCompare(botActionKey(b)))
     .slice(0, config.maxActionsPerNode);
   if (legalActions.length === 0) {
-    return evaluateResolvedTurnUtilityBudgeted(game, config, budget);
+    return evaluateResolvedTurnUtilityBudgeted(game, rootPlayerId, config, budget);
   }
 
   const activePlayer = game.state.players[game.state.activePlayerIndex];
@@ -403,7 +481,7 @@ function evaluateActionValue(
     (maximize && best === Number.NEGATIVE_INFINITY) ||
     (!maximize && best === Number.POSITIVE_INFINITY);
   return noActionValue
-    ? evaluateResolvedTurnUtilityBudgeted(game, config, budget)
+    ? evaluateResolvedTurnUtilityBudgeted(game, rootPlayerId, config, budget)
     : best;
 }
 
