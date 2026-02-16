@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { getHeadlessScoreSummary, runHeadlessBotMatch } from '@/game/bot';
+import {
+  getHeadlessScoreSummary,
+  lookaheadStandardBot,
+  runHeadlessBotMatch,
+} from '@/game/bot';
 
 describe('headless bot match', () => {
   it('runs with bot-only player configs', () => {
@@ -46,6 +50,26 @@ describe('headless bot match', () => {
     expect(Array.isArray(first.resources.goods)).toBe(true);
     expect(Array.isArray(first.developments)).toBe(true);
     expect(Array.isArray(first.monuments)).toBe(true);
+    randomSpy.mockRestore();
+  });
+
+  it('supports lookahead strategy injection in headless matches', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.6);
+    const players = [
+      { id: 'b1', name: 'Bot 1', controller: 'bot' as const },
+      { id: 'b2', name: 'Bot 2', controller: 'bot' as const },
+    ];
+    const result = runHeadlessBotMatch(players, {
+      maxTurns: 24,
+      maxStepsPerTurn: 120,
+      strategyByPlayerId: {
+        b1: lookaheadStandardBot,
+        b2: lookaheadStandardBot,
+      },
+    });
+
+    expect(result.turnsPlayed).toBeGreaterThan(0);
+    expect(result.actionLog.some((line) => line.includes('[Bot 1]'))).toBe(true);
     randomSpy.mockRestore();
   });
 });

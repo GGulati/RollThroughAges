@@ -1,9 +1,16 @@
 import { HeuristicConfig } from '@/game/bot';
 import { PlayerEndStateSummary } from '@/game/reporting';
 
-export type ControllerOption = 'human' | 'heuristicStandard' | 'heuristicCustom';
+export type ControllerOption =
+  | 'human'
+  | 'heuristicStandard'
+  | 'heuristicCustom'
+  | 'lookaheadStandard';
 export type BotSpeedOption = 'normal' | 'fast' | 'veryFast';
-export type BotProfile = 'heuristicStandard' | 'heuristicCustom';
+export type BotProfile =
+  | 'heuristicStandard'
+  | 'heuristicCustom'
+  | 'lookaheadStandard';
 
 export type HeadlessSimulationSummary = {
   completed: boolean;

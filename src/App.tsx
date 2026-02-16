@@ -5,7 +5,9 @@ import {
   HeuristicConfig,
   HEURISTIC_STANDARD_CONFIG,
   createHeuristicBot,
+  createLookaheadBot,
   getHeadlessScoreSummary,
+  LOOKAHEAD_STANDARD_CONFIG,
   runHeadlessBotMatch,
 } from '@/game/bot';
 import { GameOverScreen } from '@/screens/GameOverScreen';
@@ -158,6 +160,10 @@ function App() {
     () => createHeuristicBot(HEURISTIC_STANDARD_CONFIG, 'heuristic-standard-fixed'),
     [],
   );
+  const standardLookaheadBot = useMemo(
+    () => createLookaheadBot(LOOKAHEAD_STANDARD_CONFIG, 'lookahead-standard-fixed'),
+    [],
+  );
 
   const rerollEmoji = getRerollEmoji(dicePanel.rerollsRemaining);
 
@@ -296,6 +302,7 @@ function App() {
     activeGameBotProfilesByPlayerId,
     configuredHeuristicBot,
     standardHeuristicBot,
+    standardLookaheadBot,
     botStepDelayMs,
     dispatchBotAction,
   });
@@ -360,6 +367,8 @@ function App() {
         profiles[player.id] = 'heuristicStandard';
       } else if (selected === 'heuristicCustom') {
         profiles[player.id] = 'heuristicCustom';
+      } else if (selected === 'lookaheadStandard') {
+        profiles[player.id] = 'lookaheadStandard';
       }
     });
     return profiles;
@@ -437,6 +446,8 @@ function App() {
         player.id,
         botProfilesByPlayerId[player.id] === 'heuristicStandard'
           ? standardHeuristicBot
+          : botProfilesByPlayerId[player.id] === 'lookaheadStandard'
+            ? standardLookaheadBot
           : configuredHeuristicBot,
       ]),
     );
