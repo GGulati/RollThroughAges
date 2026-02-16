@@ -27,12 +27,7 @@ type EvaluationBudget = {
   remainingByPhase: Record<GamePhase, number>;
 };
 
-type SearchMemo = {
-  stateSignatureCache: WeakMap<GameState, string>;
-  rollOutcomeByKey: Map<string, GameState>;
-  utilityByStateAndRoot: Map<string, number>;
-  recordMetric?: (metric: string, value?: number) => void;
-};
+type MetricRecorder = ((metric: string, value?: number) => void) | undefined;
 
 export type LookaheadInstrumentation = {
   core: BotCoreInstrumentation;
@@ -40,18 +35,6 @@ export type LookaheadInstrumentation = {
   evaluateChanceActionCalls: number;
   evaluateDeterministicActionCalls: number;
   evaluatedChanceOutcomes: number;
-  stateSignatureCacheHits: number;
-  stateSignatureCacheMisses: number;
-  legalActionsCacheHits: number;
-  legalActionsCacheMisses: number;
-  actionPreScoreCacheHits: number;
-  actionPreScoreCacheMisses: number;
-  appliedActionCacheHits: number;
-  appliedActionCacheMisses: number;
-  rollOutcomeCacheHits: number;
-  rollOutcomeCacheMisses: number;
-  utilityCacheHits: number;
-  utilityCacheMisses: number;
 };
 
 function createEmptyInstrumentation(): LookaheadInstrumentation {
@@ -61,18 +44,6 @@ function createEmptyInstrumentation(): LookaheadInstrumentation {
     evaluateChanceActionCalls: 0,
     evaluateDeterministicActionCalls: 0,
     evaluatedChanceOutcomes: 0,
-    stateSignatureCacheHits: 0,
-    stateSignatureCacheMisses: 0,
-    legalActionsCacheHits: 0,
-    legalActionsCacheMisses: 0,
-    actionPreScoreCacheHits: 0,
-    actionPreScoreCacheMisses: 0,
-    appliedActionCacheHits: 0,
-    appliedActionCacheMisses: 0,
-    rollOutcomeCacheHits: 0,
-    rollOutcomeCacheMisses: 0,
-    utilityCacheHits: 0,
-    utilityCacheMisses: 0,
   };
 }
 
@@ -81,12 +52,12 @@ const lookaheadInstrumentation = createEmptyInstrumentation();
 type LookaheadMetricName = Exclude<keyof LookaheadInstrumentation, 'core'>;
 
 function recordLookaheadMetric(
-  memo: SearchMemo,
+  recordMetric: MetricRecorder,
   metric: LookaheadMetricName,
   value = 1,
 ): void {
   lookaheadInstrumentation[metric] += value;
-  memo.recordMetric?.(`lookahead.${metric}`, value);
+  recordMetric?.(`lookahead.${metric}`, value);
 }
 
 export function resetLookaheadInstrumentation(): void {
@@ -112,81 +83,6 @@ function createEvaluationBudget(maxEvaluationsPerPhase: number): EvaluationBudge
       {} as Record<GamePhase, number>,
     ),
   };
-}
-
-function createSearchMemo(
-  recordMetric?: (metric: string, value?: number) => void,
-): SearchMemo {
-  return {
-    stateSignatureCache: new WeakMap<GameState, string>(),
-    rollOutcomeByKey: new Map<string, GameState>(),
-    utilityByStateAndRoot: new Map<string, number>(),
-    recordMetric,
-  };
-}
-
-function getStateSignature(game: GameState, memo: SearchMemo): string {
-  const cached = memo.stateSignatureCache.get(game);
-  if (cached) {
-    recordLookaheadMetric(memo, 'stateSignatureCacheHits');
-    return cached;
-  }
-  recordLookaheadMetric(memo, 'stateSignatureCacheMisses');
-
-  const turn = game.state.turn;
-  const turnSig = [
-    turn.activePlayerId,
-    turn.rollsUsed,
-    turn.singleDieRerollsUsed,
-    turn.pendingChoices,
-    turn.foodShortage,
-    turn.developmentPurchased ? 1 : 0,
-    turn.turnProduction.workers,
-    turn.turnProduction.coins,
-    turn.turnProduction.food,
-    turn.turnProduction.goods,
-    turn.turnProduction.skulls,
-    turn.dice
-      .map((die) => `${die.diceFaceIndex}:${die.productionIndex}:${die.lockDecision}`)
-      .join(';'),
-  ].join('|');
-
-  const playersSig = game.state.players
-    .map((player) => {
-      const goodsSig = game.settings.goodsTypes
-        .map((goodsType) => `${goodsType.name}:${player.goods.get(goodsType) ?? 0}`)
-        .join(',');
-      const citiesSig = player.cities
-        .map((city) => `${city.completed ? 1 : 0}:${city.workersCommitted}`)
-        .join(',');
-      const monumentsSig = game.settings.monumentDefinitions
-        .map((monument) => {
-          const progress = player.monuments[monument.id];
-          return `${monument.id}:${progress?.completed ? 1 : 0}:${progress?.workersCommitted ?? 0}`;
-        })
-        .join(',');
-      return [
-        player.id,
-        player.food,
-        player.disasterPenalties,
-        player.score,
-        [...player.developments].sort((a, b) => a.localeCompare(b)).join(','),
-        goodsSig,
-        citiesSig,
-        monumentsSig,
-      ].join('|');
-    })
-    .join('||');
-
-  const signature = [
-    game.state.phase,
-    game.state.round,
-    game.state.activePlayerIndex,
-    turnSig,
-    playersSig,
-  ].join('#');
-  memo.stateSignatureCache.set(game, signature);
-  return signature;
 }
 
 function scoreProductionChoice(
@@ -348,18 +244,11 @@ function evaluateResolvedTurnUtility(
   game: GameState,
   rootPlayerId: string,
   config: LookaheadConfig,
-  memo: SearchMemo,
+  _recordMetric: MetricRecorder,
 ): number {
   if (config.maxEvaluations <= 0) {
     return 0;
   }
-  const utilityKey = `${rootPlayerId}|${getStateSignature(game, memo)}`;
-  const cached = memo.utilityByStateAndRoot.get(utilityKey);
-  if (cached !== undefined) {
-    recordLookaheadMetric(memo, 'utilityCacheHits');
-    return cached;
-  }
-  recordLookaheadMetric(memo, 'utilityCacheMisses');
   const normalized = withBestPendingProductionChoices(game, config);
   const rootValue = getPlayerPositionValue(normalized, rootPlayerId, config);
   const opponentValues = normalized.state.players
@@ -369,9 +258,7 @@ function evaluateResolvedTurnUtility(
     opponentValues.length > 0
       ? opponentValues.reduce((sum, value) => sum + value, 0) / opponentValues.length
       : 0;
-  const utility = rootValue - opponentAverage;
-  memo.utilityByStateAndRoot.set(utilityKey, utility);
-  return utility;
+  return rootValue - opponentAverage;
 }
 
 function evaluateResolvedTurnUtilityBudgeted(
@@ -379,7 +266,7 @@ function evaluateResolvedTurnUtilityBudgeted(
   rootPlayerId: string,
   config: LookaheadConfig,
   budget: EvaluationBudget,
-  memo: SearchMemo,
+  recordMetric: MetricRecorder,
 ): number {
   const phase = game.state.phase;
   const remaining = budget.remainingByPhase[phase] ?? 0;
@@ -387,7 +274,7 @@ function evaluateResolvedTurnUtilityBudgeted(
     return 0;
   }
   budget.remainingByPhase[phase] = remaining - 1;
-  return evaluateResolvedTurnUtility(game, rootPlayerId, config, memo);
+  return evaluateResolvedTurnUtility(game, rootPlayerId, config, recordMetric);
 }
 
 function createDieForFace(
@@ -413,20 +300,8 @@ function applyRollOutcome(
   faceIndices: number[],
   config: LookaheadConfig,
   actionType: 'rollDice' | 'rerollSingleDie',
-  memo: SearchMemo,
+  _recordMetric: MetricRecorder,
 ): GameState {
-  const rollKey = [
-    getStateSignature(game, memo),
-    actionType,
-    rerolledDieIndices.join(','),
-    faceIndices.join(','),
-  ].join('|');
-  const cached = memo.rollOutcomeByKey.get(rollKey);
-  if (cached) {
-    recordLookaheadMetric(memo, 'rollOutcomeCacheHits');
-    return cached;
-  }
-  recordLookaheadMetric(memo, 'rollOutcomeCacheMisses');
   const nextDice = game.state.turn.dice.map((die, dieIndex) => {
     const rerollIndex = rerolledDieIndices.indexOf(dieIndex);
     if (rerollIndex < 0) {
@@ -462,7 +337,6 @@ function applyRollOutcome(
     ...game,
     state: nextState,
   });
-  memo.rollOutcomeByKey.set(rollKey, outcome);
   return outcome;
 }
 
@@ -492,7 +366,7 @@ function getActionPreScore(
   action: BotAction,
   config: LookaheadConfig,
   rootPlayerId: string,
-  memo: SearchMemo,
+  recordMetric: MetricRecorder,
 ): number {
   let score = Number.NEGATIVE_INFINITY;
   if (action.type === 'rollDice' || action.type === 'rerollSingleDie') {
@@ -506,14 +380,14 @@ function getActionPreScore(
       rootPlayerId,
       1,
       probeBudget,
-      memo,
+      recordMetric,
     );
     return score;
   }
 
   const result = applyBotAction(game, action);
   if (result.applied) {
-    score = evaluateResolvedTurnUtility(result.game, rootPlayerId, config, memo);
+    score = evaluateResolvedTurnUtility(result.game, rootPlayerId, config, recordMetric);
   }
   return score;
 }
@@ -524,11 +398,11 @@ function getPrioritizedActions(
   config: LookaheadConfig,
   rootPlayerId: string,
   maximize: boolean,
-  memo: SearchMemo,
+  recordMetric: MetricRecorder,
 ): BotAction[] {
   const scored = actions.map((action) => ({
     action,
-    preScore: getActionPreScore(game, action, config, rootPlayerId, memo),
+    preScore: getActionPreScore(game, action, config, rootPlayerId, recordMetric),
   }));
   scored.sort((a, b) => {
     const preScoreDelta = maximize
@@ -549,7 +423,7 @@ function approximateRollUtility(
   rootPlayerId: string,
   depth: number,
   budget: EvaluationBudget,
-  memo: SearchMemo,
+  recordMetric: MetricRecorder,
 ): number {
   const faceCount = game.settings.diceFaces.length;
   const baseUtility = evaluateResolvedTurnUtilityBudgeted(
@@ -557,7 +431,7 @@ function approximateRollUtility(
     rootPlayerId,
     config,
     budget,
-    memo,
+    recordMetric,
   );
   let totalDelta = 0;
 
@@ -576,7 +450,7 @@ function approximateRollUtility(
         [faceIndex],
         config,
         rerolledDieIndices.length === 1 ? 'rerollSingleDie' : 'rollDice',
-        memo,
+        recordMetric,
       );
       dieUtilitySum += evaluateActionValue(
         outcomeGame,
@@ -584,7 +458,7 @@ function approximateRollUtility(
         rootPlayerId,
         depth - 1,
         budget,
-        memo,
+        recordMetric,
       );
     }
     totalDelta += dieUtilitySum / faceCount - baseUtility;
@@ -600,9 +474,9 @@ function evaluateChanceAction(
   rootPlayerId: string,
   depth: number,
   budget: EvaluationBudget,
-  memo: SearchMemo,
+  recordMetric: MetricRecorder,
 ): number {
-  recordLookaheadMetric(memo, 'evaluateChanceActionCalls');
+  recordLookaheadMetric(recordMetric, 'evaluateChanceActionCalls');
   const rerolledDieIndices =
     action.type === 'rollDice'
       ? game.state.turn.dice
@@ -626,7 +500,7 @@ function evaluateChanceAction(
       rootPlayerId,
       depth,
       budget,
-      memo,
+      recordMetric,
     );
   }
 
@@ -641,10 +515,10 @@ function evaluateChanceAction(
       faces,
       config,
       action.type,
-      memo,
+      recordMetric,
     ),
   }));
-  recordLookaheadMetric(memo, 'evaluatedChanceOutcomes', chanceOutcomes.length);
+  recordLookaheadMetric(recordMetric, 'evaluatedChanceOutcomes', chanceOutcomes.length);
 
   let total = 0;
   for (const outcome of chanceOutcomes) {
@@ -659,7 +533,7 @@ function evaluateChanceAction(
         rootPlayerId,
         depth - 1,
         budget,
-        memo,
+        recordMetric,
       );
   }
   return total;
@@ -672,15 +546,22 @@ function evaluateDeterministicAction(
   rootPlayerId: string,
   depth: number,
   budget: EvaluationBudget,
-  memo: SearchMemo,
+  recordMetric: MetricRecorder,
 ): number {
-  recordLookaheadMetric(memo, 'evaluateDeterministicActionCalls');
+  recordLookaheadMetric(recordMetric, 'evaluateDeterministicActionCalls');
   const result = applyBotAction(game, action);
   const nextGame = result.applied ? result.game : null;
   if (!nextGame) {
     return Number.NEGATIVE_INFINITY;
   }
-  return evaluateActionValue(nextGame, config, rootPlayerId, depth - 1, budget, memo);
+  return evaluateActionValue(
+    nextGame,
+    config,
+    rootPlayerId,
+    depth - 1,
+    budget,
+    recordMetric,
+  );
 }
 
 function evaluateActionValue(
@@ -689,16 +570,28 @@ function evaluateActionValue(
   rootPlayerId: string,
   depth: number,
   budget: EvaluationBudget,
-  memo: SearchMemo,
+  recordMetric: MetricRecorder,
 ): number {
-  recordLookaheadMetric(memo, 'evaluateActionValueCalls');
+  recordLookaheadMetric(recordMetric, 'evaluateActionValueCalls');
   if (depth <= 0 || (budget.remainingByPhase[game.state.phase] ?? 0) <= 0) {
-    return evaluateResolvedTurnUtilityBudgeted(game, rootPlayerId, config, budget, memo);
+    return evaluateResolvedTurnUtilityBudgeted(
+      game,
+      rootPlayerId,
+      config,
+      budget,
+      recordMetric,
+    );
   }
 
   const allLegalActions = getLegalBotActions(game);
   if (allLegalActions.length === 0) {
-    return evaluateResolvedTurnUtilityBudgeted(game, rootPlayerId, config, budget, memo);
+    return evaluateResolvedTurnUtilityBudgeted(
+      game,
+      rootPlayerId,
+      config,
+      budget,
+      recordMetric,
+    );
   }
 
   const activePlayer = game.state.players[game.state.activePlayerIndex];
@@ -709,7 +602,7 @@ function evaluateActionValue(
     config,
     rootPlayerId,
     maximize,
-    memo,
+    recordMetric,
   ).slice(0, config.maxActionsPerNode);
   let best = maximize ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY;
   for (const action of legalActions) {
@@ -718,7 +611,15 @@ function evaluateActionValue(
     }
     const value =
       action.type === 'rollDice' || action.type === 'rerollSingleDie'
-        ? evaluateChanceAction(game, action, config, rootPlayerId, depth, budget, memo)
+        ? evaluateChanceAction(
+            game,
+            action,
+            config,
+            rootPlayerId,
+            depth,
+            budget,
+            recordMetric,
+          )
         : evaluateDeterministicAction(
             game,
             action,
@@ -726,7 +627,7 @@ function evaluateActionValue(
             rootPlayerId,
             depth,
             budget,
-            memo,
+            recordMetric,
           );
     if (maximize && value > best) {
       best = value;
@@ -739,14 +640,20 @@ function evaluateActionValue(
     (maximize && best === Number.NEGATIVE_INFINITY) ||
     (!maximize && best === Number.POSITIVE_INFINITY);
   return noActionValue
-    ? evaluateResolvedTurnUtilityBudgeted(game, rootPlayerId, config, budget, memo)
+    ? evaluateResolvedTurnUtilityBudgeted(
+        game,
+        rootPlayerId,
+        config,
+        budget,
+        recordMetric,
+      )
     : best;
 }
 
 function pickBestLookaheadAction(
   game: GameState,
   config: LookaheadConfig,
-  memo: SearchMemo,
+  recordMetric: MetricRecorder,
 ): BotAction | null {
   const rootPlayerId = game.state.players[game.state.activePlayerIndex]?.id;
   if (!rootPlayerId) {
@@ -759,7 +666,7 @@ function pickBestLookaheadAction(
     config,
     rootPlayerId,
     true,
-    memo,
+    recordMetric,
   ).slice(0, config.maxActionsPerNode);
   if (legalActions.length === 0) {
     return null;
@@ -776,7 +683,7 @@ function pickBestLookaheadAction(
             rootPlayerId,
             config.depth,
             budget,
-            memo,
+            recordMetric,
           )
         : evaluateDeterministicAction(
             game,
@@ -785,7 +692,7 @@ function pickBestLookaheadAction(
             rootPlayerId,
             config.depth,
             budget,
-            memo,
+            recordMetric,
           );
     return { action, value };
   });
@@ -802,8 +709,7 @@ export function chooseLookaheadBotAction(
   config: LookaheadConfig = LOOKAHEAD_STANDARD_CONFIG,
   recordMetric?: (metric: string, value?: number) => void,
 ): BotAction | null {
-  const memo = createSearchMemo(recordMetric);
-  const lookaheadAction = pickBestLookaheadAction(game, config, memo);
+  const lookaheadAction = pickBestLookaheadAction(game, config, recordMetric);
   if (lookaheadAction) {
     return lookaheadAction;
   }

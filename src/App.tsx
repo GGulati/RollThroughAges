@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GamePhase, PlayerConfig } from '@/game';
 import {
   BotAction,
+  getBotCoreInstrumentation,
+  getHeadlessBotInstrumentation,
   HeuristicConfig,
   HEURISTIC_STANDARD_CONFIG,
   LookaheadConfig,
@@ -9,6 +11,8 @@ import {
   createLookaheadBot,
   getHeadlessScoreSummary,
   LOOKAHEAD_STANDARD_CONFIG,
+  resetBotCoreInstrumentation,
+  resetHeadlessBotInstrumentation,
   runHeadlessBotMatch,
 } from '@/game/bot';
 import { GameOverScreen } from '@/screens/GameOverScreen';
@@ -478,6 +482,8 @@ function App() {
     players: ReturnType<typeof createPlayers>,
     botProfilesByPlayerId: Record<string, BotProfile>,
   ) => {
+    resetBotCoreInstrumentation();
+    resetHeadlessBotInstrumentation();
     const strategyByPlayerId = Object.fromEntries(
       players.map((player) => [
         player.id,
@@ -501,6 +507,10 @@ function App() {
       scores,
       stallReason: result.stallReason,
       actionLog: result.actionLog,
+      instrumentation: {
+        core: getBotCoreInstrumentation(),
+        headless: getHeadlessBotInstrumentation(),
+      },
     };
     setHeadlessSimulations((current) => [...current, summary]);
   };
@@ -599,9 +609,9 @@ function App() {
             onResetHeuristicDefaults={() => {
               setHeuristicConfig(cloneStandardHeuristicConfig());
             }}
-            onResetLookaheadDefaults={() =>
-              setLookaheadUtilityWeights(cloneStandardLookaheadUtilityWeights())
-            }
+            onResetLookaheadDefaults={() => {
+              setLookaheadUtilityWeights(cloneStandardLookaheadUtilityWeights());
+            }}
             headlessSimulations={headlessSimulations}
           />
         ) : null}

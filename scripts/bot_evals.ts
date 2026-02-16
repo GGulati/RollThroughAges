@@ -1,7 +1,13 @@
 import { resolve } from 'node:path';
+import { writeFileSync } from 'node:fs';
 import {
+  getBotCoreInstrumentation,
+  getHeadlessBotInstrumentation,
   getHeadlessScoreSummary,
+  getLookaheadInstrumentation,
   HEURISTIC_STANDARD_CONFIG,
+  resetHeadlessBotInstrumentation,
+  resetLookaheadInstrumentation,
   runHeadlessBotMatch,
 } from '../src/game/bot/index.ts';
 import { PlayerConfig } from '../src/game/index.ts';
@@ -20,6 +26,7 @@ type CliOptions = {
   configPaths: string[];
   maxTurns: number;
   maxStepsPerTurn: number;
+  instrumentationJson: string;
 };
 
 type ConfigEntry = {
@@ -57,6 +64,55 @@ type StallRecord = {
   seatConfigs: string[];
 };
 
+type PerGameConfigInstrumentation = {
+  playerId: string;
+  playerName: string;
+  configKey: string;
+  configLabel: string;
+  strategyId: string;
+  runBotTurnCalls: number;
+  runBotTurnMsTotal: number;
+  runBotStepCalls: number;
+  runBotStepMsTotal: number;
+  strategyChooseActionCalls: number;
+  strategyChooseActionMsTotal: number;
+  applyBotActionAttempts: number;
+  applyBotActionSuccesses: number;
+  fallbackSelections: number;
+  fallbackApplyAttempts: number;
+  strategyExtensionMetrics: Record<string, number>;
+};
+
+type PerGameInstrumentation = {
+  round: number;
+  rotation: number;
+  completed: boolean;
+  turnsPlayed: number;
+  stallReason: string | null;
+  scoresByPlayerId: Record<string, number>;
+  byConfig: PerGameConfigInstrumentation[];
+  headless: ReturnType<typeof getHeadlessBotInstrumentation>;
+  core: ReturnType<typeof getBotCoreInstrumentation>;
+  lookahead: ReturnType<typeof getLookaheadInstrumentation>;
+};
+
+type AggregateConfigInstrumentation = {
+  configKey: string;
+  configLabel: string;
+  games: number;
+  runBotTurnCalls: number;
+  runBotTurnMsTotal: number;
+  runBotStepCalls: number;
+  runBotStepMsTotal: number;
+  strategyChooseActionCalls: number;
+  strategyChooseActionMsTotal: number;
+  applyBotActionAttempts: number;
+  applyBotActionSuccesses: number;
+  fallbackSelections: number;
+  fallbackApplyAttempts: number;
+  strategyExtensionMetrics: Record<string, number>;
+};
+
 function printUsage(): void {
   console.log('Usage: npx tsx scripts/bot_evals.ts [options]');
   console.log('');
@@ -69,6 +125,9 @@ function printUsage(): void {
   console.log('  --rounds <n>              Number of seat-rotation rounds (default: 10)');
   console.log('  --max-turns <n>           Max turns per game (default: 500)');
   console.log('  --max-steps-per-turn <n>  Max bot steps per turn (default: 300)');
+  console.log(
+    '  --instrumentation-json <path>  Write per-game + aggregate instrumentation JSON report',
+  );
   console.log('  --help                    Show this help');
   console.log('');
   console.log('Notes:');
@@ -85,6 +144,7 @@ function parseArgs(argv: string[]): CliOptions {
     configPaths: [],
     maxTurns: 500,
     maxStepsPerTurn: 300,
+    instrumentationJson: 'output/bot-evals-instrumentation-latest.json',
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -121,6 +181,10 @@ function parseArgs(argv: string[]): CliOptions {
         break;
       case '--max-steps-per-turn':
         options.maxStepsPerTurn = parseNumber(next, '--max-steps-per-turn');
+        i += 1;
+        break;
+      case '--instrumentation-json':
+        options.instrumentationJson = next.trim();
         i += 1;
         break;
       default:
@@ -221,6 +285,39 @@ function main(): void {
   let totalGames = 0;
   let incompleteGames = 0;
   const stalls: StallRecord[] = [];
+  const perGameInstrumentation: PerGameInstrumentation[] = [];
+  const aggregateInstrumentationByConfig = new Map<
+    string,
+    AggregateConfigInstrumentation
+  >();
+
+  const getAggregateInstrumentation = (
+    configKey: string,
+    configLabel: string,
+  ): AggregateConfigInstrumentation => {
+    const existing = aggregateInstrumentationByConfig.get(configKey);
+    if (existing) {
+      return existing;
+    }
+    const created: AggregateConfigInstrumentation = {
+      configKey,
+      configLabel,
+      games: 0,
+      runBotTurnCalls: 0,
+      runBotTurnMsTotal: 0,
+      runBotStepCalls: 0,
+      runBotStepMsTotal: 0,
+      strategyChooseActionCalls: 0,
+      strategyChooseActionMsTotal: 0,
+      applyBotActionAttempts: 0,
+      applyBotActionSuccesses: 0,
+      fallbackSelections: 0,
+      fallbackApplyAttempts: 0,
+      strategyExtensionMetrics: {},
+    };
+    aggregateInstrumentationByConfig.set(configKey, created);
+    return created;
+  };
 
   for (let round = 0; round < options.rounds; round += 1) {
     for (let rotation = 0; rotation < options.players; rotation += 1) {
@@ -238,6 +335,8 @@ function main(): void {
           ),
         ]),
       );
+      resetLookaheadInstrumentation();
+      resetHeadlessBotInstrumentation();
 
       const result = runHeadlessBotMatch(playerConfigs, {
         strategyByPlayerId,
@@ -256,6 +355,66 @@ function main(): void {
       }
 
       const summary = getHeadlessScoreSummary(result.finalGame);
+      const scoreByPlayerId = Object.fromEntries(
+        summary.map((entry) => [entry.playerId, entry.total]),
+      );
+      const coreInstrumentation = getBotCoreInstrumentation();
+      const headlessInstrumentation = getHeadlessBotInstrumentation();
+      const lookaheadInstrumentation = getLookaheadInstrumentation();
+      const byConfig: PerGameConfigInstrumentation[] = playerConfigs.map((player) => {
+        const actorStats = coreInstrumentation.byActorId[player.id];
+        const config = configByPlayerId[player.id];
+        return {
+          playerId: player.id,
+          playerName: player.name,
+          configKey: config.key,
+          configLabel: config.label,
+          strategyId: actorStats?.strategyId ?? 'unknown',
+          runBotTurnCalls: actorStats?.runBotTurnCalls ?? 0,
+          runBotTurnMsTotal: actorStats?.runBotTurnMsTotal ?? 0,
+          runBotStepCalls: actorStats?.runBotStepCalls ?? 0,
+          runBotStepMsTotal: actorStats?.runBotStepMsTotal ?? 0,
+          strategyChooseActionCalls: actorStats?.strategyChooseActionCalls ?? 0,
+          strategyChooseActionMsTotal: actorStats?.strategyChooseActionMsTotal ?? 0,
+          applyBotActionAttempts: actorStats?.applyBotActionAttempts ?? 0,
+          applyBotActionSuccesses: actorStats?.applyBotActionSuccesses ?? 0,
+          fallbackSelections: actorStats?.fallbackSelections ?? 0,
+          fallbackApplyAttempts: actorStats?.fallbackApplyAttempts ?? 0,
+          strategyExtensionMetrics: { ...(actorStats?.strategyExtensionMetrics ?? {}) },
+        };
+      });
+      perGameInstrumentation.push({
+        round: round + 1,
+        rotation: rotation + 1,
+        completed: result.completed,
+        turnsPlayed: result.turnsPlayed,
+        stallReason: result.stallReason,
+        scoresByPlayerId: scoreByPlayerId,
+        byConfig,
+        headless: headlessInstrumentation,
+        core: coreInstrumentation,
+        lookahead: lookaheadInstrumentation,
+      });
+
+      byConfig.forEach((entry) => {
+        const aggregate = getAggregateInstrumentation(entry.configKey, entry.configLabel);
+        aggregate.games += 1;
+        aggregate.runBotTurnCalls += entry.runBotTurnCalls;
+        aggregate.runBotTurnMsTotal += entry.runBotTurnMsTotal;
+        aggregate.runBotStepCalls += entry.runBotStepCalls;
+        aggregate.runBotStepMsTotal += entry.runBotStepMsTotal;
+        aggregate.strategyChooseActionCalls += entry.strategyChooseActionCalls;
+        aggregate.strategyChooseActionMsTotal += entry.strategyChooseActionMsTotal;
+        aggregate.applyBotActionAttempts += entry.applyBotActionAttempts;
+        aggregate.applyBotActionSuccesses += entry.applyBotActionSuccesses;
+        aggregate.fallbackSelections += entry.fallbackSelections;
+        aggregate.fallbackApplyAttempts += entry.fallbackApplyAttempts;
+        Object.entries(entry.strategyExtensionMetrics).forEach(([metric, value]) => {
+          aggregate.strategyExtensionMetrics[metric] =
+            (aggregate.strategyExtensionMetrics[metric] ?? 0) + value;
+        });
+      });
+
       const topScore = Math.max(...summary.map((entry) => entry.total));
       const topPlayers = summary.filter((entry) => entry.total === topScore);
       const sharedWin = topPlayers.length > 0 ? 1 / topPlayers.length : 0;
@@ -356,6 +515,57 @@ function main(): void {
         console.log(`${count}x ${reason}`);
       });
   }
+
+  const aggregateInstrumentation = Array.from(aggregateInstrumentationByConfig.values())
+    .map((entry) => ({
+      ...entry,
+      avgRunBotTurnMs: entry.games > 0 ? entry.runBotTurnMsTotal / entry.games : 0,
+      avgRunBotStepMs: entry.games > 0 ? entry.runBotStepMsTotal / entry.games : 0,
+      avgChooseActionMs:
+        entry.games > 0 ? entry.strategyChooseActionMsTotal / entry.games : 0,
+    }))
+    .sort((a, b) => a.configLabel.localeCompare(b.configLabel));
+
+  console.log('');
+  console.log('Aggregate Instrumentation By Config');
+  console.log(
+    'Config                 Games   TurnMsTot  StepMsTot  ChooseMsTot  ApplyAttempts  ApplySuccess',
+  );
+  console.log(
+    '-----------------------------------------------------------------------------------------------',
+  );
+  aggregateInstrumentation.forEach((entry) => {
+    console.log(
+      `${entry.configLabel.padEnd(22)} ${String(entry.games).padStart(5)} ${formatNum(
+        entry.runBotTurnMsTotal,
+      ).padStart(10)} ${formatNum(entry.runBotStepMsTotal).padStart(10)} ${formatNum(
+        entry.strategyChooseActionMsTotal,
+      ).padStart(12)} ${String(entry.applyBotActionAttempts).padStart(14)} ${String(
+        entry.applyBotActionSuccesses,
+      ).padStart(13)}`,
+    );
+  });
+
+  const instrumentationPath = resolve(options.instrumentationJson);
+  writeFileSync(
+    instrumentationPath,
+    JSON.stringify(
+      {
+        options,
+        totalGames,
+        incompleteGames,
+        standings,
+        stalls,
+        perGameInstrumentation,
+        aggregateInstrumentation,
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
+  console.log('');
+  console.log(`Instrumentation report written: ${instrumentationPath}`);
 }
 
 main();

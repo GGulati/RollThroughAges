@@ -1,4 +1,8 @@
-import { HeuristicConfig } from '@/game/bot';
+import {
+  BotCoreInstrumentation,
+  HeadlessBotInstrumentation,
+  HeuristicConfig,
+} from '@/game/bot';
 import { PlayerEndStateSummary } from '@/game/reporting';
 
 export type ControllerOption =
@@ -21,6 +25,10 @@ export type HeadlessSimulationSummary = {
   scores: PlayerEndStateSummary[];
   stallReason: string | null;
   actionLog: string[];
+  instrumentation: {
+    core: BotCoreInstrumentation;
+    headless: HeadlessBotInstrumentation;
+  };
 };
 
 export type HeuristicUpdateHandlers = {
