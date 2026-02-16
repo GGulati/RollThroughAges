@@ -1,12 +1,15 @@
 import { performance } from 'node:perf_hooks';
 import {
-  createHeuristicBot,
   getHeadlessScoreSummary,
-  HeuristicConfig,
   runHeadlessBotMatch,
 } from '../src/game/bot/index.ts';
 import { PlayerConfig } from '../src/game/index.ts';
-import { average, loadConfigEntry } from './helpers.ts';
+import {
+  average,
+  createBotStrategy,
+  LoadedBotConfig,
+  loadConfigEntry,
+} from './helpers.ts';
 
 type StrategyLabel = 'A' | 'B';
 
@@ -73,7 +76,7 @@ type TournamentProfile = {
 
 type WorkerQuickEvalRequest = {
   candidateFiles: string[];
-  baselineConfig: HeuristicConfig;
+  baselineCandidate: LoadedBotConfig;
   options: CliOptions;
 };
 
@@ -123,8 +126,8 @@ function createPlayersForGame(
 function evaluateSingleGame(
   players: PlayerConfig[],
   strategyByPlayerId: Record<string, StrategyLabel>,
-  configA: HeuristicConfig,
-  configB: HeuristicConfig,
+  candidateA: LoadedBotConfig,
+  candidateB: LoadedBotConfig,
   options: CliOptions,
   profile: TournamentProfile,
 ): GameEvaluation {
@@ -132,8 +135,8 @@ function evaluateSingleGame(
     players.map((player) => [
       player.id,
       strategyByPlayerId[player.id] === 'A'
-        ? createHeuristicBot(configA, 'candidate-a')
-        : createHeuristicBot(configB, 'baseline-b'),
+        ? createBotStrategy(candidateA, `candidate-a-${candidateA.id}`)
+        : createBotStrategy(candidateB, `baseline-b-${candidateB.id}`),
     ]),
   );
 
@@ -222,8 +225,8 @@ function summarizeEvaluations(
 }
 
 function evaluateConfigVsBaseline(
-  configA: HeuristicConfig,
-  configB: HeuristicConfig,
+  candidateA: LoadedBotConfig,
+  baselineCandidate: LoadedBotConfig,
   games: number,
   options: CliOptions,
   profile: TournamentProfile,
@@ -237,8 +240,8 @@ function evaluateConfigVsBaseline(
     const evaluation = evaluateSingleGame(
       gameSetup.players,
       gameSetup.strategyByPlayerId,
-      configA,
-      configB,
+      candidateA,
+      baselineCandidate,
       options,
       profile,
     );
@@ -257,15 +260,15 @@ function evaluateConfigVsBaseline(
 
 function evaluateCandidateFile(
   file: string,
-  baselineConfig: HeuristicConfig,
+  baselineCandidate: LoadedBotConfig,
   options: CliOptions,
   profile: TournamentProfile,
 ): CandidateResult {
   const candidateStart = performance.now();
   const candidate = loadConfigEntry(file);
   const quick = evaluateConfigVsBaseline(
-    candidate.config,
-    baselineConfig,
+    candidate,
+    baselineCandidate,
     options.games,
     options,
     profile,
@@ -284,7 +287,7 @@ export default async function runQuickEvalWorker(
 ): Promise<WorkerQuickEvalResponse> {
   const profile = createTournamentProfile();
   const results = request.candidateFiles.map((file) =>
-    evaluateCandidateFile(file, request.baselineConfig, request.options, profile),
+    evaluateCandidateFile(file, request.baselineCandidate, request.options, profile),
   );
   return { results, profile };
 }

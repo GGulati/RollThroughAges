@@ -4,17 +4,17 @@ import { performance } from 'node:perf_hooks';
 import { availableParallelism, cpus } from 'node:os';
 import Piscina from 'piscina';
 import {
-  createHeuristicBot,
   getHeadlessScoreSummary,
-  HeuristicConfig,
+  HEURISTIC_STANDARD_CONFIG,
   runHeadlessBotMatch,
 } from '../src/game/bot/index.ts';
 import { PlayerConfig } from '../src/game/index.ts';
 import {
   average,
+  createBotStrategy,
   formatNum,
   formatPercent,
-  loadConfig,
+  LoadedBotConfig,
   loadConfigEntry,
   parseNumber,
 } from './helpers.ts';
@@ -121,8 +121,9 @@ function printUsage(): void {
   console.log('Usage: npx tsx scripts/bot_tournament.ts --candidates-dir <dir> [options]');
   console.log('');
   console.log('Options:');
-  console.log('  --candidates-dir <dir>    Directory containing candidate *.json configs');
-  console.log('  --baseline <path>         Baseline config JSON (default: standard config)');
+  console.log('  --candidates-dir <dir>    Directory containing candidate *.json config files');
+  console.log('                            Supports heuristic and lookahead candidate files.');
+  console.log('  --baseline <path>         Baseline candidate JSON (default: heuristic standard)');
   console.log('  --players <n>             Player count 2-4 (default: 2)');
   console.log('  --games <n>               Quick game count per candidate (default: 50)');
   console.log('  --final-games <n>         Final game count for top candidates (default: 50)');
@@ -354,8 +355,8 @@ function createPlayersForGame(
 function evaluateSingleGame(
   players: PlayerConfig[],
   strategyByPlayerId: Record<string, StrategyLabel>,
-  configA: HeuristicConfig,
-  configB: HeuristicConfig,
+  candidateA: LoadedBotConfig,
+  candidateB: LoadedBotConfig,
   options: CliOptions,
   profile: TournamentProfile,
 ): GameEvaluation {
@@ -363,8 +364,8 @@ function evaluateSingleGame(
     players.map((player) => [
       player.id,
       strategyByPlayerId[player.id] === 'A'
-        ? createHeuristicBot(configA, 'candidate-a')
-        : createHeuristicBot(configB, 'baseline-b'),
+        ? createBotStrategy(candidateA, `candidate-a-${candidateA.id}`)
+        : createBotStrategy(candidateB, `baseline-b-${candidateB.id}`),
     ]),
   );
 
@@ -455,8 +456,8 @@ function summarizeEvaluations(
 }
 
 function evaluateConfigVsBaseline(
-  configA: HeuristicConfig,
-  configB: HeuristicConfig,
+  candidateA: LoadedBotConfig,
+  baselineCandidate: LoadedBotConfig,
   games: number,
   options: CliOptions,
   profile: TournamentProfile,
@@ -470,8 +471,8 @@ function evaluateConfigVsBaseline(
     const evaluation = evaluateSingleGame(
       gameSetup.players,
       gameSetup.strategyByPlayerId,
-      configA,
-      configB,
+      candidateA,
+      baselineCandidate,
       options,
       profile,
     );
@@ -490,15 +491,15 @@ function evaluateConfigVsBaseline(
 
 function evaluateCandidateFile(
   file: string,
-  baselineConfig: HeuristicConfig,
+  baselineCandidate: LoadedBotConfig,
   options: CliOptions,
   profile: TournamentProfile,
 ): CandidateResult {
   const candidateStart = performance.now();
   const candidate = loadConfigEntry(file);
   const quick = evaluateConfigVsBaseline(
-    candidate.config,
-    baselineConfig,
+    candidate,
+    baselineCandidate,
     options.games,
     options,
     profile,
@@ -514,7 +515,7 @@ function evaluateCandidateFile(
 
 type WorkerQuickEvalRequest = {
   candidateFiles: string[];
-  baselineConfig: HeuristicConfig;
+  baselineCandidate: LoadedBotConfig;
   options: CliOptions;
 };
 
@@ -525,14 +526,14 @@ type WorkerQuickEvalResponse = {
 
 async function evaluateQuickRoundParallel(
   candidateFiles: string[],
-  baselineConfig: HeuristicConfig,
+  baselineCandidate: LoadedBotConfig,
   options: CliOptions,
   profile: TournamentProfile,
   workerCount: number,
 ): Promise<CandidateResult[]> {
   if (workerCount <= 1) {
     return candidateFiles.map((file) =>
-      evaluateCandidateFile(file, baselineConfig, options, profile),
+      evaluateCandidateFile(file, baselineCandidate, options, profile),
     );
   }
 
@@ -550,7 +551,7 @@ async function evaluateQuickRoundParallel(
 
   const requests = chunks.filter((chunk) => chunk.length > 0).map((chunk) => ({
     candidateFiles: chunk,
-    baselineConfig,
+    baselineCandidate,
     options,
   }));
 
@@ -619,7 +620,15 @@ async function main(): Promise<void> {
   const totalStart = performance.now();
   const options = parseArgs(process.argv.slice(2));
   const profile = createTournamentProfile();
-  const baselineConfig = loadConfig(options.baselinePath);
+  const baselineCandidate = options.baselinePath
+    ? loadConfigEntry(options.baselinePath)
+    : {
+        id: 'baseline-standard',
+        name: 'baseline-standard',
+        source: 'HEURISTIC_STANDARD_CONFIG',
+        botType: 'heuristic' as const,
+        config: HEURISTIC_STANDARD_CONFIG,
+      };
   const candidateLoadStart = performance.now();
   const candidateFiles = getCandidateFiles(options.candidatesDir);
   profile.candidateLoadMs += performance.now() - candidateLoadStart;
@@ -637,7 +646,9 @@ async function main(): Promise<void> {
 
   console.log('=== Bot Config Tournament ===');
   console.log(`Candidates directory: ${resolve(options.candidatesDir)}`);
-  console.log(`Baseline: ${options.baselinePath ? resolve(options.baselinePath) : 'HEURISTIC_STANDARD_CONFIG'}`);
+  console.log(
+    `Baseline: ${options.baselinePath ? resolve(options.baselinePath) : 'HEURISTIC_STANDARD_CONFIG'} (${baselineCandidate.botType})`,
+  );
   console.log(`Players: ${options.players}`);
   console.log(`Quick games: ${options.games}`);
   console.log(`Final games: ${options.finalGames}`);
@@ -652,7 +663,7 @@ async function main(): Promise<void> {
   const quickStart = performance.now();
   const quickResults: CandidateResult[] = await evaluateQuickRoundParallel(
     limitedCandidateFiles,
-    baselineConfig,
+    baselineCandidate,
     options,
     profile,
     resolvedWorkers,
@@ -667,10 +678,10 @@ async function main(): Promise<void> {
     const finalStart = performance.now();
     for (const finalist of finalists) {
       const finalistStart = performance.now();
-      const config = loadConfig(finalist.path);
+      const candidate = loadConfigEntry(finalist.path);
       finalist.final = evaluateConfigVsBaseline(
-        config,
-        baselineConfig,
+        candidate,
+        baselineCandidate,
         options.finalGames,
         options,
         profile,

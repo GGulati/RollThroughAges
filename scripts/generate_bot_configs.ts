@@ -1,6 +1,10 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { HEURISTIC_STANDARD_CONFIG, HeuristicConfig } from '../src/game/bot/index.ts';
+import {
+  HEURISTIC_STANDARD_CONFIG,
+  HeuristicConfig,
+  LOOKAHEAD_STANDARD_CONFIG,
+} from '../src/game/bot/index.ts';
 import { BotConfigFile } from './helpers.ts';
 
 type CliOptions = {
@@ -8,6 +12,7 @@ type CliOptions = {
   dimensions: string[];
   includeBaseline: boolean;
   overwrite: boolean;
+  botType: BotConfigFile['botType'];
 };
 
 type NumericPath =
@@ -200,6 +205,7 @@ function printUsage(): void {
   console.log('  --dimensions <ids>       Comma-separated dimension ids to power-set');
   console.log(`                           Default: ${DEFAULT_DIMENSIONS.join(',')}`);
   console.log('  --include-baseline       Also emit baseline config as 0.json');
+  console.log('  --bot-type <type>        Bot type for generated candidates: heuristic|lookahead');
   console.log('  --overwrite              Replace existing files');
   console.log('  --help                   Show help');
   console.log('');
@@ -215,6 +221,7 @@ function parseArgs(argv: string[]): CliOptions {
     dimensions: [...DEFAULT_DIMENSIONS],
     includeBaseline: true,
     overwrite: false,
+    botType: 'heuristic',
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -247,6 +254,13 @@ function parseArgs(argv: string[]): CliOptions {
           .split(',')
           .map((entry) => entry.trim())
           .filter((entry) => entry.length > 0);
+        i += 1;
+        break;
+      case '--bot-type':
+        if (next !== 'heuristic' && next !== 'lookahead') {
+          throw new Error('--bot-type must be "heuristic" or "lookahead".');
+        }
+        options.botType = next;
         i += 1;
         break;
       default:
@@ -395,6 +409,19 @@ function applyDimension(config: HeuristicConfig, dimension: DimensionDef): void 
   setNumeric(config, dimension.path, next);
 }
 
+function buildCandidateConfig(
+  heuristicConfig: HeuristicConfig,
+  botType: BotConfigFile['botType'],
+): BotConfigFile['config'] {
+  if (botType === 'lookahead') {
+    return {
+      ...LOOKAHEAD_STANDARD_CONFIG,
+      heuristicFallbackConfig: heuristicConfig,
+    };
+  }
+  return heuristicConfig;
+}
+
 function main(): void {
   const options = parseArgs(process.argv.slice(2));
   const outDir = resolve(options.outDir);
@@ -415,9 +442,10 @@ function main(): void {
     const baselinePath = join(outDir, '0.json');
     const baselineFile: BotConfigFile = {
       id: 0,
-      name: 'baseline',
+      name: `${options.botType}-baseline`,
+      botType: options.botType,
       dimensions: [],
-      config: HEURISTIC_STANDARD_CONFIG,
+      config: buildCandidateConfig(HEURISTIC_STANDARD_CONFIG, options.botType),
     };
     writeFileSync(
       baselinePath,
@@ -444,8 +472,9 @@ function main(): void {
     const configFile: BotConfigFile = {
       id: index,
       name: activeDimensions.length > 0 ? activeDimensions.join('+') : 'baseline',
+      botType: options.botType,
       dimensions: activeDimensions,
-      config,
+      config: buildCandidateConfig(config, options.botType),
     };
     // Keep filenames minimal to avoid Windows path-length limits.
     const fileName = `${index}.json`;
@@ -458,6 +487,7 @@ function main(): void {
   }
 
   console.log(`Generated ${written} configs in ${outDir}`);
+  console.log(`Bot type: ${options.botType}`);
   console.log(`Dimensions (${dimensions.length}): ${dimensions.map((d) => d.id).join(', ')}`);
   console.log(`Power-set size (non-empty subsets): ${totalMasks - 1}`);
 }

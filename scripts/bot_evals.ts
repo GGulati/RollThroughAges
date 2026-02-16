@@ -1,13 +1,18 @@
 import { resolve } from 'node:path';
 import {
-  createHeuristicBot,
   getHeadlessScoreSummary,
   HEURISTIC_STANDARD_CONFIG,
-  HeuristicConfig,
   runHeadlessBotMatch,
 } from '../src/game/bot/index.ts';
 import { PlayerConfig } from '../src/game/index.ts';
-import { formatNum, loadConfigEntry, parseNumber } from './helpers.ts';
+import {
+  BotType,
+  createBotStrategy,
+  formatNum,
+  LoadedBotConfig,
+  loadConfigEntry,
+  parseNumber,
+} from './helpers.ts';
 
 type CliOptions = {
   rounds: number;
@@ -20,7 +25,8 @@ type CliOptions = {
 type ConfigEntry = {
   id: string;
   label: string;
-  config: HeuristicConfig;
+  botType: BotType;
+  config: LoadedBotConfig['config'];
   source: string;
 };
 
@@ -55,7 +61,8 @@ function printUsage(): void {
   console.log('Options:');
   console.log('  --configs <list>          Comma-separated config paths (up to 4)');
   console.log('                            Example: --configs a.json,b.json,c.json,d.json');
-  console.log('                            Omit to use standard config for all players.');
+  console.log('                            Supports heuristic and lookahead bot config files.');
+  console.log('                            Omit to use standard heuristic config for all players.');
   console.log('  --players <n>             Player count, 2-4 (default: from --configs count, else 2)');
   console.log('  --rounds <n>              Number of seat-rotation rounds (default: 10)');
   console.log('  --max-turns <n>           Max turns per game (default: 500)');
@@ -147,6 +154,7 @@ function buildConfigPool(paths: string[]): ConfigEntry[] {
       {
         id: 'standard',
         label: 'standard',
+        botType: 'heuristic',
         source: 'HEURISTIC_STANDARD_CONFIG',
         config: HEURISTIC_STANDARD_CONFIG,
       },
@@ -158,6 +166,7 @@ function buildConfigPool(paths: string[]): ConfigEntry[] {
     return {
       id: loaded.id || `cfg${index + 1}`,
       label: loaded.name,
+      botType: loaded.botType,
       source: loaded.source ?? resolve(path),
       config: loaded.config,
     };
@@ -218,7 +227,10 @@ function main(): void {
       const strategyByPlayerId = Object.fromEntries(
         playerConfigs.map((player) => [
           player.id,
-          createHeuristicBot(configByPlayerId[player.id].config, configByPlayerId[player.id].id),
+          createBotStrategy(
+            configByPlayerId[player.id],
+            `${configByPlayerId[player.id].botType}-${configByPlayerId[player.id].id}`,
+          ),
         ]),
       );
 
