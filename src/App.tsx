@@ -2,8 +2,8 @@
 import { GamePhase } from '@/game';
 import {
   BotAction,
-  chooseHeuristicBotAction,
   getHeadlessScoreSummary,
+  heuristicStandardBot,
   runHeadlessBotMatch,
 } from '@/game/bot';
 import './index.css';
@@ -317,7 +317,7 @@ function App() {
 
     setIsBotResolving(true);
     botTimerRef.current = window.setTimeout(() => {
-      const action = chooseHeuristicBotAction(game);
+      const action = heuristicStandardBot.chooseAction({ game });
       if (!action) {
         setIsBotResolving(false);
         return;
@@ -352,8 +352,10 @@ function App() {
     }));
   };
 
-  const runHeadlessSimulation = () => {
-    const result = runHeadlessBotMatch(playerCount);
+  const runHeadlessSimulation = (
+    players: ReturnType<typeof createPlayers>,
+  ) => {
+    const result = runHeadlessBotMatch(players);
     const scores = getHeadlessScoreSummary(result.finalGame).sort(
       (a, b) => b.total - a.total,
     );
@@ -372,7 +374,7 @@ function App() {
     const selectedPlayers = createPlayers(playerCount, playerControllers);
     const allBots = selectedPlayers.every((player) => player.controller === 'bot');
     if (allBots) {
-      runHeadlessSimulation();
+      runHeadlessSimulation(selectedPlayers);
       return;
     }
 

@@ -1,5 +1,4 @@
 import { GamePhase, GameState } from '../game';
-import { ResourceProduction } from '../dice';
 import {
   calculateGoodsOverflow,
   canRoll,
@@ -11,6 +10,7 @@ import {
   getSingleDieRerollsAllowed,
   getTotalPurchasingPower,
   hasNoGoodsLimit,
+  validateKeepGoods,
   validateDevelopmentPurchase,
 } from '../engine';
 import { BotAction } from './types';
@@ -83,7 +83,6 @@ function getDevelopmentCandidates(game: GameState): BotAction[] {
             developmentId: development.id,
             goodsTypeNames: combo,
           });
-          break;
         }
       }
     }
@@ -92,23 +91,61 @@ function getDevelopmentCandidates(game: GameState): BotAction[] {
   return actions;
 }
 
-function getDiscardCandidate(game: GameState): BotAction | null {
+function getDiscardCandidates(game: GameState): BotAction[] {
   const player = getActivePlayer(game);
   const overflow = calculateGoodsOverflow(player.goods, player, game.settings);
   if (overflow <= 0) {
-    return null;
+    return [];
   }
 
   const unlimited = hasNoGoodsLimit(player, game.settings);
-  const goodsToKeepByType: Record<string, number> = {};
-  for (const goodsType of game.settings.goodsTypes) {
+  const goodsKeys = Array.from(player.goods.keys());
+  const maxKeepByName: Record<string, number> = {};
+  for (const goodsType of goodsKeys) {
     const quantity = player.goods.get(goodsType) ?? 0;
-    goodsToKeepByType[goodsType.name] = unlimited
+    maxKeepByName[goodsType.name] = unlimited
       ? quantity
       : Math.min(quantity, goodsType.values.length);
   }
 
-  return { type: 'discardGoods', goodsToKeepByType };
+  const actions: BotAction[] = [];
+  const walk = (
+    index: number,
+    goodsToKeepByType: Record<string, number>,
+  ): void => {
+    if (index >= goodsKeys.length) {
+      const keepMap = new Map(
+        goodsKeys.map((goodsType) => [
+          goodsType,
+          goodsToKeepByType[goodsType.name] ?? 0,
+        ]),
+      );
+      const validation = validateKeepGoods(
+        player.goods,
+        keepMap,
+        player,
+        game.settings,
+      );
+      if (validation.valid) {
+        actions.push({
+          type: 'discardGoods',
+          goodsToKeepByType: { ...goodsToKeepByType },
+        });
+      }
+      return;
+    }
+
+    const goodsType = goodsKeys[index];
+    const maxKeep = maxKeepByName[goodsType.name] ?? 0;
+    for (let keep = 0; keep <= maxKeep; keep += 1) {
+      goodsToKeepByType[goodsType.name] = keep;
+      walk(index + 1, goodsToKeepByType);
+    }
+  };
+
+  walk(0, {});
+
+  return actions;
 }
 
 function requiresProductionChoice(productionIndex: number, optionCount: number): boolean {
@@ -208,12 +245,30 @@ export function getLegalBotActions(game: GameState): BotAction[] {
         exchange.from,
       );
       if (sourceAmount > 0) {
-        actions.push({
-          type: 'applyExchange',
-          from: exchange.from,
-          to: exchange.to,
-          amount: 1,
-        });
+        const normalizedTarget = exchange.to.trim().toLowerCase();
+        const targetMaxAmount = normalizedTarget === 'food' ? game.settings.maxFood : Infinity;
+        const currentTargetAmount = getExchangeResourceAmount(
+          player,
+          game.state.turn,
+          game.settings,
+          exchange.to,
+        );
+        const maxByTargetCap =
+          targetMaxAmount === Infinity
+            ? sourceAmount
+            : Math.max(
+                0,
+                Math.floor((targetMaxAmount - currentTargetAmount) / exchange.rate),
+              );
+        const maxAmount = Math.min(sourceAmount, maxByTargetCap);
+        for (let amount = 1; amount <= maxAmount; amount += 1) {
+          actions.push({
+            type: 'applyExchange',
+            from: exchange.from,
+            to: exchange.to,
+            amount,
+          });
+        }
       }
     }
     actions.push({ type: 'skipDevelopment' });
@@ -221,10 +276,7 @@ export function getLegalBotActions(game: GameState): BotAction[] {
   }
 
   if (phase === GamePhase.DiscardGoods) {
-    const discard = getDiscardCandidate(game);
-    if (discard) {
-      actions.push(discard);
-    }
+    actions.push(...getDiscardCandidates(game));
     return actions;
   }
 
@@ -233,16 +285,4 @@ export function getLegalBotActions(game: GameState): BotAction[] {
   }
 
   return actions;
-}
-
-export function scoreProductionChoice(
-  production: ResourceProduction,
-): number {
-  return (
-    production.workers * 2 +
-    production.coins +
-    production.food * 2 +
-    production.goods * 6 -
-    production.skulls * 8
-  );
 }

@@ -1,7 +1,7 @@
 import { determineWinners, getScoreBreakdown, isGameOver } from '../engine';
 import { GameState, PlayerConfig } from '../game';
 import { createGame } from '../engine/gameEngine';
-import { heuristicStandardBot } from './heuristicBot';
+import { heuristicStandardBot } from './heuristic';
 import { BotStrategy } from './types';
 import { runBotTurn } from './runner';
 import { botActionKey } from './actionKey';
@@ -21,12 +21,19 @@ export type HeadlessBotGameOptions = {
   strategyByPlayerId?: Record<string, BotStrategy>;
 };
 
-export function createAllBotPlayers(playerCount: number): PlayerConfig[] {
-  return Array.from({ length: playerCount }, (_, index) => ({
-    id: `b${index + 1}`,
-    name: `Bot ${index + 1}`,
-    controller: 'bot',
-  }));
+function validateBotOnlyPlayers(players: PlayerConfig[]): void {
+  if (players.length < 2) {
+    throw new Error('Headless bot match requires at least 2 players.');
+  }
+
+  const humanPlayers = players.filter((player) => player.controller !== 'bot');
+  if (humanPlayers.length > 0) {
+    throw new Error(
+      `Headless bot match requires bot-only players. Found non-bot controllers: ${humanPlayers
+        .map((player) => `${player.name} (${player.controller})`)
+        .join(', ')}`,
+    );
+  }
 }
 
 export function runHeadlessBotGame(
@@ -102,10 +109,10 @@ export function runHeadlessBotGame(
 }
 
 export function runHeadlessBotMatch(
-  playerCount: number,
+  players: PlayerConfig[],
   options: HeadlessBotGameOptions = {},
 ): HeadlessBotGameResult {
-  const players = createAllBotPlayers(playerCount);
+  validateBotOnlyPlayers(players);
   const game = createGame(players);
   return runHeadlessBotGame(game, options);
 }
