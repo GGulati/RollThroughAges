@@ -23,5 +23,12 @@ export type HeuristicUpdateHandlers = {
     key: keyof HeuristicConfig['developmentWeights'],
     value: string,
   ) => void;
-  updateBuildPriority: (first: 'city' | 'monument') => void;
+  updateFoodPolicyWeight: (
+    key: keyof HeuristicConfig['foodPolicyWeights'],
+    value: string | boolean,
+  ) => void;
+  updateBuildWeight: (
+    key: keyof HeuristicConfig['buildWeights'],
+    value: string,
+  ) => void;
 };

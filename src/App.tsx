@@ -73,7 +73,8 @@ function cloneStandardHeuristicConfig(): HeuristicConfig {
   return {
     productionWeights: { ...HEURISTIC_STANDARD_CONFIG.productionWeights },
     developmentWeights: { ...HEURISTIC_STANDARD_CONFIG.developmentWeights },
-    buildPriority: [...HEURISTIC_STANDARD_CONFIG.buildPriority],
+    foodPolicyWeights: { ...HEURISTIC_STANDARD_CONFIG.foodPolicyWeights },
+    buildWeights: { ...HEURISTIC_STANDARD_CONFIG.buildWeights },
     preferExchangeBeforeDevelopment:
       HEURISTIC_STANDARD_CONFIG.preferExchangeBeforeDevelopment,
   };
@@ -394,11 +395,36 @@ function App() {
     }));
   };
 
-  const updateBuildPriority = (first: 'city' | 'monument') => {
+  const updateFoodPolicyWeight = (
+    key: keyof HeuristicConfig['foodPolicyWeights'],
+    value: string | boolean,
+  ) => {
     setHeuristicConfig((current) => ({
       ...current,
-      buildPriority:
-        first === 'city' ? ['city', 'monument'] : ['monument', 'city'],
+      foodPolicyWeights: {
+        ...current.foodPolicyWeights,
+        [key]:
+          typeof value === 'boolean'
+            ? value
+            : Number.isFinite(Number(value))
+              ? Number(value)
+              : 0,
+      },
+    }));
+  };
+
+  const updateBuildWeight = (
+    key: keyof HeuristicConfig['buildWeights'],
+    value: string,
+  ) => {
+    const parsed = Number(value);
+    const nextValue = Number.isFinite(parsed) ? parsed : 0;
+    setHeuristicConfig((current) => ({
+      ...current,
+      buildWeights: {
+        ...current.buildWeights,
+        [key]: nextValue,
+      },
     }));
   };
 
@@ -503,7 +529,8 @@ function App() {
             heuristicHandlers={{
               updateProductionWeight,
               updateDevelopmentWeight,
-              updateBuildPriority,
+              updateFoodPolicyWeight,
+              updateBuildWeight,
             }}
             onPreferExchangeFirstChange={(enabled) =>
               setHeuristicConfig((current) => ({

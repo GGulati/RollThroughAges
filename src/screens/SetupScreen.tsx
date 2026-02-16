@@ -224,20 +224,168 @@ export function SetupScreen({
                   }
                 />
               </label>
-              <label className="player-count-control" htmlFor="heuristic-build-priority">
-                <span>Build Priority</span>
-                <select
-                  id="heuristic-build-priority"
-                  value={heuristicConfig.buildPriority[0]}
+              <p className="choice-label">Food / Starvation</p>
+              <label className="player-count-control" htmlFor="heuristic-food-deficit-priority">
+                <span>Food Deficit Priority</span>
+                <input
+                  id="heuristic-food-deficit-priority"
+                  type="number"
+                  step="0.1"
+                  value={heuristicConfig.foodPolicyWeights.foodDeficitPriorityPerUnit}
                   onChange={(event) =>
-                    heuristicHandlers.updateBuildPriority(
-                      event.target.value as 'city' | 'monument',
+                    heuristicHandlers.updateFoodPolicyWeight(
+                      'foodDeficitPriorityPerUnit',
+                      event.target.value,
                     )
                   }
-                >
-                  <option value="city">City first</option>
-                  <option value="monument">Monument first</option>
-                </select>
+                />
+              </label>
+              <label className="player-count-control" htmlFor="heuristic-starvation-penalty">
+                <span>Starvation Penalty</span>
+                <input
+                  id="heuristic-starvation-penalty"
+                  type="number"
+                  step="0.1"
+                  value={heuristicConfig.foodPolicyWeights.starvationPenaltyPerUnit}
+                  onChange={(event) =>
+                    heuristicHandlers.updateFoodPolicyWeight(
+                      'starvationPenaltyPerUnit',
+                      event.target.value,
+                    )
+                  }
+                />
+              </label>
+              <label className="player-count-control" htmlFor="heuristic-force-reroll-shortage">
+                <span>Force Reroll on Shortage</span>
+                <input
+                  id="heuristic-force-reroll-shortage"
+                  type="checkbox"
+                  checked={heuristicConfig.foodPolicyWeights.forceRerollOnFoodShortage}
+                  onChange={(event) =>
+                    heuristicHandlers.updateFoodPolicyWeight(
+                      'forceRerollOnFoodShortage',
+                      event.target.checked,
+                    )
+                  }
+                />
+              </label>
+              <p className="choice-label">Build Weights</p>
+              <label className="player-count-control" htmlFor="heuristic-build-city-progress">
+                <span>City Progress</span>
+                <input
+                  id="heuristic-build-city-progress"
+                  type="number"
+                  step="0.1"
+                  value={heuristicConfig.buildWeights.cityProgress}
+                  onChange={(event) =>
+                    heuristicHandlers.updateBuildWeight('cityProgress', event.target.value)
+                  }
+                />
+              </label>
+              <label className="player-count-control" htmlFor="heuristic-build-city-workers">
+                <span>City Workers</span>
+                <input
+                  id="heuristic-build-city-workers"
+                  type="number"
+                  step="0.1"
+                  value={heuristicConfig.buildWeights.cityWorkersUsed}
+                  onChange={(event) =>
+                    heuristicHandlers.updateBuildWeight(
+                      'cityWorkersUsed',
+                      event.target.value,
+                    )
+                  }
+                />
+              </label>
+              <label className="player-count-control" htmlFor="heuristic-build-city-future-die">
+                <span>City Extra Die Value</span>
+                <input
+                  id="heuristic-build-city-future-die"
+                  type="number"
+                  step="0.01"
+                  value={heuristicConfig.buildWeights.cityExtraDieFutureValue}
+                  onChange={(event) =>
+                    heuristicHandlers.updateBuildWeight(
+                      'cityExtraDieFutureValue',
+                      event.target.value,
+                    )
+                  }
+                />
+              </label>
+              <label className="player-count-control" htmlFor="heuristic-build-monument-points">
+                <span>Monument Points</span>
+                <input
+                  id="heuristic-build-monument-points"
+                  type="number"
+                  step="0.1"
+                  value={heuristicConfig.buildWeights.monumentPoints}
+                  onChange={(event) =>
+                    heuristicHandlers.updateBuildWeight(
+                      'monumentPoints',
+                      event.target.value,
+                    )
+                  }
+                />
+              </label>
+              <label className="player-count-control" htmlFor="heuristic-build-monument-efficiency">
+                <span>Monument Efficiency</span>
+                <input
+                  id="heuristic-build-monument-efficiency"
+                  type="number"
+                  step="0.1"
+                  value={heuristicConfig.buildWeights.monumentPointEfficiency}
+                  onChange={(event) =>
+                    heuristicHandlers.updateBuildWeight(
+                      'monumentPointEfficiency',
+                      event.target.value,
+                    )
+                  }
+                />
+              </label>
+              <label className="player-count-control" htmlFor="heuristic-build-monument-progress">
+                <span>Monument Progress</span>
+                <input
+                  id="heuristic-build-monument-progress"
+                  type="number"
+                  step="0.1"
+                  value={heuristicConfig.buildWeights.monumentProgress}
+                  onChange={(event) =>
+                    heuristicHandlers.updateBuildWeight(
+                      'monumentProgress',
+                      event.target.value,
+                    )
+                  }
+                />
+              </label>
+              <label className="player-count-control" htmlFor="heuristic-build-monument-workers">
+                <span>Monument Workers</span>
+                <input
+                  id="heuristic-build-monument-workers"
+                  type="number"
+                  step="0.1"
+                  value={heuristicConfig.buildWeights.monumentWorkersUsed}
+                  onChange={(event) =>
+                    heuristicHandlers.updateBuildWeight(
+                      'monumentWorkersUsed',
+                      event.target.value,
+                    )
+                  }
+                />
+              </label>
+              <label className="player-count-control" htmlFor="heuristic-build-monument-effect">
+                <span>Monument Effect Bonus</span>
+                <input
+                  id="heuristic-build-monument-effect"
+                  type="number"
+                  step="0.1"
+                  value={heuristicConfig.buildWeights.monumentSpecialEffect}
+                  onChange={(event) =>
+                    heuristicHandlers.updateBuildWeight(
+                      'monumentSpecialEffect',
+                      event.target.value,
+                    )
+                  }
+                />
               </label>
               <label className="player-count-control" htmlFor="heuristic-exchange-first">
                 <span>Prefer Exchange First</span>

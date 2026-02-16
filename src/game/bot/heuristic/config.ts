@@ -11,12 +11,28 @@ export type HeuristicDevelopmentWeights = {
   cost: number;
 };
 
-export type HeuristicBuildTarget = 'city' | 'monument';
+export type HeuristicFoodPolicyWeights = {
+  foodDeficitPriorityPerUnit: number;
+  starvationPenaltyPerUnit: number;
+  forceRerollOnFoodShortage: boolean;
+};
+
+export type HeuristicBuildWeights = {
+  cityProgress: number;
+  cityWorkersUsed: number;
+  cityExtraDieFutureValue: number;
+  monumentPoints: number;
+  monumentPointEfficiency: number;
+  monumentProgress: number;
+  monumentWorkersUsed: number;
+  monumentSpecialEffect: number;
+};
 
 export type HeuristicConfig = {
   productionWeights: HeuristicProductionWeights;
   developmentWeights: HeuristicDevelopmentWeights;
-  buildPriority: HeuristicBuildTarget[];
+  foodPolicyWeights: HeuristicFoodPolicyWeights;
+  buildWeights: HeuristicBuildWeights;
   preferExchangeBeforeDevelopment: boolean;
 };
 
@@ -32,6 +48,20 @@ export const HEURISTIC_STANDARD_CONFIG: HeuristicConfig = {
     points: 1,
     cost: 0.01,
   },
-  buildPriority: ['city', 'monument'],
+  foodPolicyWeights: {
+    foodDeficitPriorityPerUnit: 3,
+    starvationPenaltyPerUnit: 20,
+    forceRerollOnFoodShortage: true,
+  },
+  buildWeights: {
+    cityProgress: 2,
+    cityWorkersUsed: 0.1,
+    cityExtraDieFutureValue: 0.15,
+    monumentPoints: 1.9,
+    monumentPointEfficiency: 3,
+    monumentProgress: 1.5,
+    monumentWorkersUsed: 0.1,
+    monumentSpecialEffect: 1,
+  },
   preferExchangeBeforeDevelopment: false,
 };

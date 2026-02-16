@@ -87,16 +87,58 @@ describe('heuristic bot', () => {
     });
   });
 
-  it('respects custom build priority', () => {
+  it('scores build options and prefers high-value monument completion', () => {
     const game = createTestGame(2, GamePhase.Build);
-    game.state.turn.turnProduction.workers = 5;
+    game.state.turn.turnProduction.workers = 1;
+    game.state.players[0].monuments.stepPyramid.workersCommitted = 2;
+
+    const action = chooseHeuristicBotAction(game, HEURISTIC_STANDARD_CONFIG);
+    expect(action?.type).toBe('buildMonument');
+    expect(action && 'monumentId' in action ? action.monumentId : '').toBe(
+      'stepPyramid',
+    );
+  });
+
+  it('respects custom build weights', () => {
+    const game = createTestGame(2, GamePhase.Build);
+    game.state.turn.turnProduction.workers = 1;
+    game.state.players[0].monuments.stepPyramid.workersCommitted = 2;
 
     const config: HeuristicConfig = {
       ...HEURISTIC_STANDARD_CONFIG,
-      buildPriority: ['monument', 'city'],
+      buildWeights: {
+        ...HEURISTIC_STANDARD_CONFIG.buildWeights,
+        monumentPoints: 0,
+        monumentPointEfficiency: 0,
+        monumentProgress: 0,
+        monumentWorkersUsed: 0,
+        monumentSpecialEffect: 0,
+        cityProgress: 100,
+      },
     };
 
     const action = chooseHeuristicBotAction(game, config);
-    expect(action?.type).toBe('buildMonument');
+    expect(action?.type).toBe('buildCity');
+  });
+
+  it('respects custom starvation food policy', () => {
+    const game = createTestGame(2, GamePhase.RollDice);
+    game.state.players[0].food = 0;
+    game.state.turn.rollsUsed = 1;
+    game.state.turn.dice = createTestDice(
+      [DICE_FACE.TWO_GOODS_SKULL, DICE_FACE.TWO_GOODS_SKULL, DICE_FACE.THREE_WORKERS],
+      ['skull', 'skull', 'unlocked'],
+    );
+
+    const config: HeuristicConfig = {
+      ...HEURISTIC_STANDARD_CONFIG,
+      foodPolicyWeights: {
+        ...HEURISTIC_STANDARD_CONFIG.foodPolicyWeights,
+        forceRerollOnFoodShortage: false,
+      },
+    };
+
+    const action = chooseHeuristicBotAction(game, config);
+    expect(action?.type).toBe('keepDie');
   });
 });

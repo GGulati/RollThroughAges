@@ -2,15 +2,16 @@ import { GamePhase, GameState } from '../../game';
 import { ResourceProduction } from '../../dice';
 import {
   getCitiesToFeed,
+  getCityWorkerCost,
   getGoodsValue,
   getMaxRollsAllowed,
+  isFirstToCompleteMonument,
   resolveProduction,
 } from '../../engine';
 import { BotAction, BotContext, BotStrategy } from '../types';
 import { getLegalBotActions } from '../candidates';
 import { botActionKey } from '../actionKey';
 import {
-  HeuristicBuildTarget,
   HeuristicConfig,
   HeuristicProductionWeights,
   HEURISTIC_STANDARD_CONFIG,
@@ -35,7 +36,10 @@ function getFoodUrgencyWeight(game: GameState, config: HeuristicConfig): number 
   const citiesToFeed = getCitiesToFeed(activePlayer);
   const currentFood = activePlayer.food;
   const deficit = Math.max(0, citiesToFeed - currentFood);
-  return config.productionWeights.food + deficit * 3;
+  return (
+    config.productionWeights.food +
+    deficit * config.foodPolicyWeights.foodDeficitPriorityPerUnit
+  );
 }
 
 function evaluateResolvedTurnUtility(game: GameState, config: HeuristicConfig): number {
@@ -46,7 +50,8 @@ function evaluateResolvedTurnUtility(game: GameState, config: HeuristicConfig): 
     config.productionWeights,
     foodWeight,
   );
-  const starvationPenalty = resolved.foodShortage * 20;
+  const starvationPenalty =
+    resolved.foodShortage * config.foodPolicyWeights.starvationPenaltyPerUnit;
   return productionScore - starvationPenalty;
 }
 
@@ -153,7 +158,7 @@ function shouldRollDice(
 
   const resolved = resolveProduction(game.state, game.state.players, game.settings);
   if (resolved.foodShortage > 0) {
-    return true;
+    return config.foodPolicyWeights.forceRerollOnFoodShortage;
   }
 
   if (resolved.turnProduction.skulls >= 2) {
@@ -209,30 +214,130 @@ function pickBestProductionChoice(
   return scored[0].action;
 }
 
-function pickBuildAction(
-  legalActions: BotAction[],
-  priority: HeuristicBuildTarget[],
-): BotAction | null {
-  for (const target of priority) {
-    if (target === 'city') {
-      const city = pickDeterministic(
-        legalActions.filter((action) => action.type === 'buildCity'),
-      );
-      if (city) {
-        return city;
-      }
-      continue;
-    }
+function getAverageDieProductionScore(
+  game: GameState,
+  config: HeuristicConfig,
+  foodWeight: number,
+): number {
+  const perFaceBest = game.settings.diceFaces.map((face) =>
+    Math.max(
+      ...face.production.map((production) =>
+        scoreDieProduction(production, config, foodWeight),
+      ),
+    ),
+  );
+  const total = perFaceBest.reduce((sum, value) => sum + value, 0);
+  return total / Math.max(1, perFaceBest.length);
+}
 
-    const monument = pickDeterministic(
-      legalActions.filter((action) => action.type === 'buildMonument'),
-    );
-    if (monument) {
-      return monument;
-    }
+function scoreBuildAction(
+  game: GameState,
+  action: Extract<BotAction, { type: 'buildCity' | 'buildMonument' }>,
+  config: HeuristicConfig,
+): number {
+  const activePlayer = game.state.players[game.state.activePlayerIndex];
+  const workersAvailable = game.state.turn.turnProduction.workers;
+  if (workersAvailable <= 0) {
+    return Number.NEGATIVE_INFINITY;
   }
 
-  return null;
+  if (action.type === 'buildCity') {
+    const city = activePlayer.cities[action.cityIndex];
+    if (!city || city.completed) {
+      return Number.NEGATIVE_INFINITY;
+    }
+
+    const workerCost = getCityWorkerCost(action.cityIndex, game.settings);
+    const remaining = Math.max(0, workerCost - city.workersCommitted);
+    if (remaining <= 0) {
+      return Number.NEGATIVE_INFINITY;
+    }
+
+    const workersUsed = Math.min(workersAvailable, remaining);
+    const completionAfter = city.workersCommitted + workersUsed >= workerCost;
+    const progressRatioAfter = (city.workersCommitted + workersUsed) / workerCost;
+    const roundsLeft = game.settings.endCondition.numRounds
+      ? Math.max(1, game.settings.endCondition.numRounds - game.state.round + 1)
+      : 4;
+    const averageDieScore = getAverageDieProductionScore(
+      game,
+      config,
+      getFoodUrgencyWeight(game, config),
+    );
+    const extraDieFutureValue = completionAfter
+      ? averageDieScore * roundsLeft * config.buildWeights.cityExtraDieFutureValue
+      : 0;
+    return (
+      progressRatioAfter * config.buildWeights.cityProgress +
+      workersUsed * config.buildWeights.cityWorkersUsed +
+      extraDieFutureValue
+    );
+  }
+
+  const monument = game.settings.monumentDefinitions.find(
+    (definition) => definition.id === action.monumentId,
+  );
+  if (!monument) {
+    return Number.NEGATIVE_INFINITY;
+  }
+  const progress = activePlayer.monuments[action.monumentId];
+  if (!progress || progress.completed) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const workerCost = monument.requirements.workerCost;
+  const remaining = Math.max(0, workerCost - progress.workersCommitted);
+  if (remaining <= 0) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const workersUsed = Math.min(workersAvailable, remaining);
+  const completionAfter = progress.workersCommitted + workersUsed >= workerCost;
+  const isFirst = isFirstToCompleteMonument(
+    action.monumentId,
+    activePlayer,
+    game.state.players,
+  );
+  const pointsAwarded = completionAfter
+    ? isFirst
+      ? monument.firstPoints
+      : monument.laterPoints
+    : 0;
+  const progressRatioAfter = (progress.workersCommitted + workersUsed) / workerCost;
+  const pointEfficiency = pointsAwarded / Math.max(1, workersUsed);
+  const specialEffectBonus = completionAfter && monument.specialEffect ? 1 : 0;
+
+  return (
+    pointsAwarded * config.buildWeights.monumentPoints +
+    pointEfficiency * config.buildWeights.monumentPointEfficiency +
+    progressRatioAfter * config.buildWeights.monumentProgress +
+    workersUsed * config.buildWeights.monumentWorkersUsed +
+    specialEffectBonus * config.buildWeights.monumentSpecialEffect
+  );
+}
+
+function pickBuildAction(
+  game: GameState,
+  legalActions: BotAction[],
+  config: HeuristicConfig,
+): BotAction | null {
+  const buildActions = legalActions.filter(
+    (action): action is Extract<BotAction, { type: 'buildCity' | 'buildMonument' }> =>
+      action.type === 'buildCity' || action.type === 'buildMonument',
+  );
+  if (buildActions.length === 0) {
+    return null;
+  }
+
+  const scored = buildActions.map((action) => ({
+    action,
+    score: scoreBuildAction(game, action, config),
+  }));
+  scored.sort(
+    (a, b) =>
+      b.score - a.score || botActionKey(a.action).localeCompare(botActionKey(b.action)),
+  );
+  return scored[0].action;
 }
 
 function scoreDiscardAction(
@@ -320,7 +425,7 @@ function chooseForPhase(
   }
 
   if (phase === GamePhase.Build) {
-    const buildAction = pickBuildAction(legalActions, config.buildPriority);
+    const buildAction = pickBuildAction(game, legalActions, config);
     if (buildAction) {
       return buildAction;
     }
