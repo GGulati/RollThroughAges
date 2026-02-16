@@ -1,5 +1,6 @@
 import { createSelector } from '@reduxjs/toolkit';
 import { GamePhase } from '@/game';
+import { SpecialEffect } from '@/game/construction';
 import {
   getBuildOptions,
   getAvailableDevelopments,
@@ -30,6 +31,42 @@ import {
 import { RootState } from './store';
 
 const selectGameSlice = (state: RootState) => state.game;
+
+function formatSpecialEffectText(effect: SpecialEffect | undefined): string | null {
+  if (!effect) {
+    return null;
+  }
+
+  switch (effect.type) {
+    case 'diceReroll':
+      return `Special: +${effect.count} reroll${effect.count === 1 ? '' : 's'} per turn.`;
+    case 'disasterImmunity':
+      return `Special: Immune to ${effect.disasterId}.`;
+    case 'resourceProductionBonus': {
+      const parts: string[] = [];
+      if (effect.resourceBonus.food > 0) parts.push(`food +${effect.resourceBonus.food}`);
+      if (effect.resourceBonus.workers > 0) parts.push(`workers +${effect.resourceBonus.workers}`);
+      if (effect.resourceBonus.coins > 0) parts.push(`coins +${effect.resourceBonus.coins}`);
+      if (effect.resourceBonus.goods > 0) parts.push(`goods +${effect.resourceBonus.goods}`);
+      if (effect.resourceBonus.skulls > 0) parts.push(`skulls +${effect.resourceBonus.skulls}`);
+      return parts.length > 0 ? `Special: ${parts.join(', ')}.` : null;
+    }
+    case 'goodsProductionBonus':
+      return `Special: +${effect.bonus} ${effect.goodsType.name} when producing ${effect.goodsType.name}.`;
+    case 'coinageValue':
+      return `Special: Money die value +${effect.amount}.`;
+    case 'noGoodsLimit':
+      return 'Special: No goods storage limit.';
+    case 'rewriteDisasterTargeting':
+      return `Special: ${effect.disasterId} targets ${effect.targetPlayers}.`;
+    case 'exchange':
+      return `Special: Exchange ${effect.from} to ${effect.to} at ${effect.rate}:1.`;
+    case 'bonusPointsPer':
+      return `Special: +${effect.points} VP per ${effect.entity}.`;
+    default:
+      return null;
+  }
+}
 
 function formatProductionEntry(entry: {
   goods: number;
@@ -426,6 +463,7 @@ export const selectBuildPanelModel = createSelector(selectGame, (game) => {
         workersCommitted: number;
         completed: boolean;
         pointsText: string;
+        specialEffectText: string | null;
         canBuild: boolean;
       }>,
     };
@@ -510,6 +548,7 @@ export const selectBuildPanelModel = createSelector(selectGame, (game) => {
       workersCommitted,
       completed: Boolean(progress?.completed),
       pointsText: `${monument.firstPoints}/${monument.laterPoints} VP`,
+      specialEffectText: formatSpecialEffectText(monument.specialEffect),
       canBuild:
         canBuild && monumentTargets.some((target) => target.monumentId === monument.id),
     };
@@ -769,6 +808,14 @@ export const selectDisasterPanelModel = createSelector(selectGame, (game) => {
           development.specialEffect.type === 'disasterImmunity' &&
           development.specialEffect.disasterId === disaster.id,
       );
+      const immunityMonument = game.settings.monumentDefinitions.find(
+        (monument) =>
+          Boolean(activePlayer.monuments[monument.id]?.completed) &&
+          monument.specialEffect?.type === 'disasterImmunity' &&
+          monument.specialEffect.disasterId === disaster.id,
+      );
+      const immunitySourceName =
+        immunityDevelopment?.name ?? immunityMonument?.requirements.name ?? 'special effect';
       const rewriteDevelopment = game.settings.developmentDefinitions.find(
         (development) =>
           activePlayer.developments.includes(development.id) &&
@@ -778,7 +825,7 @@ export const selectDisasterPanelModel = createSelector(selectGame, (game) => {
       const effectText =
         appliesToActivePlayer && immuneToDisaster
           ? `No effect on you (immune via ${
-              immunityDevelopment?.name ?? 'development'
+              immunitySourceName
             }). Base effect: ${disaster.effect}`
           : disaster.effect;
       const targetsText = rewriteDevelopment

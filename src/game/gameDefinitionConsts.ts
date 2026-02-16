@@ -95,6 +95,7 @@ export const MONUMENTS: MonumentDefinition[] = [
     requirements: { name: 'Great Wall', workerCost: 13 },
     firstPoints: 10,
     laterPoints: 6,
+    specialEffect: { type: 'disasterImmunity', disasterId: 'invasion' },
   },
   {
     id: 'greatPyramid',

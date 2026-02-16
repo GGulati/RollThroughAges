@@ -36,7 +36,18 @@ export function hasDisasterImmunity(
       player.developments.includes(dev.id)
   );
 
-  return immunityDevelopments.length > 0;
+  if (immunityDevelopments.length > 0) {
+    return true;
+  }
+
+  const immunityMonuments = settings.monumentDefinitions.filter(
+    (monument) =>
+      monument.specialEffect?.type === 'disasterImmunity' &&
+      monument.specialEffect.disasterId === disasterId &&
+      Boolean(player.monuments[monument.id]?.completed)
+  );
+
+  return immunityMonuments.length > 0;
 }
 
 /**

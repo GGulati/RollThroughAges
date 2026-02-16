@@ -361,6 +361,41 @@ describe('store selectors', () => {
     randomSpy.mockRestore();
   });
 
+  it('credits Great Wall when invasion immunity applies', () => {
+    const store = createTestStore();
+    store.dispatch(startGame({ players: PLAYERS }));
+    const root = store.getState();
+    const game = root.game.game!;
+    const activeIndex = game.state.activePlayerIndex;
+    const stateWithGreatWall = {
+      ...root,
+      game: {
+        ...root.game,
+        game: {
+          ...game,
+          state: {
+            ...game.state,
+            players: game.state.players.map((player, index) =>
+              index === activeIndex
+                ? {
+                    ...player,
+                    monuments: {
+                      ...player.monuments,
+                      greatWall: { workersCommitted: 13, completed: true },
+                    },
+                  }
+                : player,
+            ),
+          },
+        },
+      },
+    };
+
+    const disasterPanel = selectDisasterPanelModel(stateWithGreatWall);
+    const invasion = disasterPanel.disasters.find((entry) => entry.id === 'invasion');
+    expect(invasion?.effectText).toContain('immune via Great Wall');
+  });
+
   it('marks the triggered disaster as salient for the current turn', () => {
     const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.17); // 2 goods + skull
     const store = createTestStore();

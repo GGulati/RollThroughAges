@@ -72,6 +72,16 @@ describe('disasterEngine', () => {
       const player = createTestPlayer('p1', settings, { developments: ['irrigation'] });
       expect(hasDisasterImmunity(player, 'invasion', settings)).toBe(false);
     });
+
+    it('returns true with completed Great Wall for Invasion', () => {
+      const player = createTestPlayer('p1', settings, {
+        monuments: {
+          ...createTestPlayer('p1', settings).monuments,
+          greatWall: { workersCommitted: 13, completed: true },
+        },
+      });
+      expect(hasDisasterImmunity(player, 'invasion', settings)).toBe(true);
+    });
   });
 
   describe('applyDisasterToPlayer', () => {

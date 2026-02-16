@@ -570,7 +570,7 @@ function App() {
                         </p>
                         <p className="development-effect">
                           {city.workerCost > 0
-                            ? `Adds 1 die when built. Cost ${city.workerCost} workers.`
+                            ? 'Adds 1 die when built.'
                             : 'Starting city.'}
                         </p>
                         {!city.completed ? (
@@ -598,7 +598,7 @@ function App() {
                           </p>
                           <p className="development-effect">
                             {city.workerCost > 0
-                              ? `Adds 1 die when built. Cost ${city.workerCost} workers.`
+                              ? 'Adds 1 die when built.'
                               : 'Starting city.'}
                           </p>
                         </article>
@@ -629,6 +629,9 @@ function App() {
                         <p className="development-effect">
                           Points: {monument.pointsText} (first/later completion)
                         </p>
+                        {monument.specialEffectText ? (
+                          <p className="development-effect">{monument.specialEffectText}</p>
+                        ) : null}
                         {!monument.completed ? (
                           <button
                             type="button"
@@ -658,6 +661,9 @@ function App() {
                           <p className="development-effect">
                             Points: {monument.pointsText} (first/later completion)
                           </p>
+                          {monument.specialEffectText ? (
+                            <p className="development-effect">{monument.specialEffectText}</p>
+                          ) : null}
                         </article>
                       ))}
                   </div>
