@@ -7,6 +7,7 @@ type UseBotTurnRunnerParams = {
   game: GameState | null;
   isGameOver: boolean;
   activePlayerController: 'human' | 'bot' | null;
+  pauseBotActions: boolean;
   activeGameBotProfilesByPlayerId: Record<string, BotProfile>;
   configuredHeuristicBot: BotStrategy;
   standardHeuristicBot: BotStrategy;
@@ -18,6 +19,7 @@ export function useBotTurnRunner({
   game,
   isGameOver,
   activePlayerController,
+  pauseBotActions,
   activeGameBotProfilesByPlayerId,
   configuredHeuristicBot,
   standardHeuristicBot,
@@ -36,7 +38,7 @@ export function useBotTurnRunner({
       botTimerRef.current = null;
     }
 
-    if (!isBotTurn || !game) {
+    if (!isBotTurn || !game || pauseBotActions) {
       setIsBotResolving(false);
       return;
     }
@@ -70,6 +72,7 @@ export function useBotTurnRunner({
     dispatchBotAction,
     game,
     isBotTurn,
+    pauseBotActions,
     standardHeuristicBot,
   ]);
 

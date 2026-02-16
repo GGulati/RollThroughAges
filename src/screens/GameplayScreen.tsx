@@ -1,6 +1,6 @@
 import { ActionLogPanel } from '@/components/ActionLogPanel';
 import { ProductionPanel } from '@/components/panels/ProductionPanel';
-import { TurnStatusPanel } from '@/components/panels/TurnStatusPanel';
+import { TurnStatusData, TurnStatusPanel } from '@/components/panels/TurnStatusPanel';
 import { PhasePanel } from '@/viewModels/gameViewModel';
 import {
   selectBuildPanelModel,
@@ -11,7 +11,6 @@ import {
   selectDiscardPanelModel,
   selectExchangePanelModel,
   selectProductionPanelModel,
-  selectTurnStatus,
 } from '@/store/selectors';
 
 type ConstructionSection = 'cities' | 'monuments' | 'developments';
@@ -20,7 +19,7 @@ type GameplayScreenProps = {
   controlsLockedByBot: boolean;
   botStepDelayMs: number;
   activePhasePanel: PhasePanel | null;
-  turnStatus: ReturnType<typeof selectTurnStatus>;
+  turnStatus: TurnStatusData;
   canUndo: boolean;
   canRedo: boolean;
   dicePanel: ReturnType<typeof selectDicePanelModel>;

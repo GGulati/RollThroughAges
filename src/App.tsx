@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GamePhase, PlayerConfig } from '@/game';
 import {
   BotAction,
@@ -65,6 +65,7 @@ import {
   selectTurnStatus,
 } from '@/store/selectors';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { useAnimatedBotPhase } from '@/hooks/useAnimatedBotPhase';
 import { useBotTurnRunner } from '@/hooks/useBotTurnRunner';
 
 
@@ -146,6 +147,7 @@ function App() {
   const [headlessSimulations, setHeadlessSimulations] = useState<
     HeadlessSimulationSummary[]
   >([]);
+  const previousPhaseRef = useRef<GamePhase | null>(turnStatus.phase);
   const botStepDelayMs = BOT_SPEED_DELAY_MS[botSpeed];
   const configuredHeuristicBot = useMemo(
     () => createHeuristicBot(heuristicConfig, 'heuristic-settings'),
@@ -211,9 +213,18 @@ function App() {
   );
   const topScore = getTopScore(playerEndStateSummaries);
   const winners = getWinners(playerEndStateSummaries, topScore);
+  const isBotTurn =
+    turnStatus.isGameActive &&
+    !endgameStatus.isGameOver &&
+    turnStatus.activePlayerController === 'bot';
+  const { displayedPhase, isAnimating: isBotPhaseAnimating } = useAnimatedBotPhase({
+    phase: turnStatus.phase,
+    enabled: turnStatus.isGameActive && !endgameStatus.isGameOver,
+    stepDelayMs: botStepDelayMs,
+  });
   const activePhasePanel = useMemo(
-    () => getActivePhasePanel(turnStatus.phase),
-    [turnStatus.phase],
+    () => getActivePhasePanel(displayedPhase),
+    [displayedPhase],
   );
 
   const dispatchBotAction = useCallback(
@@ -280,6 +291,7 @@ function App() {
     game,
     isGameOver: endgameStatus.isGameOver,
     activePlayerController: turnStatus.activePlayerController,
+    pauseBotActions: isBotTurn && isBotPhaseAnimating,
     activeGameBotProfilesByPlayerId,
     configuredHeuristicBot,
     standardHeuristicBot,
@@ -303,6 +315,18 @@ function App() {
       return next;
     });
   }, [discardPanel.goodsOptions]);
+
+  useEffect(() => {
+    const previousPhase = previousPhaseRef.current;
+    if (
+      previousPhase === GamePhase.Development &&
+      turnStatus.phase !== GamePhase.Development &&
+      selectedGoodsToSpend.length > 0
+    ) {
+      setSelectedGoodsToSpend([]);
+    }
+    previousPhaseRef.current = turnStatus.phase;
+  }, [selectedGoodsToSpend.length, turnStatus.phase]);
 
   const updateGoodsToKeep = (goodsType: string, value: string) => {
     const parsed = Number(value);
@@ -508,7 +532,7 @@ function App() {
             controlsLockedByBot={controlsLockedByBot}
             botStepDelayMs={botStepDelayMs}
             activePhasePanel={activePhasePanel}
-            turnStatus={turnStatus}
+            turnStatus={{ ...turnStatus, phase: displayedPhase }}
             canUndo={canUndo}
             canRedo={canRedo}
             dicePanel={dicePanel}

@@ -1,6 +1,6 @@
 import { PlayerScoreCard } from '@/components/PlayerScoreCard';
 
-type TurnStatusPlayerPoints = {
+export type TurnStatusPlayerPoints = {
   playerId: string;
   playerName: string;
   breakdown: {
@@ -12,7 +12,7 @@ type TurnStatusPlayerPoints = {
   };
 };
 
-type TurnStatusData = {
+export type TurnStatusData = {
   isGameActive: boolean;
   round: number;
   phase: string | null;
