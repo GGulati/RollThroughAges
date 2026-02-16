@@ -30,7 +30,7 @@ describe('stage5 bot mode integration', () => {
     const user = userEvent.setup();
     renderWithStore();
 
-    await user.selectOptions(screen.getByLabelText('Player 1'), 'bot');
+    await user.selectOptions(screen.getByLabelText('Player 1'), 'heuristicStandard');
     await user.selectOptions(screen.getByLabelText('Bot Speed'), 'veryFast');
     await user.click(screen.getByRole('button', { name: 'Start Game' }));
 
@@ -47,6 +47,40 @@ describe('stage5 bot mode integration', () => {
       throw new Error('Expected action log to be a textarea element');
     }
     expect(logBox.value).toContain('[Player 1] Ended turn:');
+
+    randomSpy.mockRestore();
+  });
+
+  it('does not double-run bot execution after handoff to human', async () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.6);
+    const user = userEvent.setup();
+    renderWithStore();
+
+    await user.selectOptions(screen.getByLabelText('Player 1'), 'heuristicStandard');
+    await user.selectOptions(screen.getByLabelText('Bot Speed'), 'veryFast');
+    await user.click(screen.getByRole('button', { name: 'Start Game' }));
+
+    await waitFor(() => {
+      expect(rowText(/Active Player:/)).toContain('Player 2');
+    }, {
+      timeout: 10000,
+    });
+
+    const logBox = screen.getByLabelText('Action log history');
+    if (!(logBox instanceof HTMLTextAreaElement)) {
+      throw new Error('Expected action log to be a textarea element');
+    }
+    const endedTurnMatches = logBox.value.match(/\[Player 1\] Ended turn:/g) ?? [];
+    expect(endedTurnMatches).toHaveLength(1);
+
+    await waitFor(() => {
+      expect(rowText(/Active Player:/)).toContain('Player 2');
+    }, {
+      timeout: 1500,
+    });
+    const endedTurnMatchesAfterWait =
+      logBox.value.match(/\[Player 1\] Ended turn:/g) ?? [];
+    expect(endedTurnMatchesAfterWait).toHaveLength(1);
 
     randomSpy.mockRestore();
   });

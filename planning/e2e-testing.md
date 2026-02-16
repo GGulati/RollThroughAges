@@ -69,3 +69,17 @@ For each stage gate and major UI slice:
 - capture desktop + mobile screenshot
 - capture snapshot + console log
 - keep `npm test -- --run`, `npm run lint:strict`, and `npm run typecheck` green
+
+## Stage 5 Bot Mode Smoke Scenario
+1. Start app and open Playwright CLI browser session.
+2. In New Game setup:
+   - set `Player 1` to `Heuristic Bot`
+   - keep `Player 2` as `Human`
+   - set `Bot Speed` to `Very Fast`
+3. Click `Start Game`.
+4. Verify bot handoff:
+   - Turn status changes from `Player 1` to `Player 2`
+   - Controller in Turn status becomes `human`
+5. Verify Action Log attribution:
+   - log contains a `Player 1` turn completion entry
+6. Capture desktop/mobile screenshots, snapshot, and console logs.
