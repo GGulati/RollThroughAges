@@ -41,6 +41,7 @@ function cloneSnapshot(snapshot: GameStateSnapshot): GameStateSnapshot {
         (city): ConstructionProgress => ({
           workersCommitted: city.workersCommitted,
           completed: city.completed,
+          completedOrder: city.completedOrder,
         })
       ),
       developments: [...player.developments],
@@ -50,6 +51,7 @@ function cloneSnapshot(snapshot: GameStateSnapshot): GameStateSnapshot {
           {
             workersCommitted: progress.workersCommitted,
             completed: progress.completed,
+            completedOrder: progress.completedOrder,
           },
         ])
       ),

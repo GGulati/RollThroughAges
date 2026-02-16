@@ -285,6 +285,22 @@ describe('buildEngine', () => {
       expect(workersUsed).toBe(Math.min(5, monument.requirements.workerCost));
       expect(newPlayer.monuments[monument.id].workersCommitted).toBe(Math.min(5, monument.requirements.workerCost));
     });
+
+    it('assigns completion order when monument is completed', () => {
+      const players = [createTestPlayer('p1', settings)];
+      const monument = settings.monumentDefinitions[0];
+
+      const { player: newPlayer } = allocateWorkersToMonument(
+        players[0],
+        monument.id,
+        monument.requirements.workerCost,
+        players,
+        settings
+      );
+
+      expect(newPlayer.monuments[monument.id].completed).toBe(true);
+      expect(newPlayer.monuments[monument.id].completedOrder).toBe(1);
+    });
   });
 
   describe('isFirstToCompleteMonument', () => {
@@ -308,6 +324,27 @@ describe('buildEngine', () => {
       players[0].monuments[monument.id] = { workersCommitted: 10, completed: true };
       players[1].monuments[monument.id] = { workersCommitted: 10, completed: true };
 
+      expect(isFirstToCompleteMonument(monument.id, players[1], players)).toBe(false);
+    });
+
+    it('uses completion order when both players have completed', () => {
+      const players = [
+        createTestPlayer('p1', settings),
+        createTestPlayer('p2', settings),
+      ];
+      const monument = settings.monumentDefinitions[0];
+      players[0].monuments[monument.id] = {
+        workersCommitted: monument.requirements.workerCost,
+        completed: true,
+        completedOrder: 1,
+      };
+      players[1].monuments[monument.id] = {
+        workersCommitted: monument.requirements.workerCost,
+        completed: true,
+        completedOrder: 2,
+      };
+
+      expect(isFirstToCompleteMonument(monument.id, players[0], players)).toBe(true);
       expect(isFirstToCompleteMonument(monument.id, players[1], players)).toBe(false);
     });
   });

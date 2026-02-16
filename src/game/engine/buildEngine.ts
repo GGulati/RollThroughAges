@@ -153,12 +153,33 @@ export function allocateWorkersToMonument(
 
   const newWorkersCommitted = progress.workersCommitted + toAllocate;
   const isComplete = newWorkersCommitted >= cost;
+  const existingOrder =
+    progress.completed && typeof progress.completedOrder === 'number'
+      ? progress.completedOrder
+      : undefined;
+  const nextCompletedOrder =
+    existingOrder ??
+    (() => {
+      let maxOrder = 0;
+      for (const currentPlayer of allPlayers) {
+        for (const monumentProgress of Object.values(currentPlayer.monuments)) {
+          if (
+            monumentProgress.completed &&
+            typeof monumentProgress.completedOrder === 'number'
+          ) {
+            maxOrder = Math.max(maxOrder, monumentProgress.completedOrder);
+          }
+        }
+      }
+      return maxOrder + 1;
+    })();
 
   const newMonuments = {
     ...player.monuments,
     [monumentId]: {
       workersCommitted: isComplete ? cost : newWorkersCommitted,
       completed: isComplete,
+      completedOrder: isComplete ? nextCompletedOrder : progress.completedOrder,
     },
   };
 
@@ -176,12 +197,39 @@ export function isFirstToCompleteMonument(
   player: PlayerState,
   allPlayers: PlayerState[]
 ): boolean {
-  for (const p of allPlayers) {
-    if (p.id !== player.id && p.monuments[monumentId]?.completed) {
-      return false;
+  const completedPlayers = allPlayers.filter((currentPlayer) =>
+    Boolean(currentPlayer.monuments[monumentId]?.completed),
+  );
+  if (completedPlayers.length === 0) {
+    return false;
+  }
+
+  const hasAnyCompletedOrder = completedPlayers.some(
+    (currentPlayer) =>
+      typeof currentPlayer.monuments[monumentId]?.completedOrder === 'number',
+  );
+
+  if (hasAnyCompletedOrder) {
+    let earliestOrder = Number.POSITIVE_INFINITY;
+    let earliestPlayerId: string | null = null;
+    for (const currentPlayer of completedPlayers) {
+      const order = currentPlayer.monuments[monumentId]?.completedOrder;
+      if (typeof order !== 'number') {
+        continue;
+      }
+      if (order < earliestOrder) {
+        earliestOrder = order;
+        earliestPlayerId = currentPlayer.id;
+      }
+    }
+
+    if (earliestPlayerId) {
+      return player.id === earliestPlayerId;
     }
   }
-  return true;
+
+  // Legacy fallback for states without completion order metadata.
+  return completedPlayers[0]?.id === player.id;
 }
 
 /**

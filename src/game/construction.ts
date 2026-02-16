@@ -10,6 +10,9 @@ export type ConstructionRequirements = {
 export type ConstructionProgress = {
   workersCommitted: number;
   completed: boolean;
+  // Monuments use this to determine first vs later completion scoring.
+  // Lower value means earlier completion.
+  completedOrder?: number;
 };
 
 // Unified special effects - discriminated union for type safety
