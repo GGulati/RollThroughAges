@@ -438,8 +438,9 @@ describe('gameSlice', () => {
     const activeIndex = game.state.activePlayerIndex;
     const activePlayer = game.state.players[activeIndex];
     const wood = game.settings.goodsTypes.find((g) => g.name === 'Wood')!;
+    const woodTrackLimit = wood.values.length;
     const overflowGoods = new Map(activePlayer.goods);
-    overflowGoods.set(wood, game.settings.maxGoods + 2);
+    overflowGoods.set(wood, woodTrackLimit + 2);
     state = {
       ...state,
       game: {
@@ -504,9 +505,10 @@ describe('gameSlice', () => {
     const activePlayer = game.state.players[activeIndex];
     const wood = game.settings.goodsTypes.find((g) => g.name === 'Wood')!;
     const stone = game.settings.goodsTypes.find((g) => g.name === 'Stone')!;
+    const stoneTrackLimit = stone.values.length;
     const overflowGoods = new Map(activePlayer.goods);
-    overflowGoods.set(wood, game.settings.maxGoods);
-    overflowGoods.set(stone, 2);
+    overflowGoods.set(wood, 0);
+    overflowGoods.set(stone, stoneTrackLimit + 2);
     state = {
       ...state,
       game: {
@@ -525,15 +527,15 @@ describe('gameSlice', () => {
       state,
       discardGoods({
         goodsToKeepByType: {
-          Wood: game.settings.maxGoods,
-          Stone: 0,
+          Wood: 0,
+          Stone: stoneTrackLimit,
         },
       }),
     );
 
     expect(state.lastError).toBeNull();
     expect(state.game!.state.phase).toBe('endTurn');
-    expect(state.game!.state.players[0].goods.get(stone)).toBe(0);
+    expect(state.game!.state.players[0].goods.get(stone)).toBe(stoneTrackLimit);
   });
 
   it('persists food shortage from production into turn state', () => {

@@ -14,6 +14,7 @@ import {
   getRemainingMonumentWorkers,
   calculateDiceProduction,
   calculateDiceProductionBreakdown,
+  calculateGoodsOverflow,
   canRoll,
   countPendingChoices,
   countSkulls,
@@ -768,8 +769,11 @@ export const selectDiscardPanelModel = createSelector(selectGame, (game) => {
   const activePlayer = game.state.players[game.state.activePlayerIndex];
   const goodsLimit = getGoodsLimit(activePlayer, game.settings);
   const totalGoods = getTotalGoodsQuantity(activePlayer.goods);
-  const overflow =
-    goodsLimit === Infinity ? 0 : Math.max(0, totalGoods - goodsLimit);
+  const overflow = calculateGoodsOverflow(
+    activePlayer.goods,
+    activePlayer,
+    game.settings,
+  );
   const goodsOptions = game.settings.goodsTypes.map((goodsType) => ({
     goodsType: goodsType.name,
     quantity: activePlayer.goods.get(goodsType) ?? 0,

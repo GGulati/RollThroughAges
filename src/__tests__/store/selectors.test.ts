@@ -460,8 +460,9 @@ describe('store selectors', () => {
     const activeIndex = game.state.activePlayerIndex;
     const activePlayer = game.state.players[activeIndex];
     const wood = game.settings.goodsTypes.find((g) => g.name === 'Wood')!;
+    const woodTrackLimit = wood.values.length;
     const nextGoods = new Map(activePlayer.goods);
-    nextGoods.set(wood, game.settings.maxGoods + 1);
+    nextGoods.set(wood, woodTrackLimit + 1);
     const stateWithOverflow = {
       ...root,
       game: {

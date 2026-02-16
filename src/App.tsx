@@ -808,7 +808,9 @@ function App() {
               <p>{discardPanel.reason ?? 'Choose goods to keep and apply discard.'}</p>
               <p>
                 Goods limit:{' '}
-                {discardPanel.goodsLimit === Infinity ? 'No limit' : discardPanel.goodsLimit}
+                {discardPanel.goodsLimit === Infinity
+                  ? 'No limit'
+                  : 'Per-type track limits'}
               </p>
               <p>Total goods: {discardPanel.totalGoods}</p>
               <p>Overflow: {discardPanel.overflow}</p>

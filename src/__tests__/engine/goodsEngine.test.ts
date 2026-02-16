@@ -145,21 +145,22 @@ describe('goodsEngine', () => {
   });
 
   describe('calculateGoodsOverflow', () => {
-    it('returns total overflow amount across all goods', () => {
+    it('returns overflow when a goods type exceeds its track length', () => {
       let player = createTestPlayer('p1', settings);
-      // Total: 4 + 3 + 1 = 8, limit is 6, overflow is 2
-      player = setPlayerGoods(player, 'Wood', 4, settings);
-      player = setPlayerGoods(player, 'Stone', 3, settings);
-      player = setPlayerGoods(player, 'Ceramic', 1, settings);
+      const wood = settings.goodsTypes.find((g) => g.name === 'Wood')!;
+      const woodTrackLimit = wood.values.length;
+      player = setPlayerGoods(player, 'Wood', woodTrackLimit + 2, settings);
 
       const overflow = calculateGoodsOverflow(player.goods, player, settings);
       expect(overflow).toBe(2);
     });
 
-    it('returns 0 when at or under limit', () => {
+    it('returns 0 when each goods type is at or under its track length', () => {
       let player = createTestPlayer('p1', settings);
-      player = setPlayerGoods(player, 'Wood', 3, settings);
-      player = setPlayerGoods(player, 'Stone', 3, settings);
+      const wood = settings.goodsTypes.find((g) => g.name === 'Wood')!;
+      const stone = settings.goodsTypes.find((g) => g.name === 'Stone')!;
+      player = setPlayerGoods(player, 'Wood', wood.values.length, settings);
+      player = setPlayerGoods(player, 'Stone', stone.values.length, settings);
 
       const overflow = calculateGoodsOverflow(player.goods, player, settings);
       expect(overflow).toBe(0);
@@ -175,25 +176,27 @@ describe('goodsEngine', () => {
   });
 
   describe('hasGoodsOverflow', () => {
-    it('returns true when total exceeds limit', () => {
+    it('returns true when a goods type exceeds its track length', () => {
       let player = createTestPlayer('p1', settings);
-      player = setPlayerGoods(player, 'Wood', 4, settings);
-      player = setPlayerGoods(player, 'Stone', 3, settings);
+      const wood = settings.goodsTypes.find((g) => g.name === 'Wood')!;
+      player = setPlayerGoods(player, 'Wood', wood.values.length + 1, settings);
 
       expect(hasGoodsOverflow(player.goods, player, settings)).toBe(true);
     });
 
-    it('returns false when at or under limit', () => {
+    it('returns false when each goods type is at or under its track length', () => {
       let player = createTestPlayer('p1', settings);
-      player = setPlayerGoods(player, 'Wood', 3, settings);
-      player = setPlayerGoods(player, 'Stone', 3, settings);
+      const wood = settings.goodsTypes.find((g) => g.name === 'Wood')!;
+      const stone = settings.goodsTypes.find((g) => g.name === 'Stone')!;
+      player = setPlayerGoods(player, 'Wood', wood.values.length, settings);
+      player = setPlayerGoods(player, 'Stone', stone.values.length, settings);
 
       expect(hasGoodsOverflow(player.goods, player, settings)).toBe(false);
     });
   });
 
   describe('validateKeepGoods', () => {
-    it('valid when keeping goods at limit', () => {
+    it('valid when keeping goods within per-type track limits', () => {
       let player = createTestPlayer('p1', settings);
       player = setPlayerGoods(player, 'Wood', 5, settings);
       player = setPlayerGoods(player, 'Stone', 3, settings);
@@ -222,12 +225,12 @@ describe('goodsEngine', () => {
       expect(result).toHaveProperty('reason');
     });
 
-    it('invalid when keeping more than limit', () => {
+    it('invalid when keeping more than a type track limit', () => {
       let player = createTestPlayer('p1', settings);
-      player = setPlayerGoods(player, 'Wood', 10, settings);
-
       const wood = settings.goodsTypes.find((g) => g.name === 'Wood')!;
-      const goodsToKeep = new Map([[wood, 8]]);
+      player = setPlayerGoods(player, 'Wood', wood.values.length + 2, settings);
+
+      const goodsToKeep = new Map([[wood, wood.values.length + 1]]);
 
       const result = validateKeepGoods(player.goods, goodsToKeep, player, settings);
       expect(result.valid).toBe(false);

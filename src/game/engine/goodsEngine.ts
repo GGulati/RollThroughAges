@@ -95,28 +95,32 @@ export function hasNoGoodsLimit(
 }
 
 /**
- * Get the maximum goods a player can store per type.
+ * Get the legacy total-goods limit setting.
+ * Note: overflow/discard enforcement uses per-type track caps.
  */
 export function getGoodsLimit(player: PlayerState, settings: GameSettings): number {
   return hasNoGoodsLimit(player, settings) ? Infinity : settings.maxGoods;
 }
 
 /**
- * Calculate total goods overflow amount.
- * The goods limit applies to the total quantity across all goods types.
- * Returns the number of goods that must be discarded.
+ * Calculate overflow amount based on per-type track caps.
+ * For each goods type, quantities above that type's track length overflow.
+ * Returns the total number of overflowing goods across all types.
  */
 export function calculateGoodsOverflow(
   goods: GoodsTrack,
   player: PlayerState,
   settings: GameSettings
 ): number {
-  const limit = getGoodsLimit(player, settings);
+  if (hasNoGoodsLimit(player, settings)) return 0;
 
-  if (limit === Infinity) return 0;
+  let overflow = 0;
+  for (const [goodsType, quantity] of goods.entries()) {
+    const typeLimit = goodsType.values.length;
+    overflow += Math.max(0, quantity - typeLimit);
+  }
 
-  const total = getTotalGoodsQuantity(goods);
-  return Math.max(0, total - limit);
+  return overflow;
 }
 
 /**
@@ -141,7 +145,7 @@ export type GoodsValidationResult =
  * Validate a player's choice of goods to keep when over the limit.
  * Checks that:
  * 1. Player has enough of each goods type to keep the requested amount
- * 2. Total kept goods is at or under the limit
+ * 2. Kept amount per goods type stays within that type's track cap
  */
 export function validateKeepGoods(
   goods: GoodsTrack,
@@ -149,9 +153,7 @@ export function validateKeepGoods(
   player: PlayerState,
   settings: GameSettings
 ): GoodsValidationResult {
-  const limit = getGoodsLimit(player, settings);
-
-  let totalKeeping = 0;
+  const unlimited = hasNoGoodsLimit(player, settings);
   for (const [goodsType, keepAmount] of goodsToKeep.entries()) {
     if (keepAmount < 0) {
       return { valid: false, reason: `Cannot keep negative ${goodsType.name}` };
@@ -160,11 +162,12 @@ export function validateKeepGoods(
     if (keepAmount > owned) {
       return { valid: false, reason: `Cannot keep ${keepAmount} ${goodsType.name}, only have ${owned}` };
     }
-    totalKeeping += keepAmount;
-  }
-
-  if (totalKeeping > limit) {
-    return { valid: false, reason: `Cannot keep ${totalKeeping} goods, limit is ${limit}` };
+    if (!unlimited && keepAmount > goodsType.values.length) {
+      return {
+        valid: false,
+        reason: `Cannot keep ${keepAmount} ${goodsType.name}, track limit is ${goodsType.values.length}`,
+      };
+    }
   }
 
   return { valid: true };
