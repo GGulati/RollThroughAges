@@ -36,12 +36,16 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks';
 
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 4;
+type ControllerOption = 'human' | 'bot';
 
-function createPlayers(count: number) {
+function createPlayers(
+  count: number,
+  controllers: Record<number, ControllerOption>,
+) {
   return Array.from({ length: count }, (_, index) => ({
     id: `p${index + 1}`,
     name: `Player ${index + 1}`,
-    controller: 'human' as const,
+    controller: controllers[index + 1] ?? 'human',
   }));
 }
 
@@ -73,6 +77,14 @@ function App() {
   const canRedo = useAppSelector(selectCanRedo);
   const [selectedGoodsToSpend, setSelectedGoodsToSpend] = useState<string[]>([]);
   const [playerCount, setPlayerCount] = useState<number>(MIN_PLAYERS);
+  const [playerControllers, setPlayerControllers] = useState<
+    Record<number, ControllerOption>
+  >({
+    1: 'human',
+    2: 'human',
+    3: 'human',
+    4: 'human',
+  });
   const [isDiceReferenceExpanded, setIsDiceReferenceExpanded] = useState(false);
   const [goodsToKeepByType, setGoodsToKeepByType] = useState<Record<string, number>>(
     {},
@@ -204,6 +216,47 @@ function App() {
     }));
   };
 
+  const updatePlayerController = (
+    playerNumber: number,
+    controller: ControllerOption,
+  ) => {
+    setPlayerControllers((current) => ({
+      ...current,
+      [playerNumber]: controller,
+    }));
+  };
+
+  const renderControllerOptions = (idPrefix: string) => (
+    <div className="development-list">
+      {Array.from({ length: playerCount }, (_, index) => {
+        const playerNumber = index + 1;
+        const controlId = `${idPrefix}-controller-${playerNumber}`;
+        return (
+          <label
+            key={controlId}
+            className="player-count-control"
+            htmlFor={controlId}
+          >
+            <span>Player {playerNumber}</span>
+            <select
+              id={controlId}
+              value={playerControllers[playerNumber] ?? 'human'}
+              onChange={(event) =>
+                updatePlayerController(
+                  playerNumber,
+                  event.target.value as ControllerOption,
+                )
+              }
+            >
+              <option value="human">Human</option>
+              <option value="bot">Bot</option>
+            </select>
+          </label>
+        );
+      })}
+    </div>
+  );
+
   const toggleConstructionSection = (section: ConstructionSection) => {
     setSectionPreferencesByPlayer((current) => {
       const existing =
@@ -228,6 +281,7 @@ function App() {
           <section className="app-panel setup-panel">
             <h2>Start New Game</h2>
             <p>Choose the number of players, then begin.</p>
+            {renderControllerOptions('setup')}
             <div className="title-actions">
               <label className="player-count-control" htmlFor="player-count-select">
                 <span>Players</span>
@@ -249,7 +303,11 @@ function App() {
               <button
                 type="button"
                 onClick={() =>
-                  dispatch(startGame({ players: createPlayers(playerCount) }))
+                  dispatch(
+                    startGame({
+                      players: createPlayers(playerCount, playerControllers),
+                    }),
+                  )
                 }
               >
                 Start Game
@@ -312,7 +370,11 @@ function App() {
               <button
                 type="button"
                 onClick={() =>
-                  dispatch(startGame({ players: createPlayers(playerCount) }))
+                  dispatch(
+                    startGame({
+                      players: createPlayers(playerCount, playerControllers),
+                    }),
+                  )
                 }
               >
                 Play Again
@@ -332,6 +394,10 @@ function App() {
             <p>
               <strong>Active Player:</strong>{' '}
               {turnStatus.activePlayerName ?? '-'}
+            </p>
+            <p>
+              <strong>Controller:</strong>{' '}
+              {turnStatus.activePlayerController ?? '-'}
             </p>
             <p>
               <strong>Phase:</strong> {turnStatus.phase ?? '-'}

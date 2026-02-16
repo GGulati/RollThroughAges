@@ -45,6 +45,7 @@ describe('store selectors', () => {
       phase: null,
       activePlayerId: null,
       activePlayerName: null,
+      activePlayerController: null,
       rollsUsed: 0,
       activePlayerPoints: 0,
       playerPoints: [],
@@ -102,6 +103,7 @@ describe('store selectors', () => {
     expect(turnStatus.round).toBe(1);
     expect(turnStatus.activePlayerId).toBe('p1');
     expect(turnStatus.activePlayerName).toBe('Player 1');
+    expect(turnStatus.activePlayerController).toBe('human');
     expect(typeof turnStatus.activePlayerPoints).toBe('number');
     expect(turnStatus.playerPoints).toHaveLength(2);
     expect(turnStatus.playerPoints[0].playerName).toBe('Player 1');

@@ -142,6 +142,7 @@ export const selectTurnStatus = createSelector(
         phase: null,
         activePlayerId: null,
         activePlayerName: null,
+        activePlayerController: null as 'human' | 'bot' | null,
         rollsUsed: 0,
         activePlayerPoints: 0,
         playerPoints: [] as Array<{
@@ -185,6 +186,7 @@ export const selectTurnStatus = createSelector(
       phase: game.state.phase,
       activePlayerId: activePlayer.id,
       activePlayerName: playerConfig?.name ?? activePlayer.id,
+      activePlayerController: playerConfig?.controller ?? null,
       rollsUsed: game.state.turn.rollsUsed,
       activePlayerPoints,
       playerPoints,

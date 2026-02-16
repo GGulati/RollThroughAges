@@ -35,6 +35,22 @@ function reduce(
 }
 
 describe('gameSlice', () => {
+  it('persists per-player controllers from startGame config', () => {
+    const mixedPlayers: PlayerConfig[] = [
+      { id: 'p1', name: 'Player 1', controller: 'human' },
+      { id: 'p2', name: 'Player 2', controller: 'bot' },
+      { id: 'p3', name: 'Player 3', controller: 'bot' },
+    ];
+    const state = reduce(undefined, startGame({ players: mixedPlayers }));
+
+    expect(state.game).not.toBeNull();
+    expect(state.game!.settings.players.map((player) => player.controller)).toEqual([
+      'human',
+      'bot',
+      'bot',
+    ]);
+  });
+
   it('caps history at 20 entries', () => {
     const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.55);
     let state = reduce(undefined, startGame({ players: PLAYERS }));
