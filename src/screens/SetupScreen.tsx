@@ -1,4 +1,4 @@
-import { HeuristicConfig } from '@/game/bot';
+import { HeuristicConfig, LookaheadConfig } from '@/game/bot';
 import { PlayerEndStateCard } from '@/components/PlayerEndStateCard';
 import {
   BotSpeedOption,
@@ -22,10 +22,18 @@ type SetupScreenProps = {
   onBotSpeedChange: (speed: BotSpeedOption) => void;
   isHeuristicSettingsExpanded: boolean;
   onToggleHeuristicSettings: () => void;
+  isLookaheadSettingsExpanded: boolean;
+  onToggleLookaheadSettings: () => void;
   heuristicConfig: HeuristicConfig;
   heuristicHandlers: HeuristicUpdateHandlers;
   onPreferExchangeFirstChange: (enabled: boolean) => void;
+  lookaheadUtilityWeights: LookaheadConfig['utilityWeights'];
+  onUpdateLookaheadUtilityWeight: (
+    key: keyof LookaheadConfig['utilityWeights'],
+    value: string,
+  ) => void;
   onResetHeuristicDefaults: () => void;
+  onResetLookaheadDefaults: () => void;
   headlessSimulations: HeadlessSimulationSummary[];
 };
 
@@ -41,10 +49,15 @@ export function SetupScreen({
   onBotSpeedChange,
   isHeuristicSettingsExpanded,
   onToggleHeuristicSettings,
+  isLookaheadSettingsExpanded,
+  onToggleLookaheadSettings,
   heuristicConfig,
   heuristicHandlers,
   onPreferExchangeFirstChange,
+  lookaheadUtilityWeights,
+  onUpdateLookaheadUtilityWeight,
   onResetHeuristicDefaults,
+  onResetLookaheadDefaults,
   headlessSimulations,
 }: SetupScreenProps) {
   const renderControllerOptions = (idPrefix: string) => (
@@ -460,6 +473,147 @@ export function SetupScreen({
                 onClick={onResetHeuristicDefaults}
               >
                 Reset Heuristic Defaults
+              </button>
+            </div>
+          ) : null}
+        </article>
+        <article className="development-card">
+          <div className="collapsible-header">
+            <p className="choice-label">Lookahead Bot</p>
+            <button
+              type="button"
+              className="section-toggle"
+              onClick={onToggleLookaheadSettings}
+            >
+              {isLookaheadSettingsExpanded ? 'Collapse' : 'Expand'}
+            </button>
+          </div>
+          {isLookaheadSettingsExpanded ? (
+            <div className="development-list">
+              <p className="choice-label">Utility Weights</p>
+              <label className="player-count-control" htmlFor="lookahead-score-total">
+                <span>Score Total</span>
+                <input
+                  id="lookahead-score-total"
+                  type="number"
+                  step="0.1"
+                  value={lookaheadUtilityWeights.scoreTotal}
+                  onChange={(event) =>
+                    onUpdateLookaheadUtilityWeight(
+                      'scoreTotal',
+                      event.target.value,
+                    )
+                  }
+                />
+              </label>
+              <label className="player-count-control" htmlFor="lookahead-completed-cities">
+                <span>Completed Cities</span>
+                <input
+                  id="lookahead-completed-cities"
+                  type="number"
+                  step="0.1"
+                  value={lookaheadUtilityWeights.completedCities}
+                  onChange={(event) =>
+                    onUpdateLookaheadUtilityWeight(
+                      'completedCities',
+                      event.target.value,
+                    )
+                  }
+                />
+              </label>
+              <label className="player-count-control" htmlFor="lookahead-city-progress">
+                <span>City Progress</span>
+                <input
+                  id="lookahead-city-progress"
+                  type="number"
+                  step="0.1"
+                  value={lookaheadUtilityWeights.cityProgress}
+                  onChange={(event) =>
+                    onUpdateLookaheadUtilityWeight(
+                      'cityProgress',
+                      event.target.value,
+                    )
+                  }
+                />
+              </label>
+              <label className="player-count-control" htmlFor="lookahead-monument-progress">
+                <span>Monument Progress</span>
+                <input
+                  id="lookahead-monument-progress"
+                  type="number"
+                  step="0.1"
+                  value={lookaheadUtilityWeights.monumentProgress}
+                  onChange={(event) =>
+                    onUpdateLookaheadUtilityWeight(
+                      'monumentProgress',
+                      event.target.value,
+                    )
+                  }
+                />
+              </label>
+              <label className="player-count-control" htmlFor="lookahead-goods-value">
+                <span>Goods Value</span>
+                <input
+                  id="lookahead-goods-value"
+                  type="number"
+                  step="0.1"
+                  value={lookaheadUtilityWeights.goodsValue}
+                  onChange={(event) =>
+                    onUpdateLookaheadUtilityWeight(
+                      'goodsValue',
+                      event.target.value,
+                    )
+                  }
+                />
+              </label>
+              <label className="player-count-control" htmlFor="lookahead-food">
+                <span>Food</span>
+                <input
+                  id="lookahead-food"
+                  type="number"
+                  step="0.1"
+                  value={lookaheadUtilityWeights.food}
+                  onChange={(event) =>
+                    onUpdateLookaheadUtilityWeight('food', event.target.value)
+                  }
+                />
+              </label>
+              <label className="player-count-control" htmlFor="lookahead-turn-resource">
+                <span>Turn Resource Position</span>
+                <input
+                  id="lookahead-turn-resource"
+                  type="number"
+                  step="0.1"
+                  value={lookaheadUtilityWeights.turnResourcePosition}
+                  onChange={(event) =>
+                    onUpdateLookaheadUtilityWeight(
+                      'turnResourcePosition',
+                      event.target.value,
+                    )
+                  }
+                />
+              </label>
+              <label className="player-count-control" htmlFor="lookahead-food-risk-penalty">
+                <span>Food Risk Penalty</span>
+                <input
+                  id="lookahead-food-risk-penalty"
+                  type="number"
+                  step="0.1"
+                  value={lookaheadUtilityWeights.foodRiskPenalty}
+                  onChange={(event) =>
+                    onUpdateLookaheadUtilityWeight(
+                      'foodRiskPenalty',
+                      event.target.value,
+                    )
+                  }
+                />
+              </label>
+              <button
+                type="button"
+                className="start-game-button"
+                onClick={onResetLookaheadDefaults}
+              >
+                Reset Lookahead Defaults
               </button>
             </div>
           ) : null}

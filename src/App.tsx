@@ -4,6 +4,7 @@ import {
   BotAction,
   HeuristicConfig,
   HEURISTIC_STANDARD_CONFIG,
+  LookaheadConfig,
   createHeuristicBot,
   createLookaheadBot,
   getHeadlessScoreSummary,
@@ -82,6 +83,10 @@ function cloneStandardHeuristicConfig(): HeuristicConfig {
   };
 }
 
+function cloneStandardLookaheadUtilityWeights(): LookaheadConfig['utilityWeights'] {
+  return { ...LOOKAHEAD_STANDARD_CONFIG.utilityWeights };
+}
+
 function createPlayers(
   count: number,
   controllers: Record<number, ControllerOption>,
@@ -137,9 +142,14 @@ function App() {
   const [botSpeed, setBotSpeed] = useState<BotSpeedOption>('normal');
   const [isHeuristicSettingsExpanded, setIsHeuristicSettingsExpanded] =
     useState(false);
+  const [isLookaheadSettingsExpanded, setIsLookaheadSettingsExpanded] =
+    useState(false);
   const [heuristicConfig, setHeuristicConfig] = useState<HeuristicConfig>(
     cloneStandardHeuristicConfig(),
   );
+  const [lookaheadUtilityWeights, setLookaheadUtilityWeights] = useState<
+    LookaheadConfig['utilityWeights']
+  >(cloneStandardLookaheadUtilityWeights());
   const [isDiceReferenceExpanded, setIsDiceReferenceExpanded] = useState(false);
   const [goodsToKeepByType, setGoodsToKeepByType] = useState<Record<string, number>>(
     {},
@@ -162,10 +172,11 @@ function App() {
         {
           ...LOOKAHEAD_STANDARD_CONFIG,
           heuristicFallbackConfig: heuristicConfig,
+          utilityWeights: lookaheadUtilityWeights,
         },
         'lookahead-settings',
       ),
-    [heuristicConfig],
+    [heuristicConfig, lookaheadUtilityWeights],
   );
   const standardHeuristicBot = useMemo(
     () => createHeuristicBot(HEURISTIC_STANDARD_CONFIG, 'heuristic-standard-fixed'),
@@ -451,6 +462,18 @@ function App() {
     }));
   };
 
+  const updateLookaheadUtilityWeight = (
+    key: keyof LookaheadConfig['utilityWeights'],
+    value: string,
+  ) => {
+    const parsed = Number(value);
+    const nextValue = Number.isFinite(parsed) ? parsed : 0;
+    setLookaheadUtilityWeights((current) => ({
+      ...current,
+      [key]: nextValue,
+    }));
+  };
+
   const runHeadlessSimulation = (
     players: ReturnType<typeof createPlayers>,
     botProfilesByPlayerId: Record<string, BotProfile>,
@@ -513,7 +536,9 @@ function App() {
     setActiveGameBotProfilesByPlayerId({});
     setBotSpeed('normal');
     setIsHeuristicSettingsExpanded(false);
+    setIsLookaheadSettingsExpanded(false);
     setHeuristicConfig(cloneStandardHeuristicConfig());
+    setLookaheadUtilityWeights(cloneStandardLookaheadUtilityWeights());
     dispatch(returnToSetup());
   };
 
@@ -552,6 +577,10 @@ function App() {
             onToggleHeuristicSettings={() =>
               setIsHeuristicSettingsExpanded((current) => !current)
             }
+            isLookaheadSettingsExpanded={isLookaheadSettingsExpanded}
+            onToggleLookaheadSettings={() =>
+              setIsLookaheadSettingsExpanded((current) => !current)
+            }
             heuristicConfig={heuristicConfig}
             heuristicHandlers={{
               updateProductionWeight,
@@ -565,8 +594,13 @@ function App() {
                 preferExchangeBeforeDevelopment: enabled,
               }))
             }
-            onResetHeuristicDefaults={() =>
-              setHeuristicConfig(cloneStandardHeuristicConfig())
+            lookaheadUtilityWeights={lookaheadUtilityWeights}
+            onUpdateLookaheadUtilityWeight={updateLookaheadUtilityWeight}
+            onResetHeuristicDefaults={() => {
+              setHeuristicConfig(cloneStandardHeuristicConfig());
+            }}
+            onResetLookaheadDefaults={() =>
+              setLookaheadUtilityWeights(cloneStandardLookaheadUtilityWeights())
             }
             headlessSimulations={headlessSimulations}
           />
