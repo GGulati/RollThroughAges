@@ -21,11 +21,14 @@ export type HeuristicBuildWeights = {
   cityProgress: number;
   cityWorkersUsed: number;
   cityExtraDieFutureValue: number;
+  cityDeferredCompletionValueScale: number;
   monumentPoints: number;
   monumentPointEfficiency: number;
   monumentProgress: number;
   monumentWorkersUsed: number;
   monumentSpecialEffect: number;
+  monumentDeferredCompletionValueScale: number;
+  monumentDeferredMaxTurnsToComplete: number;
 };
 
 export type HeuristicConfig = {
@@ -57,11 +60,14 @@ export const HEURISTIC_STANDARD_CONFIG: HeuristicConfig = {
     cityProgress: 2,
     cityWorkersUsed: 0.1,
     cityExtraDieFutureValue: 0.15,
+    cityDeferredCompletionValueScale: 0.2,
     monumentPoints: 2.85,
     monumentPointEfficiency: 3,
     monumentProgress: 1.5,
     monumentWorkersUsed: 0.1,
     monumentSpecialEffect: 1,
+    monumentDeferredCompletionValueScale: 0.75,
+    monumentDeferredMaxTurnsToComplete: 2,
   },
   preferExchangeBeforeDevelopment: false,
 };

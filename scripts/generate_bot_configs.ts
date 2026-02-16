@@ -19,8 +19,11 @@ type NumericPath =
   | 'foodPolicyWeights.starvationPenaltyPerUnit'
   | 'foodPolicyWeights.foodDeficitPriorityPerUnit'
   | 'buildWeights.cityExtraDieFutureValue'
+  | 'buildWeights.cityDeferredCompletionValueScale'
   | 'buildWeights.monumentPoints'
-  | 'buildWeights.monumentPointEfficiency';
+  | 'buildWeights.monumentPointEfficiency'
+  | 'buildWeights.monumentDeferredCompletionValueScale'
+  | 'buildWeights.monumentDeferredMaxTurnsToComplete';
 
 type BooleanPath =
   | 'preferExchangeBeforeDevelopment'
@@ -108,6 +111,15 @@ const DIMENSIONS: DimensionDef[] = [
     max: 10,
   },
   {
+    id: 'cityDeferredBuildBias',
+    label: 'Higher city deferred completion value',
+    type: 'scale',
+    path: 'buildWeights.cityDeferredCompletionValueScale',
+    factor: 1.6,
+    min: 0,
+    max: 3,
+  },
+  {
     id: 'devPointsBias',
     label: 'Higher development points bias',
     type: 'scale',
@@ -121,6 +133,24 @@ const DIMENSIONS: DimensionDef[] = [
     label: 'Prefer exchange before development',
     type: 'flip',
     path: 'preferExchangeBeforeDevelopment',
+  },
+  {
+    id: 'monumentDeferredBias',
+    label: 'Higher monument deferred completion value',
+    type: 'scale',
+    path: 'buildWeights.monumentDeferredCompletionValueScale',
+    factor: 1.5,
+    min: 0,
+    max: 3,
+  },
+  {
+    id: 'monumentLongHorizon',
+    label: 'Allow longer monument deferred horizon',
+    type: 'scale',
+    path: 'buildWeights.monumentDeferredMaxTurnsToComplete',
+    factor: 1.5,
+    min: 0.5,
+    max: 6,
   },
   {
     id: 'forceFoodReroll',
@@ -244,11 +274,20 @@ function setNumeric(config: HeuristicConfig, path: NumericPath, value: number): 
     case 'buildWeights.cityExtraDieFutureValue':
       config.buildWeights.cityExtraDieFutureValue = rounded;
       break;
+    case 'buildWeights.cityDeferredCompletionValueScale':
+      config.buildWeights.cityDeferredCompletionValueScale = rounded;
+      break;
     case 'buildWeights.monumentPoints':
       config.buildWeights.monumentPoints = rounded;
       break;
     case 'buildWeights.monumentPointEfficiency':
       config.buildWeights.monumentPointEfficiency = rounded;
+      break;
+    case 'buildWeights.monumentDeferredCompletionValueScale':
+      config.buildWeights.monumentDeferredCompletionValueScale = rounded;
+      break;
+    case 'buildWeights.monumentDeferredMaxTurnsToComplete':
+      config.buildWeights.monumentDeferredMaxTurnsToComplete = rounded;
       break;
   }
 }
@@ -271,10 +310,16 @@ function getNumeric(config: HeuristicConfig, path: NumericPath): number {
       return config.foodPolicyWeights.foodDeficitPriorityPerUnit;
     case 'buildWeights.cityExtraDieFutureValue':
       return config.buildWeights.cityExtraDieFutureValue;
+    case 'buildWeights.cityDeferredCompletionValueScale':
+      return config.buildWeights.cityDeferredCompletionValueScale;
     case 'buildWeights.monumentPoints':
       return config.buildWeights.monumentPoints;
     case 'buildWeights.monumentPointEfficiency':
       return config.buildWeights.monumentPointEfficiency;
+    case 'buildWeights.monumentDeferredCompletionValueScale':
+      return config.buildWeights.monumentDeferredCompletionValueScale;
+    case 'buildWeights.monumentDeferredMaxTurnsToComplete':
+      return config.buildWeights.monumentDeferredMaxTurnsToComplete;
   }
 }
 

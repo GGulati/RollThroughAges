@@ -1,6 +1,7 @@
 import { GamePhase, GameState } from '../../game';
 import { ResourceProduction } from '../../dice';
 import {
+  getCompletedMonumentCount,
   getCitiesToFeed,
   getCityWorkerCost,
   getGoodsValue,
@@ -230,6 +231,53 @@ function getAverageDieProductionScore(
   return total / Math.max(1, perFaceBest.length);
 }
 
+function getEstimatedWorkersPerTurn(game: GameState): number {
+  const activePlayer = game.state.players[game.state.activePlayerIndex];
+  const diceCount = activePlayer.cities.filter((city) => city.completed).length;
+  const expectedWorkersPerDie =
+    game.settings.diceFaces.reduce((sum, face) => {
+      const maxWorkersOnFace = Math.max(...face.production.map((production) => production.workers));
+      return sum + maxWorkersOnFace;
+    }, 0) / Math.max(1, game.settings.diceFaces.length);
+  return Math.max(0.75, diceCount * expectedWorkersPerDie);
+}
+
+function getRoundsLeft(game: GameState): number {
+  const roundCapLeft = game.settings.endCondition.numRounds
+    ? Math.max(1, game.settings.endCondition.numRounds - game.state.round + 1)
+    : 99;
+
+  const developmentTarget = game.settings.endCondition.numDevelopments;
+  const monumentTarget = game.settings.endCondition.numMonuments;
+  let turnsUntilAnyPlayerCanTriggerEnd = Number.POSITIVE_INFINITY;
+
+  for (const player of game.state.players) {
+    const toDevelopmentTrigger =
+      developmentTarget === undefined
+        ? Number.POSITIVE_INFINITY
+        : Math.max(0, developmentTarget - player.developments.length);
+    const toMonumentTrigger =
+      monumentTarget === undefined
+        ? Number.POSITIVE_INFINITY
+        : Math.max(0, monumentTarget - getCompletedMonumentCount(player));
+    const soonestTrigger = Math.min(toDevelopmentTrigger, toMonumentTrigger);
+    turnsUntilAnyPlayerCanTriggerEnd = Math.min(
+      turnsUntilAnyPlayerCanTriggerEnd,
+      soonestTrigger,
+    );
+  }
+
+  const triggerHorizon =
+    turnsUntilAnyPlayerCanTriggerEnd === Number.POSITIVE_INFINITY
+      ? roundCapLeft
+      : Math.max(1, turnsUntilAnyPlayerCanTriggerEnd);
+  return Math.max(1, Math.min(roundCapLeft, triggerHorizon));
+}
+
+function getHorizonDiscount(turnsToComplete: number, roundsLeft: number): number {
+  return Math.max(0, 1 - turnsToComplete / (roundsLeft + 1));
+}
+
 function scoreBuildAction(
   game: GameState,
   action: Extract<BotAction, { type: 'buildCity' | 'buildMonument' }>,
@@ -255,22 +303,35 @@ function scoreBuildAction(
 
     const workersUsed = Math.min(workersAvailable, remaining);
     const completionAfter = city.workersCommitted + workersUsed >= workerCost;
+    const remainingAfter = Math.max(0, remaining - workersUsed);
     const progressRatioAfter = (city.workersCommitted + workersUsed) / workerCost;
-    const roundsLeft = game.settings.endCondition.numRounds
-      ? Math.max(1, game.settings.endCondition.numRounds - game.state.round + 1)
-      : 4;
+    const roundsLeft = getRoundsLeft(game);
+    const expectedWorkersPerTurn = getEstimatedWorkersPerTurn(game);
     const averageDieScore = getAverageDieProductionScore(
       game,
       config,
       getFoodUrgencyWeight(game, config),
     );
-    const extraDieFutureValue = completionAfter
+    const immediateExtraDieFutureValue = completionAfter
       ? averageDieScore * roundsLeft * config.buildWeights.cityExtraDieFutureValue
       : 0;
+    const turnsToCompleteAfter = remainingAfter / expectedWorkersPerTurn;
+    const horizonDiscount = getHorizonDiscount(turnsToCompleteAfter, roundsLeft);
+    const deferredRoundsWithExtraDie = Math.max(0, roundsLeft - turnsToCompleteAfter);
+    const deferredExtraDieFutureValue =
+      !completionAfter && deferredRoundsWithExtraDie > 0
+        ? averageDieScore *
+          deferredRoundsWithExtraDie *
+          config.buildWeights.cityExtraDieFutureValue *
+          horizonDiscount *
+          progressRatioAfter *
+          config.buildWeights.cityDeferredCompletionValueScale
+        : 0;
     return (
       progressRatioAfter * config.buildWeights.cityProgress +
       workersUsed * config.buildWeights.cityWorkersUsed +
-      extraDieFutureValue
+      immediateExtraDieFutureValue +
+      deferredExtraDieFutureValue
     );
   }
 
@@ -293,6 +354,7 @@ function scoreBuildAction(
 
   const workersUsed = Math.min(workersAvailable, remaining);
   const completionAfter = progress.workersCommitted + workersUsed >= workerCost;
+  const remainingAfter = Math.max(0, remaining - workersUsed);
   const isFirst = isFirstToCompleteMonument(
     action.monumentId,
     activePlayer,
@@ -306,13 +368,32 @@ function scoreBuildAction(
   const progressRatioAfter = (progress.workersCommitted + workersUsed) / workerCost;
   const pointEfficiency = pointsAwarded / Math.max(1, workersUsed);
   const specialEffectBonus = completionAfter && monument.specialEffect ? 1 : 0;
+  const completionPoints = isFirst ? monument.firstPoints : monument.laterPoints;
+  const completionPointEfficiency = completionPoints / Math.max(1, workerCost);
+  const completionSpecialEffectBonus = monument.specialEffect ? 1 : 0;
+  const roundsLeft = getRoundsLeft(game);
+  const expectedWorkersPerTurn = getEstimatedWorkersPerTurn(game);
+  const turnsToCompleteAfter = remainingAfter / expectedWorkersPerTurn;
+  const horizonDiscount = getHorizonDiscount(turnsToCompleteAfter, roundsLeft);
+  const hasStartedConstruction = progress.workersCommitted > 0;
+  const completionIsNearTerm =
+    turnsToCompleteAfter <= config.buildWeights.monumentDeferredMaxTurnsToComplete;
+  const deferredCompletionValue =
+    !completionAfter && hasStartedConstruction && completionIsNearTerm
+      ? (completionPoints * config.buildWeights.monumentPoints +
+          completionPointEfficiency * config.buildWeights.monumentPointEfficiency +
+          completionSpecialEffectBonus * config.buildWeights.monumentSpecialEffect) *
+        horizonDiscount *
+        config.buildWeights.monumentDeferredCompletionValueScale
+      : 0;
 
   return (
     pointsAwarded * config.buildWeights.monumentPoints +
     pointEfficiency * config.buildWeights.monumentPointEfficiency +
     progressRatioAfter * config.buildWeights.monumentProgress +
     workersUsed * config.buildWeights.monumentWorkersUsed +
-    specialEffectBonus * config.buildWeights.monumentSpecialEffect
+    specialEffectBonus * config.buildWeights.monumentSpecialEffect +
+    deferredCompletionValue
   );
 }
 

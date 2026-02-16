@@ -312,6 +312,24 @@ export function SetupScreen({
                   }
                 />
               </label>
+              <label
+                className="player-count-control"
+                htmlFor="heuristic-build-city-deferred-scale"
+              >
+                <span>City Deferred Completion Scale</span>
+                <input
+                  id="heuristic-build-city-deferred-scale"
+                  type="number"
+                  step="0.01"
+                  value={heuristicConfig.buildWeights.cityDeferredCompletionValueScale}
+                  onChange={(event) =>
+                    heuristicHandlers.updateBuildWeight(
+                      'cityDeferredCompletionValueScale',
+                      event.target.value,
+                    )
+                  }
+                />
+              </label>
               <label className="player-count-control" htmlFor="heuristic-build-monument-points">
                 <span>Monument Points</span>
                 <input
@@ -382,6 +400,42 @@ export function SetupScreen({
                   onChange={(event) =>
                     heuristicHandlers.updateBuildWeight(
                       'monumentSpecialEffect',
+                      event.target.value,
+                    )
+                  }
+                />
+              </label>
+              <label
+                className="player-count-control"
+                htmlFor="heuristic-build-monument-deferred-scale"
+              >
+                <span>Monument Deferred Completion Scale</span>
+                <input
+                  id="heuristic-build-monument-deferred-scale"
+                  type="number"
+                  step="0.01"
+                  value={heuristicConfig.buildWeights.monumentDeferredCompletionValueScale}
+                  onChange={(event) =>
+                    heuristicHandlers.updateBuildWeight(
+                      'monumentDeferredCompletionValueScale',
+                      event.target.value,
+                    )
+                  }
+                />
+              </label>
+              <label
+                className="player-count-control"
+                htmlFor="heuristic-build-monument-max-turns"
+              >
+                <span>Monument Deferred Max Turns</span>
+                <input
+                  id="heuristic-build-monument-max-turns"
+                  type="number"
+                  step="0.1"
+                  value={heuristicConfig.buildWeights.monumentDeferredMaxTurnsToComplete}
+                  onChange={(event) =>
+                    heuristicHandlers.updateBuildWeight(
+                      'monumentDeferredMaxTurnsToComplete',
                       event.target.value,
                     )
                   }
