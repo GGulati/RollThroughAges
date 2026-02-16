@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { GamePhase, PlayerConfig } from '@/game';
 import {
   BotAction,
@@ -8,10 +8,27 @@ import {
   getHeadlessScoreSummary,
   runHeadlessBotMatch,
 } from '@/game/bot';
-import { PlayerEndStateSummary } from '@/game/reporting';
-import { ActionLogPanel } from '@/components/ActionLogPanel';
-import { PlayerEndStateCard } from '@/components/PlayerEndStateCard';
-import { PlayerScoreCard } from '@/components/PlayerScoreCard';
+import { GameOverScreen } from '@/screens/GameOverScreen';
+import { GameplayScreen } from '@/screens/GameplayScreen';
+import { SetupScreen } from '@/screens/SetupScreen';
+import {
+  BotProfile,
+  BotSpeedOption,
+  ControllerOption,
+  HeadlessSimulationSummary,
+} from '@/screens/types';
+import { BOT_SPEED_DELAY_MS, MAX_PLAYERS, MIN_PLAYERS } from '@/constants/ui';
+import {
+  getLockBadge,
+  getRerollEmoji,
+  getSkullDenotation,
+} from '@/utils/gameUiFormatters';
+import {
+  getActivePhasePanel,
+  getPanelClassName,
+  getTopScore,
+  getWinners,
+} from '@/viewModels/gameViewModel';
 import './index.css';
 import {
   buildCity,
@@ -48,26 +65,8 @@ import {
   selectTurnStatus,
 } from '@/store/selectors';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { useBotTurnRunner } from '@/hooks/useBotTurnRunner';
 
-const MIN_PLAYERS = 2;
-const MAX_PLAYERS = 4;
-type ControllerOption = 'human' | 'heuristicStandard' | 'heuristicCustom';
-type BotSpeedOption = 'normal' | 'fast' | 'veryFast';
-type BotProfile = 'heuristicStandard' | 'heuristicCustom';
-type HeadlessSimulationSummary = {
-  completed: boolean;
-  turnsPlayed: number;
-  winners: string[];
-  scores: PlayerEndStateSummary[];
-  stallReason: string | null;
-  actionLog: string[];
-};
-
-const BOT_SPEED_DELAY_MS: Record<BotSpeedOption, number> = {
-  normal: 1000,
-  fast: 500,
-  veryFast: 250,
-};
 
 function cloneStandardHeuristicConfig(): HeuristicConfig {
   return {
@@ -94,8 +93,6 @@ function createPlayers(
 }
 
 type ConstructionSection = 'cities' | 'monuments' | 'developments';
-type PhasePanel = 'turnStatus' | 'production' | 'build' | 'development' | 'discard';
-
 type SectionPreferences = Record<ConstructionSection, boolean>;
 
 const DEFAULT_SECTION_PREFERENCES: SectionPreferences = {
@@ -149,8 +146,6 @@ function App() {
   const [headlessSimulations, setHeadlessSimulations] = useState<
     HeadlessSimulationSummary[]
   >([]);
-  const botTimerRef = useRef<number | null>(null);
-  const [isBotResolving, setIsBotResolving] = useState(false);
   const botStepDelayMs = BOT_SPEED_DELAY_MS[botSpeed];
   const configuredHeuristicBot = useMemo(
     () => createHeuristicBot(heuristicConfig, 'heuristic-settings'),
@@ -161,22 +156,7 @@ function App() {
     [],
   );
 
-  const rerollEmoji =
-    dicePanel.rerollsRemaining > 0
-      ? Array.from({ length: dicePanel.rerollsRemaining }, () => '🎲').join(' ')
-      : 'None';
-
-  const getLockBadge = (lockDecision: string) => {
-    if (lockDecision === 'kept') {
-      return '🔒 Locked (Kept)';
-    }
-    if (lockDecision === 'skull') {
-      return '☠️ Locked (Skull)';
-    }
-    return '🔓 Unlocked';
-  };
-  const getSkullDenotation = (skulls: number) =>
-    Array.from({ length: skulls }, () => '☠️').join(' ');
+  const rerollEmoji = getRerollEmoji(dicePanel.rerollsRemaining);
 
   const selectedGoodsLookup = useMemo(
     () => new Set(selectedGoodsToSpend),
@@ -229,39 +209,12 @@ function App() {
       return a.purchased ? 1 : -1;
     },
   );
-  const topScore = playerEndStateSummaries.reduce(
-    (best, entry) => Math.max(best, entry.total),
-    Number.NEGATIVE_INFINITY,
+  const topScore = getTopScore(playerEndStateSummaries);
+  const winners = getWinners(playerEndStateSummaries, topScore);
+  const activePhasePanel = useMemo(
+    () => getActivePhasePanel(turnStatus.phase),
+    [turnStatus.phase],
   );
-  const winners =
-    topScore === Number.NEGATIVE_INFINITY
-      ? []
-      : playerEndStateSummaries.filter((entry) => entry.total === topScore);
-  const activePhasePanel: PhasePanel | null = useMemo(() => {
-    switch (turnStatus.phase) {
-      case GamePhase.RollDice:
-      case GamePhase.DecideDice:
-      case GamePhase.ResolveProduction:
-        return 'production';
-      case GamePhase.Build:
-        return 'build';
-      case GamePhase.Development:
-        return 'development';
-      case GamePhase.DiscardGoods:
-        return 'discard';
-      case GamePhase.EndTurn:
-        return 'turnStatus';
-      default:
-        return null;
-    }
-  }, [turnStatus.phase]);
-  const getPanelClassName = (panel: PhasePanel) =>
-    activePhasePanel === panel ? 'app-panel is-active-phase' : 'app-panel';
-  const isBotTurn =
-    turnStatus.isGameActive &&
-    !endgameStatus.isGameOver &&
-    turnStatus.activePlayerController === 'bot';
-  const controlsLockedByBot = isBotTurn && isBotResolving;
 
   const dispatchBotAction = useCallback(
     (action: BotAction) => {
@@ -323,6 +276,16 @@ function App() {
     },
     [dispatch],
   );
+  const { controlsLockedByBot } = useBotTurnRunner({
+    game,
+    isGameOver: endgameStatus.isGameOver,
+    activePlayerController: turnStatus.activePlayerController,
+    activeGameBotProfilesByPlayerId,
+    configuredHeuristicBot,
+    standardHeuristicBot,
+    botStepDelayMs,
+    dispatchBotAction,
+  });
 
   const toggleGoodsSpend = (goodsType: string) => {
     setSelectedGoodsToSpend((current) =>
@@ -340,49 +303,6 @@ function App() {
       return next;
     });
   }, [discardPanel.goodsOptions]);
-
-  useEffect(() => {
-    if (botTimerRef.current !== null) {
-      window.clearTimeout(botTimerRef.current);
-      botTimerRef.current = null;
-    }
-
-    if (!isBotTurn || !game) {
-      setIsBotResolving(false);
-      return;
-    }
-
-    setIsBotResolving(true);
-    botTimerRef.current = window.setTimeout(() => {
-      const activePlayerId = game.state.turn.activePlayerId;
-      const profile = activeGameBotProfilesByPlayerId[activePlayerId];
-      const strategy =
-        profile === 'heuristicStandard'
-          ? standardHeuristicBot
-          : configuredHeuristicBot;
-      const action = strategy.chooseAction({ game });
-      if (!action) {
-        setIsBotResolving(false);
-        return;
-      }
-      dispatchBotAction(action);
-    }, botStepDelayMs);
-
-    return () => {
-      if (botTimerRef.current !== null) {
-        window.clearTimeout(botTimerRef.current);
-        botTimerRef.current = null;
-      }
-    };
-  }, [
-    activeGameBotProfilesByPlayerId,
-    botStepDelayMs,
-    configuredHeuristicBot,
-    dispatchBotAction,
-    game,
-    isBotTurn,
-    standardHeuristicBot,
-  ]);
 
   const updateGoodsToKeep = (goodsType: string, value: string) => {
     const parsed = Number(value);
@@ -520,38 +440,6 @@ function App() {
     dispatch(returnToSetup());
   };
 
-  const renderControllerOptions = (idPrefix: string) => (
-    <div className="development-list">
-      {Array.from({ length: playerCount }, (_, index) => {
-        const playerNumber = index + 1;
-        const controlId = `${idPrefix}-controller-${playerNumber}`;
-        return (
-          <label
-            key={controlId}
-            className="player-count-control"
-            htmlFor={controlId}
-          >
-            <span>Player {playerNumber}</span>
-            <select
-              id={controlId}
-              value={playerControllers[playerNumber] ?? 'human'}
-              onChange={(event) =>
-                updatePlayerController(
-                  playerNumber,
-                  event.target.value as ControllerOption,
-                )
-              }
-            >
-              <option value="human">Human</option>
-              <option value="heuristicStandard">Heuristic Bot</option>
-              <option value="heuristicCustom">Heuristic Bot (Custom)</option>
-            </select>
-          </label>
-        );
-      })}
-    </div>
-  );
-
   const toggleConstructionSection = (section: ConstructionSection) => {
     setSectionPreferencesByPlayer((current) => {
       const existing =
@@ -573,813 +461,120 @@ function App() {
           <h1>Roll Through the Ages</h1>
         </div>
         {!turnStatus.isGameActive ? (
-          <>
-            <section className="app-panel setup-panel">
-              <h2>Start New Game</h2>
-              <label className="player-count-control" htmlFor="player-count-select">
-                <span>Players</span>
-                <select
-                  id="player-count-select"
-                  value={playerCount}
-                  onChange={(event) => setPlayerCount(Number(event.target.value))}
-                >
-                  {Array.from(
-                    { length: MAX_PLAYERS - MIN_PLAYERS + 1 },
-                    (_, index) => MIN_PLAYERS + index,
-                  ).map((count) => (
-                    <option key={count} value={count}>
-                      {count}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {renderControllerOptions('setup')}
-              <button
-                className="start-game-button"
-                type="button"
-                onClick={startConfiguredGame}
-              >
-                Start Game
-              </button>
-            </section>
-            <section className="app-panel setup-panel">
-              <h2>Settings</h2>
-              <label className="player-count-control" htmlFor="bot-speed-select">
-                <span>Bot Speed</span>
-                <select
-                  id="bot-speed-select"
-                  value={botSpeed}
-                  onChange={(event) =>
-                    setBotSpeed(event.target.value as BotSpeedOption)
-                  }
-                >
-                  <option value="normal">Normal (1s)</option>
-                  <option value="fast">Fast (0.5s)</option>
-                  <option value="veryFast">Very Fast (0.25s)</option>
-                </select>
-              </label>
-              <article className="development-card">
-                <div className="collapsible-header">
-                  <p className="choice-label">Heuristic Bot</p>
-                  <button
-                    type="button"
-                    className="section-toggle"
-                    onClick={() =>
-                      setIsHeuristicSettingsExpanded((current) => !current)
-                    }
-                  >
-                    {isHeuristicSettingsExpanded ? 'Collapse' : 'Expand'}
-                  </button>
-                </div>
-                {isHeuristicSettingsExpanded ? (
-                  <div className="development-list">
-                    <p className="choice-label">Production Weights</p>
-                    <label className="player-count-control" htmlFor="heuristic-food">
-                      <span>Food</span>
-                      <input
-                        id="heuristic-food"
-                        type="number"
-                        step="0.1"
-                        value={heuristicConfig.productionWeights.food}
-                        onChange={(event) =>
-                          updateProductionWeight('food', event.target.value)
-                        }
-                      />
-                    </label>
-                    <label className="player-count-control" htmlFor="heuristic-workers">
-                      <span>Workers</span>
-                      <input
-                        id="heuristic-workers"
-                        type="number"
-                        step="0.1"
-                        value={heuristicConfig.productionWeights.workers}
-                        onChange={(event) =>
-                          updateProductionWeight('workers', event.target.value)
-                        }
-                      />
-                    </label>
-                    <label className="player-count-control" htmlFor="heuristic-coins">
-                      <span>Coins</span>
-                      <input
-                        id="heuristic-coins"
-                        type="number"
-                        step="0.1"
-                        value={heuristicConfig.productionWeights.coins}
-                        onChange={(event) =>
-                          updateProductionWeight('coins', event.target.value)
-                        }
-                      />
-                    </label>
-                    <label className="player-count-control" htmlFor="heuristic-goods">
-                      <span>Goods</span>
-                      <input
-                        id="heuristic-goods"
-                        type="number"
-                        step="0.1"
-                        value={heuristicConfig.productionWeights.goods}
-                        onChange={(event) =>
-                          updateProductionWeight('goods', event.target.value)
-                        }
-                      />
-                    </label>
-                    <label className="player-count-control" htmlFor="heuristic-skulls">
-                      <span>Skulls</span>
-                      <input
-                        id="heuristic-skulls"
-                        type="number"
-                        step="0.1"
-                        value={heuristicConfig.productionWeights.skulls}
-                        onChange={(event) =>
-                          updateProductionWeight('skulls', event.target.value)
-                        }
-                      />
-                    </label>
-                    <p className="choice-label">Development Weights</p>
-                    <label className="player-count-control" htmlFor="heuristic-dev-points">
-                      <span>Points</span>
-                      <input
-                        id="heuristic-dev-points"
-                        type="number"
-                        step="0.1"
-                        value={heuristicConfig.developmentWeights.points}
-                        onChange={(event) =>
-                          updateDevelopmentWeight('points', event.target.value)
-                        }
-                      />
-                    </label>
-                    <label className="player-count-control" htmlFor="heuristic-dev-cost">
-                      <span>Cost</span>
-                      <input
-                        id="heuristic-dev-cost"
-                        type="number"
-                        step="0.01"
-                        value={heuristicConfig.developmentWeights.cost}
-                        onChange={(event) =>
-                          updateDevelopmentWeight('cost', event.target.value)
-                        }
-                      />
-                    </label>
-                    <label className="player-count-control" htmlFor="heuristic-build-priority">
-                      <span>Build Priority</span>
-                      <select
-                        id="heuristic-build-priority"
-                        value={heuristicConfig.buildPriority[0]}
-                        onChange={(event) =>
-                          updateBuildPriority(event.target.value as 'city' | 'monument')
-                        }
-                      >
-                        <option value="city">City first</option>
-                        <option value="monument">Monument first</option>
-                      </select>
-                    </label>
-                    <label
-                      className="player-count-control"
-                      htmlFor="heuristic-exchange-first"
-                    >
-                      <span>Prefer Exchange First</span>
-                      <input
-                        id="heuristic-exchange-first"
-                        type="checkbox"
-                        checked={heuristicConfig.preferExchangeBeforeDevelopment}
-                        onChange={(event) =>
-                          setHeuristicConfig((current) => ({
-                            ...current,
-                            preferExchangeBeforeDevelopment: event.target.checked,
-                          }))
-                        }
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      className="start-game-button"
-                      onClick={() =>
-                        setHeuristicConfig(cloneStandardHeuristicConfig())
-                      }
-                    >
-                      Reset Heuristic Defaults
-                    </button>
-                  </div>
-                ) : null}
-              </article>
-            </section>
-            {headlessSimulations.length > 0 ? (
-              <section className="app-panel setup-panel">
-                <h2>AI Testing</h2>
-                <div className="development-list">
-                  {headlessSimulations.map((simulation, index) => (
-                    <article
-                      key={`headless-result-${index + 1}`}
-                      className="development-card"
-                    >
-                      <p className="development-title">
-                        Headless Result {index + 1}
-                      </p>
-                      <p className="scoreboard-row">
-                        Bots: {simulation.scores.length}
-                      </p>
-                      <p className="scoreboard-row">
-                        Status: {simulation.completed ? 'Completed' : 'Stopped Early'}
-                      </p>
-                      <p className="scoreboard-row">
-                        Turns played: {simulation.turnsPlayed}
-                      </p>
-                      <p className="scoreboard-row">
-                        Winners:{' '}
-                        {simulation.winners.length > 0
-                          ? simulation.winners.join(', ')
-                          : 'None'}
-                      </p>
-                      {simulation.stallReason ? (
-                        <p className="hint-text">{simulation.stallReason}</p>
-                      ) : null}
-                      <p className="choice-label">Final Scores</p>
-                      <div className="scoreboard-list">
-                        {simulation.scores.map((entry) => (
-                          <PlayerEndStateCard
-                            key={`${entry.playerId}-${index + 1}`}
-                            entry={entry}
-                            itemKeyPrefix={`headless-result-${index + 1}`}
-                          />
-                        ))}
-                      </div>
-                      <p className="choice-label">Action Log</p>
-                      <textarea
-                        className="log-textbox"
-                        readOnly
-                        value={simulation.actionLog.join('\n')}
-                        aria-label={`Headless action log ${index + 1}`}
-                      />
-                    </article>
-                  ))}
-                </div>
-              </section>
-            ) : null}
-          </>
+          <SetupScreen
+            minPlayers={MIN_PLAYERS}
+            maxPlayers={MAX_PLAYERS}
+            playerCount={playerCount}
+            playerControllers={playerControllers}
+            onPlayerCountChange={setPlayerCount}
+            onPlayerControllerChange={updatePlayerController}
+            onStartGame={startConfiguredGame}
+            botSpeed={botSpeed}
+            onBotSpeedChange={setBotSpeed}
+            isHeuristicSettingsExpanded={isHeuristicSettingsExpanded}
+            onToggleHeuristicSettings={() =>
+              setIsHeuristicSettingsExpanded((current) => !current)
+            }
+            heuristicConfig={heuristicConfig}
+            heuristicHandlers={{
+              updateProductionWeight,
+              updateDevelopmentWeight,
+              updateBuildPriority,
+            }}
+            onPreferExchangeFirstChange={(enabled) =>
+              setHeuristicConfig((current) => ({
+                ...current,
+                preferExchangeBeforeDevelopment: enabled,
+              }))
+            }
+            onResetHeuristicDefaults={() =>
+              setHeuristicConfig(cloneStandardHeuristicConfig())
+            }
+            headlessSimulations={headlessSimulations}
+          />
         ) : null}
         {turnStatus.isGameActive && endgameStatus.isGameOver ? (
-          <>
-            <section className="app-panel victory-panel">
-              <h2>Game Over</h2>
-              <p>
-                {winners.length > 1
-                  ? `Tie at ${topScore} VP: ${winners.map((winner) => winner.playerName).join(', ')}`
-                  : `Winner: ${winners[0]?.playerName ?? 'Unknown'} (${topScore} VP)`}
-              </p>
-              {endgameStatus.reasons.length > 0 ? (
-                <div>
-                  <p className="choice-label">End Criteria Triggered</p>
-                  <ul className="inline-note">
-                    {endgameStatus.reasons.map((reason) => (
-                      <li key={reason}>{reason}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-              <div className="scoreboard-list">
-                {playerEndStateSummaries.map((entry) => (
-                  <PlayerEndStateCard
-                    key={`victory-${entry.playerId}`}
-                    entry={entry}
-                    itemKeyPrefix="game-over"
-                  />
-                ))}
-              </div>
-              <div className="title-actions">
-                <button type="button" onClick={handlePlayAgain}>
-                  Play Again
-                </button>
-              </div>
-            </section>
-            <ActionLogPanel entries={actionLog} ariaLabel="Action log history" />
-          </>
+          <GameOverScreen
+            winners={winners}
+            topScore={topScore}
+            reasons={endgameStatus.reasons}
+            playerEndStateSummaries={playerEndStateSummaries}
+            actionLog={actionLog}
+            onPlayAgain={handlePlayAgain}
+          />
         ) : null}
         {turnStatus.isGameActive && !endgameStatus.isGameOver ? (
-          <>
-            <fieldset className="gameplay-shell" disabled={controlsLockedByBot}>
-              <div className="board-grid">
-          <section className={getPanelClassName('turnStatus')} aria-live="polite">
-            <h2>Turn Status</h2>
-            <p>
-              <strong>Round:</strong>{' '}
-              {turnStatus.isGameActive ? turnStatus.round : '-'}
-            </p>
-            <p>
-              <strong>Active Player:</strong>{' '}
-              {turnStatus.activePlayerName ?? '-'}
-            </p>
-            <p>
-              <strong>Controller:</strong>{' '}
-              {turnStatus.activePlayerController ?? '-'}
-            </p>
-            {controlsLockedByBot ? (
-              <p className="hint-text">
-                Bot is taking turn... ({botStepDelayMs / 1000}s per action)
-              </p>
-            ) : null}
-            <p>
-              <strong>Phase:</strong> {turnStatus.phase ?? '-'}
-            </p>
-            <div className="actions">
-              <button
-                type="button"
-                onClick={() => dispatch(endTurn())}
-                disabled={!discardPanel.canEndTurn}
-              >
-                End Turn
-              </button>
-              <button
-                type="button"
-                onClick={() => dispatch(undo())}
-                disabled={!canUndo}
-              >
-                Undo
-              </button>
-              <button
-                type="button"
-                onClick={() => dispatch(redo())}
-                disabled={!canRedo}
-              >
-                Redo
-              </button>
-            </div>
-            {!discardPanel.canEndTurn && discardPanel.endTurnReason ? (
-              <p className="hint-text">{discardPanel.endTurnReason}</p>
-            ) : null}
-            {turnStatus.playerPoints.length > 0 ? (
-              <div className="scoreboard-list">
-                {turnStatus.playerPoints.map((entry) => (
-                  <PlayerScoreCard
-                    key={entry.playerId}
-                    playerName={entry.playerName}
-                    breakdown={entry.breakdown}
-                    isActive={entry.playerId === turnStatus.activePlayerId}
-                  />
-                ))}
-              </div>
-            ) : null}
-          </section>
-
-          <section className={getPanelClassName('production')}>
-            <h2>Production</h2>
-            <div className="title-actions">
-              <p>
-                Rerolls available: {rerollEmoji}
-                {dicePanel.singleDieRerollsRemaining > 0
-                  ? ` • Single-die: ${dicePanel.singleDieRerollsRemaining}`
-                  : ''}
-              </p>
-              <button
-                type="button"
-                onClick={() => dispatch(rollDice())}
-                disabled={!dicePanel.canRoll}
-              >
-                Reroll Dice
-              </button>
-            </div>
-            <article className="outcome-card">
-              <p className="development-title">Total ({diceOutcome.summary ?? 'Projected'})</p>
-              <p className="scoreboard-row">🍖 Food: +{diceOutcome.food.produced}</p>
-              <p className="scoreboard-row">🪙 Coins: +{diceOutcome.coinsProduced}</p>
-              <p className="scoreboard-row">👷 Workers: +{diceOutcome.workersProduced}</p>
-              <p className="scoreboard-row">📦 Goods: +{diceOutcome.goodsProduced}</p>
-              <p className="scoreboard-row">
-                ☠️ Skulls: {diceOutcome.skulls}
-              </p>
-              {diceOutcome.penalties.foodPenalty > 0 ? (
-                <p className="outcome-penalty">
-                  ⚠️ Food shortage: -{diceOutcome.penalties.foodPenalty} VP (
-                  {diceOutcome.food.shortage} unfed
-                  {diceOutcome.food.shortage === 1 ? ' city' : ' cities'})
-                </p>
-              ) : null}
-              {diceOutcome.penalties.disasterPenalty > 0 ? (
-                <p className="outcome-penalty">
-                  ⚠️ Disaster penalty: -{diceOutcome.penalties.disasterPenalty} VP
-                </p>
-              ) : null}
-            </article>
-            {!productionPanel.canResolveProduction && productionPanel.reason ? (
-              <p className="hint-text">{productionPanel.reason}</p>
-            ) : null}
-            <div className="dice-grid">
-              {dicePanel.diceCards.map((die) => (
-                <article key={die.index} className="die-card">
-                  <p className="die-title">Die {die.index + 1}</p>
-                  <p className="die-face">{die.label}</p>
-                  {die.hasChoice ? (
-                    <div className="choice-block">
-                      <p className="choice-label">Production choice:</p>
-                      <div className="panel-actions">
-                        {Array.from({ length: die.optionCount }, (_, optionIndex) => (
-                          <button
-                            key={`${die.index}-${optionIndex}`}
-                            type="button"
-                            onClick={() =>
-                              dispatch(
-                                selectProduction({
-                                  dieIndex: die.index,
-                                  productionIndex: optionIndex,
-                                }),
-                              )
-                            }
-                            disabled={!die.canChooseOption}
-                          >
-                            {optionIndex === die.selectedOption ? '✅ ' : ''}
-                            {die.optionSummaries[optionIndex]}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                  <p className="die-badge">{getLockBadge(die.lockDecision)}</p>
-                  <div className="panel-actions">
-                    {dicePanel.hasSingleDieRerollEffect ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          dispatch(rerollSingleDie({ dieIndex: die.index }))
-                        }
-                        disabled={!die.canSingleDieReroll}
-                      >
-                        Reroll This Die
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => dispatch(keepDie({ dieIndex: die.index }))}
-                      disabled={!die.canKeep}
-                    >
-                      {die.lockDecision === 'kept' ? 'Unlock 🔓' : 'Lock 🔒'}
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
-            <div className="collapsible-header">
-              <p className="choice-label">All Die Faces</p>
-              <button
-                type="button"
-                className="section-toggle"
-                onClick={() => setIsDiceReferenceExpanded((current) => !current)}
-              >
-                {isDiceReferenceExpanded ? 'Collapse' : 'Expand'}
-              </button>
-            </div>
-            {isDiceReferenceExpanded ? (
-              <ul className="inline-note">
-                {dicePanel.referenceFaces.map((face, index) => (
-                  <li key={`face-${index}`}>{face.label}</li>
-                ))}
-              </ul>
-            ) : null}
-          </section>
-
-          <section className="app-panel">
-            <h2>Disaster Reference</h2>
-            <p>Disasters trigger by total skulls rolled this turn.</p>
-            <div className="disaster-list">
-              {disasterPanel.disasters.map((disaster) => (
-                <article
-                  key={disaster.id}
-                  className={disaster.isTriggered ? 'disaster-card salient-disaster' : 'disaster-card'}
-                >
-                  <p className="development-title">
-                    {getSkullDenotation(disaster.skulls)} {disaster.name}
-                  </p>
-                  <p className="development-effect">{disaster.effectText}</p>
-                  <p className="inline-note">Targets: {disaster.targetsText}</p>
-                </article>
-              ))}
-            </div>
-          </section>
-
-          <section className="panel-pair">
-            <section className={getPanelClassName('build')}>
-              <h2>Build</h2>
-              <p>
-                {buildPanel.canBuild
-                  ? 'Build targets available.'
-                  : buildPanel.reason ?? 'Build flow ready.'}
-              </p>
-              <p>Workers: {buildPanel.workersAvailable}</p>
-              <p>Stored food: {buildPanel.storedFood}</p>
-              <p>Stored goods:</p>
-              <div className="goods-list">
-                {buildPanel.goodsStoredSummary.map((entry) => (
-                  <p key={entry.goodsType} className="goods-row">
-                    {entry.goodsType}: {entry.quantity}
-                  </p>
-                ))}
-              </div>
-              <div className="build-targets">
-                <div className="collapsible-header">
-                  <p className="choice-label">Cities</p>
-                  <button
-                    type="button"
-                    className="section-toggle"
-                    onClick={() => toggleConstructionSection('cities')}
-                  >
-                    {isCitiesExpanded ? 'Collapse' : 'Expand'}
-                  </button>
-                </div>
-                {isCitiesExpanded ? (
-                  <div className="development-list">
-                    {cityCatalogSorted.map((city) => (
-                      <article key={`city-card-${city.cityIndex}`} className="development-card">
-                        <p className="development-title">
-                          {city.label} ({city.workersCommitted}/{city.workerCost})
-                          {city.completed ? ' • Built' : ''}
-                        </p>
-                        <p className="development-effect">
-                          {city.workerCost > 0
-                            ? 'Adds 1 die when built.'
-                            : 'Starting city.'}
-                        </p>
-                        {!city.completed ? (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              dispatch(buildCity({ cityIndex: city.cityIndex }))
-                            }
-                            disabled={!city.canBuild}
-                          >
-                            Build City
-                          </button>
-                        ) : null}
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="development-list">
-                    {buildPanel.cityCatalog
-                      .filter((city) => city.completed)
-                      .map((city) => (
-                        <article key={`city-collapsed-${city.cityIndex}`} className="development-card">
-                          <p className="development-title">
-                            {city.label} ({city.workersCommitted}/{city.workerCost}) • Built
-                          </p>
-                          <p className="development-effect">
-                            {city.workerCost > 0
-                              ? 'Adds 1 die when built.'
-                              : 'Starting city.'}
-                          </p>
-                        </article>
-                      ))}
-                  </div>
-                )}
-                <div className="collapsible-header">
-                  <p className="choice-label">Monuments</p>
-                  <button
-                    type="button"
-                    className="section-toggle"
-                    onClick={() => toggleConstructionSection('monuments')}
-                  >
-                    {isMonumentsExpanded ? 'Collapse' : 'Expand'}
-                  </button>
-                </div>
-                {isMonumentsExpanded ? (
-                  <div className="development-list">
-                    {monumentCatalogSorted.map((monument) => (
-                      <article
-                        key={`monument-card-${monument.monumentId}`}
-                        className="development-card"
-                      >
-                        <p className="development-title">
-                          {monument.label} ({monument.workersCommitted}/{monument.workerCost})
-                          {monument.completed ? ' • Completed' : ''}
-                        </p>
-                        <p className="development-effect">
-                          Points: {monument.pointsText} (first/later completion)
-                        </p>
-                        {monument.specialEffectText ? (
-                          <p className="development-effect">{monument.specialEffectText}</p>
-                        ) : null}
-                        {!monument.completed ? (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              dispatch(buildMonument({ monumentId: monument.monumentId }))
-                            }
-                            disabled={!monument.canBuild}
-                          >
-                            Build Monument
-                          </button>
-                        ) : null}
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="development-list">
-                    {buildPanel.monumentCatalog
-                      .filter((monument) => monument.completed)
-                      .map((monument) => (
-                        <article
-                          key={`monument-collapsed-${monument.monumentId}`}
-                          className="development-card"
-                        >
-                          <p className="development-title">
-                            {monument.label} ({monument.workersCommitted}/{monument.workerCost}) • Completed
-                          </p>
-                          <p className="development-effect">
-                            Points: {monument.pointsText} (first/later completion)
-                          </p>
-                          {monument.specialEffectText ? (
-                            <p className="development-effect">{monument.specialEffectText}</p>
-                          ) : null}
-                        </article>
-                      ))}
-                  </div>
-                )}
-              </div>
-            </section>
-
-            <section className={getPanelClassName('development')}>
-              <div className="title-row">
-                <h2>Development</h2>
-                <button
-                  type="button"
-                  onClick={() => dispatch(skipDevelopment())}
-                  disabled={!developmentPanel.canSkip}
-                >
-                  Skip Development
-                </button>
-              </div>
-              <p>{developmentPanel.reason ?? 'Choose a development to purchase.'}</p>
-              <p>Coins available: {effectiveCoinsAvailable}</p>
-              <p className="inline-note">
-                Base coins: {developmentPanel.coinsAvailable}
-                {selectedGoodsCoins > 0 ? ` + goods value ${selectedGoodsCoins}` : ''}
-              </p>
-              <p>Total purchasing power: {developmentPanel.totalPurchasingPower}</p>
-              <p className="choice-label">Goods To Spend</p>
-              <p>
-                Selected:{' '}
-                {selectedGoodsToSpend.length > 0
-                  ? selectedGoodsToSpend.join(', ')
-                  : 'none'}
-              </p>
-              <div className="panel-actions">
-                {developmentPanel.goodsSpendOptions.map((option) => (
-                  <button
-                    key={option.goodsType}
-                    type="button"
-                    onClick={() => toggleGoodsSpend(option.goodsType)}
-                    disabled={option.quantity <= 0 || !developmentPanel.isActionAllowed}
-                  >
-                    {selectedGoodsLookup.has(option.goodsType) ? '✅ ' : ''}
-                    {option.goodsType} ({option.quantity})
-                  </button>
-                ))}
-              </div>
-              {exchangePanel.exchanges.length > 0 ? (
-                <>
-                  <p className="choice-label">Exchange Effects</p>
-                  <p>{exchangePanel.reason ?? 'Apply exchanges as needed.'}</p>
-                  <div className="development-list">
-                    {exchangePanel.exchanges.map((exchange) => {
-                      return (
-                        <article key={exchange.key} className="development-card">
-                          <p className="development-title">
-                            {exchange.developmentName}: {exchange.from}
-                            {' -> '}
-                            {exchange.to}
-                          </p>
-                          <p className="development-effect">
-                            Rate: 1 {exchange.from} = {exchange.rate} {exchange.to}
-                          </p>
-                          <p className="inline-note">Available: {exchange.sourceAmount}</p>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              dispatch(
-                                applyExchange({
-                                  from: exchange.from,
-                                  to: exchange.to,
-                                  amount: 1,
-                                }),
-                              )
-                            }
-                            disabled={!exchange.canApply}
-                          >
-                            Exchange 1 {exchange.from}
-                          </button>
-                        </article>
-                      );
-                    })}
-                  </div>
-                </>
-              ) : null}
-              <div className="collapsible-header">
-                <p className="choice-label">Development Options</p>
-                <button
-                  type="button"
-                  className="section-toggle"
-                  onClick={() => toggleConstructionSection('developments')}
-                >
-                  {isDevelopmentsExpanded ? 'Collapse' : 'Expand'}
-                </button>
-              </div>
-              {isDevelopmentsExpanded ? (
-                <div className="development-list">
-                  {developmentCatalogSorted.map((development) => {
-                    const canAffordWithSelection =
-                      effectiveCoinsAvailable >= development.cost;
-                    return (
-                      <article key={development.id} className="development-card">
-                      <p className="development-title">
-                        {development.name} ({development.cost}🪙, +{development.points} VP)
-                        {development.purchased ? ' • Purchased' : ''}
-                      </p>
-                      <p className="development-effect">{development.effectDescription}</p>
-                      {!development.purchased ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            dispatch(
-                              buyDevelopment({
-                                developmentId: development.id,
-                                goodsTypeNames: selectedGoodsToSpend,
-                              }),
-                            )
-                          }
-                          disabled={
-                            !developmentPanel.isActionAllowed ||
-                            !canAffordWithSelection
-                          }
-                        >
-                          Buy Development
-                        </button>
-                      ) : null}
-                      </article>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="development-list">
-                  {developmentPanel.developmentCatalog
-                    .filter((development) => development.purchased)
-                    .map((development) => (
-                      <article key={`development-collapsed-${development.id}`} className="development-card">
-                        <p className="development-title">
-                          {development.name} ({development.cost}🪙, +{development.points} VP) • Purchased
-                        </p>
-                        <p className="development-effect">{development.effectDescription}</p>
-                      </article>
-                    ))}
-                </div>
-              )}
-            </section>
-          </section>
-
-          <section className="panel-pair">
-            <section className={getPanelClassName('discard')}>
-              <h2>Discard</h2>
-              <p>{discardPanel.reason ?? 'Choose goods to keep and apply discard.'}</p>
-              <p>
-                Goods limit:{' '}
-                {discardPanel.goodsLimit === Infinity
-                  ? 'No limit'
-                  : 'Per-type track limits'}
-              </p>
-              <p>Total goods: {discardPanel.totalGoods}</p>
-              <p>Overflow: {discardPanel.overflow}</p>
-              {discardPanel.isActionAllowed ? (
-                <div className="development-list">
-                  {discardPanel.goodsOptions.map((option) => (
-                    <article key={`discard-${option.goodsType}`} className="development-card">
-                      <p className="development-title">
-                        {option.goodsType} (owned: {option.quantity})
-                      </p>
-                      <label className="choice-label" htmlFor={`keep-${option.goodsType}`}>
-                        Keep quantity
-                      </label>
-                      <input
-                        id={`keep-${option.goodsType}`}
-                        type="number"
-                        min={0}
-                        max={option.quantity}
-                        value={goodsToKeepByType[option.goodsType] ?? option.quantity}
-                        onChange={(event) =>
-                          updateGoodsToKeep(option.goodsType, event.target.value)
-                        }
-                      />
-                    </article>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => dispatch(discardGoods({ goodsToKeepByType }))}
-                    disabled={!discardPanel.isActionAllowed}
-                  >
-                    Apply Discard
-                  </button>
-                </div>
-              ) : null}
-            </section>
-            <ActionLogPanel entries={actionLog} ariaLabel="Action log history" />
-            </section>
-              </div>
-            </fieldset>
-          </>
+          <GameplayScreen
+            controlsLockedByBot={controlsLockedByBot}
+            botStepDelayMs={botStepDelayMs}
+            activePhasePanel={activePhasePanel}
+            turnStatus={turnStatus}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            dicePanel={dicePanel}
+            diceOutcome={diceOutcome}
+            productionPanel={productionPanel}
+            buildPanel={buildPanel}
+            developmentPanel={developmentPanel}
+            exchangePanel={exchangePanel}
+            disasterPanel={disasterPanel}
+            discardPanel={discardPanel}
+            rerollEmoji={rerollEmoji}
+            isDiceReferenceExpanded={isDiceReferenceExpanded}
+            cityCatalogSorted={cityCatalogSorted}
+            monumentCatalogSorted={monumentCatalogSorted}
+            isCitiesExpanded={isCitiesExpanded}
+            isMonumentsExpanded={isMonumentsExpanded}
+            isDevelopmentsExpanded={isDevelopmentsExpanded}
+            effectiveCoinsAvailable={effectiveCoinsAvailable}
+            selectedGoodsCoins={selectedGoodsCoins}
+            selectedGoodsToSpend={selectedGoodsToSpend}
+            selectedGoodsLookup={selectedGoodsLookup}
+            developmentCatalogSorted={developmentCatalogSorted}
+            goodsToKeepByType={goodsToKeepByType}
+            actionLog={actionLog}
+            getPanelClassName={getPanelClassName}
+            getLockBadge={getLockBadge}
+            getSkullDenotation={getSkullDenotation}
+            onEndTurn={() => dispatch(endTurn())}
+            onUndo={() => dispatch(undo())}
+            onRedo={() => dispatch(redo())}
+            onToggleDiceReference={() =>
+              setIsDiceReferenceExpanded((current) => !current)
+            }
+            onRollDice={() => dispatch(rollDice())}
+            onSelectProduction={(dieIndex, productionIndex) =>
+              dispatch(selectProduction({ dieIndex, productionIndex }))
+            }
+            onRerollSingleDie={(dieIndex) => dispatch(rerollSingleDie({ dieIndex }))}
+            onKeepDie={(dieIndex) => dispatch(keepDie({ dieIndex }))}
+            onToggleConstructionSection={toggleConstructionSection}
+            onBuildCity={(cityIndex) => dispatch(buildCity({ cityIndex }))}
+            onBuildMonument={(monumentId) => dispatch(buildMonument({ monumentId }))}
+            onSkipDevelopment={() => dispatch(skipDevelopment())}
+            onToggleGoodsSpend={toggleGoodsSpend}
+            onApplyExchange={(from, to, amount) =>
+              dispatch(
+                applyExchange({
+                  from,
+                  to,
+                  amount,
+                }),
+              )
+            }
+            onBuyDevelopment={(developmentId, goodsTypeNames) =>
+              dispatch(
+                buyDevelopment({
+                  developmentId,
+                  goodsTypeNames,
+                }),
+              )
+            }
+            onUpdateGoodsToKeep={updateGoodsToKeep}
+            onApplyDiscard={(nextGoodsToKeepByType) =>
+              dispatch(discardGoods({ goodsToKeepByType: nextGoodsToKeepByType }))
+            }
+          />
         ) : null}
 
         {turnStatus.errorMessage ? (
@@ -1391,6 +586,14 @@ function App() {
 }
 
 export default App;
+
+
+
+
+
+
+
+
 
 
 
