@@ -23,7 +23,7 @@ export type LookaheadConfig = {
 };
 
 export const LOOKAHEAD_STANDARD_CONFIG: LookaheadConfig = {
-  depth: 2,
+  depth: 3,
   maxEnumeratedRollDice: 4,
   chanceTopKFacesPerDie: 3,
   chanceTopKMinDice: 3,
@@ -41,5 +41,15 @@ export const LOOKAHEAD_STANDARD_CONFIG: LookaheadConfig = {
     turnResourcePosition: 1,
     foodRiskPenalty: 1,
   },
-  heuristicFallbackConfig: HEURISTIC_STANDARD_CONFIG,
+  heuristicFallbackConfig: {
+    ...HEURISTIC_STANDARD_CONFIG,
+    foodPolicyWeights: {
+      ...HEURISTIC_STANDARD_CONFIG.foodPolicyWeights,
+      starvationPenaltyPerUnit: 51.2,
+    },
+    buildWeights: {
+      ...HEURISTIC_STANDARD_CONFIG.buildWeights,
+      monumentDeferredMaxTurnsToComplete: 3,
+    },
+  },
 };

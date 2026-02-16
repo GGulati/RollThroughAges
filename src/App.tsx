@@ -95,6 +95,22 @@ function cloneStandardLookaheadUtilityWeights(): LookaheadConfig['utilityWeights
   return { ...LOOKAHEAD_STANDARD_CONFIG.utilityWeights };
 }
 
+type LookaheadSettings = Omit<LookaheadConfig, 'heuristicFallbackConfig'>;
+
+function cloneStandardLookaheadSettings(): LookaheadSettings {
+  return {
+    depth: LOOKAHEAD_STANDARD_CONFIG.depth,
+    maxEnumeratedRollDice: LOOKAHEAD_STANDARD_CONFIG.maxEnumeratedRollDice,
+    chanceTopKFacesPerDie: LOOKAHEAD_STANDARD_CONFIG.chanceTopKFacesPerDie,
+    chanceTopKMinDice: LOOKAHEAD_STANDARD_CONFIG.chanceTopKMinDice,
+    chancePruneMinOutcomes: LOOKAHEAD_STANDARD_CONFIG.chancePruneMinOutcomes,
+    chancePruneSlack: LOOKAHEAD_STANDARD_CONFIG.chancePruneSlack,
+    maxActionsPerNode: LOOKAHEAD_STANDARD_CONFIG.maxActionsPerNode,
+    maxEvaluations: LOOKAHEAD_STANDARD_CONFIG.maxEvaluations,
+    utilityWeights: cloneStandardLookaheadUtilityWeights(),
+  };
+}
+
 function createPlayers(
   count: number,
   controllers: Record<number, ControllerOption>,
@@ -155,9 +171,9 @@ function App() {
   const [heuristicConfig, setHeuristicConfig] = useState<HeuristicConfig>(
     cloneStandardHeuristicConfig(),
   );
-  const [lookaheadUtilityWeights, setLookaheadUtilityWeights] = useState<
-    LookaheadConfig['utilityWeights']
-  >(cloneStandardLookaheadUtilityWeights());
+  const [lookaheadSettings, setLookaheadSettings] = useState<LookaheadSettings>(
+    cloneStandardLookaheadSettings(),
+  );
   const [isDiceReferenceExpanded, setIsDiceReferenceExpanded] = useState(false);
   const [goodsToKeepByType, setGoodsToKeepByType] = useState<Record<string, number>>(
     {},
@@ -181,13 +197,12 @@ function App() {
     () =>
       createLookaheadBot(
         {
-          ...LOOKAHEAD_STANDARD_CONFIG,
+          ...lookaheadSettings,
           heuristicFallbackConfig: heuristicConfig,
-          utilityWeights: lookaheadUtilityWeights,
         },
         'lookahead-settings',
       ),
-    [heuristicConfig, lookaheadUtilityWeights],
+    [heuristicConfig, lookaheadSettings],
   );
   const standardHeuristicBot = useMemo(
     () => createHeuristicBot(HEURISTIC_STANDARD_CONFIG, 'heuristic-standard-fixed'),
@@ -504,7 +519,22 @@ function App() {
   ) => {
     const parsed = Number(value);
     const nextValue = Number.isFinite(parsed) ? parsed : 0;
-    setLookaheadUtilityWeights((current) => ({
+    setLookaheadSettings((current) => ({
+      ...current,
+      utilityWeights: {
+        ...current.utilityWeights,
+        [key]: nextValue,
+      },
+    }));
+  };
+
+  const updateLookaheadField = (
+    key: Exclude<keyof LookaheadSettings, 'utilityWeights'>,
+    value: string,
+  ) => {
+    const parsed = Number(value);
+    const nextValue = Number.isFinite(parsed) ? parsed : 0;
+    setLookaheadSettings((current) => ({
       ...current,
       [key]: nextValue,
     }));
@@ -650,7 +680,7 @@ function App() {
     setIsHeuristicSettingsExpanded(false);
     setIsLookaheadSettingsExpanded(false);
     setHeuristicConfig(cloneStandardHeuristicConfig());
-    setLookaheadUtilityWeights(cloneStandardLookaheadUtilityWeights());
+    setLookaheadSettings(cloneStandardLookaheadSettings());
     dispatch(returnToSetup());
   };
 
@@ -706,13 +736,14 @@ function App() {
                 preferExchangeBeforeDevelopment: enabled,
               }))
             }
-            lookaheadUtilityWeights={lookaheadUtilityWeights}
+            lookaheadConfig={lookaheadSettings}
+            onUpdateLookaheadField={updateLookaheadField}
             onUpdateLookaheadUtilityWeight={updateLookaheadUtilityWeight}
             onResetHeuristicDefaults={() => {
               setHeuristicConfig(cloneStandardHeuristicConfig());
             }}
             onResetLookaheadDefaults={() => {
-              setLookaheadUtilityWeights(cloneStandardLookaheadUtilityWeights());
+              setLookaheadSettings(cloneStandardLookaheadSettings());
             }}
             allAiSetup={allAiSetup}
             botEvalRounds={botEvalRounds}

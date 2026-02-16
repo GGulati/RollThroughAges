@@ -29,7 +29,11 @@ type SetupScreenProps = {
   heuristicConfig: HeuristicConfig;
   heuristicHandlers: HeuristicUpdateHandlers;
   onPreferExchangeFirstChange: (enabled: boolean) => void;
-  lookaheadUtilityWeights: LookaheadConfig['utilityWeights'];
+  lookaheadConfig: Omit<LookaheadConfig, 'heuristicFallbackConfig'>;
+  onUpdateLookaheadField: (
+    key: Exclude<keyof Omit<LookaheadConfig, 'heuristicFallbackConfig'>, 'utilityWeights'>,
+    value: string,
+  ) => void;
   onUpdateLookaheadUtilityWeight: (
     key: keyof LookaheadConfig['utilityWeights'],
     value: string,
@@ -63,7 +67,8 @@ export function SetupScreen({
   heuristicConfig,
   heuristicHandlers,
   onPreferExchangeFirstChange,
-  lookaheadUtilityWeights,
+  lookaheadConfig,
+  onUpdateLookaheadField,
   onUpdateLookaheadUtilityWeight,
   onResetHeuristicDefaults,
   onResetLookaheadDefaults,
@@ -547,13 +552,118 @@ export function SetupScreen({
           {isLookaheadSettingsExpanded ? (
             <div className="development-list">
               <p className="choice-label">Utility Weights</p>
+              <p className="choice-label">Search Settings</p>
+              <label className="player-count-control" htmlFor="lookahead-depth">
+                <span>Depth</span>
+                <input
+                  id="lookahead-depth"
+                  type="number"
+                  step="1"
+                  min={1}
+                  value={lookaheadConfig.depth}
+                  onChange={(event) =>
+                    onUpdateLookaheadField('depth', event.target.value)
+                  }
+                />
+              </label>
+              <label className="player-count-control" htmlFor="lookahead-max-roll-enumeration">
+                <span>Max Enumerated Roll Dice</span>
+                <input
+                  id="lookahead-max-roll-enumeration"
+                  type="number"
+                  step="1"
+                  min={1}
+                  value={lookaheadConfig.maxEnumeratedRollDice}
+                  onChange={(event) =>
+                    onUpdateLookaheadField('maxEnumeratedRollDice', event.target.value)
+                  }
+                />
+              </label>
+              <label className="player-count-control" htmlFor="lookahead-topk-faces">
+                <span>Chance Top-K Faces / Die</span>
+                <input
+                  id="lookahead-topk-faces"
+                  type="number"
+                  step="1"
+                  min={1}
+                  value={lookaheadConfig.chanceTopKFacesPerDie}
+                  onChange={(event) =>
+                    onUpdateLookaheadField('chanceTopKFacesPerDie', event.target.value)
+                  }
+                />
+              </label>
+              <label className="player-count-control" htmlFor="lookahead-topk-min-dice">
+                <span>Chance Top-K Min Dice</span>
+                <input
+                  id="lookahead-topk-min-dice"
+                  type="number"
+                  step="1"
+                  min={1}
+                  value={lookaheadConfig.chanceTopKMinDice}
+                  onChange={(event) =>
+                    onUpdateLookaheadField('chanceTopKMinDice', event.target.value)
+                  }
+                />
+              </label>
+              <label className="player-count-control" htmlFor="lookahead-prune-min-outcomes">
+                <span>Chance Prune Min Outcomes</span>
+                <input
+                  id="lookahead-prune-min-outcomes"
+                  type="number"
+                  step="1"
+                  min={1}
+                  value={lookaheadConfig.chancePruneMinOutcomes}
+                  onChange={(event) =>
+                    onUpdateLookaheadField('chancePruneMinOutcomes', event.target.value)
+                  }
+                />
+              </label>
+              <label className="player-count-control" htmlFor="lookahead-prune-slack">
+                <span>Chance Prune Slack</span>
+                <input
+                  id="lookahead-prune-slack"
+                  type="number"
+                  step="0.1"
+                  value={lookaheadConfig.chancePruneSlack}
+                  onChange={(event) =>
+                    onUpdateLookaheadField('chancePruneSlack', event.target.value)
+                  }
+                />
+              </label>
+              <label className="player-count-control" htmlFor="lookahead-max-actions">
+                <span>Max Actions / Node</span>
+                <input
+                  id="lookahead-max-actions"
+                  type="number"
+                  step="1"
+                  min={1}
+                  value={lookaheadConfig.maxActionsPerNode}
+                  onChange={(event) =>
+                    onUpdateLookaheadField('maxActionsPerNode', event.target.value)
+                  }
+                />
+              </label>
+              <label className="player-count-control" htmlFor="lookahead-max-evaluations">
+                <span>Max Evaluations</span>
+                <input
+                  id="lookahead-max-evaluations"
+                  type="number"
+                  step="1"
+                  min={1}
+                  value={lookaheadConfig.maxEvaluations}
+                  onChange={(event) =>
+                    onUpdateLookaheadField('maxEvaluations', event.target.value)
+                  }
+                />
+              </label>
+              <p className="choice-label">Utility Weights</p>
               <label className="player-count-control" htmlFor="lookahead-score-total">
                 <span>Score Total</span>
                 <input
                   id="lookahead-score-total"
                   type="number"
                   step="0.1"
-                  value={lookaheadUtilityWeights.scoreTotal}
+                  value={lookaheadConfig.utilityWeights.scoreTotal}
                   onChange={(event) =>
                     onUpdateLookaheadUtilityWeight(
                       'scoreTotal',
@@ -568,7 +678,7 @@ export function SetupScreen({
                   id="lookahead-completed-cities"
                   type="number"
                   step="0.1"
-                  value={lookaheadUtilityWeights.completedCities}
+                  value={lookaheadConfig.utilityWeights.completedCities}
                   onChange={(event) =>
                     onUpdateLookaheadUtilityWeight(
                       'completedCities',
@@ -583,7 +693,7 @@ export function SetupScreen({
                   id="lookahead-city-progress"
                   type="number"
                   step="0.1"
-                  value={lookaheadUtilityWeights.cityProgress}
+                  value={lookaheadConfig.utilityWeights.cityProgress}
                   onChange={(event) =>
                     onUpdateLookaheadUtilityWeight(
                       'cityProgress',
@@ -598,7 +708,7 @@ export function SetupScreen({
                   id="lookahead-monument-progress"
                   type="number"
                   step="0.1"
-                  value={lookaheadUtilityWeights.monumentProgress}
+                  value={lookaheadConfig.utilityWeights.monumentProgress}
                   onChange={(event) =>
                     onUpdateLookaheadUtilityWeight(
                       'monumentProgress',
@@ -613,7 +723,7 @@ export function SetupScreen({
                   id="lookahead-goods-value"
                   type="number"
                   step="0.1"
-                  value={lookaheadUtilityWeights.goodsValue}
+                  value={lookaheadConfig.utilityWeights.goodsValue}
                   onChange={(event) =>
                     onUpdateLookaheadUtilityWeight(
                       'goodsValue',
@@ -628,7 +738,7 @@ export function SetupScreen({
                   id="lookahead-food"
                   type="number"
                   step="0.1"
-                  value={lookaheadUtilityWeights.food}
+                  value={lookaheadConfig.utilityWeights.food}
                   onChange={(event) =>
                     onUpdateLookaheadUtilityWeight('food', event.target.value)
                   }
@@ -640,7 +750,7 @@ export function SetupScreen({
                   id="lookahead-turn-resource"
                   type="number"
                   step="0.1"
-                  value={lookaheadUtilityWeights.turnResourcePosition}
+                  value={lookaheadConfig.utilityWeights.turnResourcePosition}
                   onChange={(event) =>
                     onUpdateLookaheadUtilityWeight(
                       'turnResourcePosition',
@@ -655,7 +765,7 @@ export function SetupScreen({
                   id="lookahead-food-risk-penalty"
                   type="number"
                   step="0.1"
-                  value={lookaheadUtilityWeights.foodRiskPenalty}
+                  value={lookaheadConfig.utilityWeights.foodRiskPenalty}
                   onChange={(event) =>
                     onUpdateLookaheadUtilityWeight(
                       'foodRiskPenalty',
