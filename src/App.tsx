@@ -119,6 +119,14 @@ function App() {
   const isMonumentsExpanded = isBuildStep || activePlayerPreferences.monuments;
   const isDevelopmentsExpanded =
     isDevelopmentStep || activePlayerPreferences.developments;
+  const topScore = turnStatus.playerPoints.reduce(
+    (best, entry) => Math.max(best, entry.points),
+    Number.NEGATIVE_INFINITY,
+  );
+  const winners =
+    topScore === Number.NEGATIVE_INFINITY
+      ? []
+      : turnStatus.playerPoints.filter((entry) => entry.points === topScore);
 
   const toggleGoodsSpend = (goodsType: string) => {
     setSelectedGoodsToSpend((current) =>
@@ -189,33 +197,126 @@ function App() {
       <section className="app-layout">
         <div className="title-row">
           <h1>Roll Through the Ages</h1>
-          <div className="title-actions">
-            <label className="player-count-control" htmlFor="player-count-select">
-              <span>Players</span>
-              <select
-                id="player-count-select"
-                value={playerCount}
-                onChange={(event) => setPlayerCount(Number(event.target.value))}
-              >
-                {Array.from(
-                  { length: MAX_PLAYERS - MIN_PLAYERS + 1 },
-                  (_, index) => MIN_PLAYERS + index,
-                ).map((count) => (
-                  <option key={count} value={count}>
-                    {count}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              type="button"
-              onClick={() => dispatch(startGame({ players: createPlayers(playerCount) }))}
-            >
-              {turnStatus.isGameActive ? 'Restart Game' : 'Start Game'}
-            </button>
-          </div>
         </div>
-        <div className="board-grid">
+        {!turnStatus.isGameActive ? (
+          <section className="app-panel setup-panel">
+            <h2>Start New Game</h2>
+            <p>Choose the number of players, then begin.</p>
+            <div className="title-actions">
+              <label className="player-count-control" htmlFor="player-count-select">
+                <span>Players</span>
+                <select
+                  id="player-count-select"
+                  value={playerCount}
+                  onChange={(event) => setPlayerCount(Number(event.target.value))}
+                >
+                  {Array.from(
+                    { length: MAX_PLAYERS - MIN_PLAYERS + 1 },
+                    (_, index) => MIN_PLAYERS + index,
+                  ).map((count) => (
+                    <option key={count} value={count}>
+                      {count}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={() =>
+                  dispatch(startGame({ players: createPlayers(playerCount) }))
+                }
+              >
+                Start Game
+              </button>
+            </div>
+          </section>
+        ) : null}
+        {turnStatus.isGameActive && endgameStatus.isGameOver ? (
+          <section className="app-panel victory-panel">
+            <h2>Game Over</h2>
+            <p>
+              {winners.length > 1
+                ? `Tie at ${topScore} VP: ${winners.map((winner) => winner.playerName).join(', ')}`
+                : `Winner: ${winners[0]?.playerName ?? 'Unknown'} (${topScore} VP)`}
+            </p>
+            <div className="scoreboard-list">
+              {turnStatus.playerPoints.map((entry) => (
+                <article key={`victory-${entry.playerId}`} className="scoreboard-card">
+                  <p className="development-title">{entry.playerName}</p>
+                  <p className="scoreboard-row">Monuments: {entry.breakdown.monuments}</p>
+                  <p className="scoreboard-row">
+                    Developments: {entry.breakdown.developments}
+                  </p>
+                  <p className="scoreboard-row">Bonuses: {entry.breakdown.bonuses}</p>
+                  <p className="scoreboard-row">Penalties: -{entry.breakdown.penalties}</p>
+                  <p className="scoreboard-row">
+                    <strong>Total: {entry.breakdown.total}</strong>
+                  </p>
+                </article>
+              ))}
+            </div>
+            <div className="title-actions">
+              <label className="player-count-control" htmlFor="player-count-select-end">
+                <span>Players</span>
+                <select
+                  id="player-count-select-end"
+                  value={playerCount}
+                  onChange={(event) => setPlayerCount(Number(event.target.value))}
+                >
+                  {Array.from(
+                    { length: MAX_PLAYERS - MIN_PLAYERS + 1 },
+                    (_, index) => MIN_PLAYERS + index,
+                  ).map((count) => (
+                    <option key={count} value={count}>
+                      {count}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={() =>
+                  dispatch(startGame({ players: createPlayers(playerCount) }))
+                }
+              >
+                Play Again
+              </button>
+            </div>
+          </section>
+        ) : null}
+        {turnStatus.isGameActive && !endgameStatus.isGameOver ? (
+          <>
+            <section className="app-panel game-menu-panel">
+              <h2>Game Menu</h2>
+              <div className="title-actions">
+                <label className="player-count-control" htmlFor="player-count-select-restart">
+                  <span>Players</span>
+                  <select
+                    id="player-count-select-restart"
+                    value={playerCount}
+                    onChange={(event) => setPlayerCount(Number(event.target.value))}
+                  >
+                    {Array.from(
+                      { length: MAX_PLAYERS - MIN_PLAYERS + 1 },
+                      (_, index) => MIN_PLAYERS + index,
+                    ).map((count) => (
+                      <option key={count} value={count}>
+                        {count}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={() =>
+                    dispatch(startGame({ players: createPlayers(playerCount) }))
+                  }
+                >
+                  Restart Game
+                </button>
+              </div>
+            </section>
+            <div className="board-grid">
           <section className="app-panel" aria-live="polite">
             <h2>Turn Status</h2>
             <p>
@@ -651,19 +752,21 @@ function App() {
               </div>
             ) : null}
           </section>
-        </div>
+            </div>
 
-        <div className="actions-log-grid">
-          <section className="app-panel">
-            <h2>Action Log</h2>
-            <textarea
-              className="log-textbox"
-              readOnly
-              value={actionLog.join('\n')}
-              aria-label="Action log history"
-            />
-          </section>
-        </div>
+            <div className="actions-log-grid">
+              <section className="app-panel">
+                <h2>Action Log</h2>
+                <textarea
+                  className="log-textbox"
+                  readOnly
+                  value={actionLog.join('\n')}
+                  aria-label="Action log history"
+                />
+              </section>
+            </div>
+          </>
+        ) : null}
 
         {turnStatus.errorMessage ? (
           <p className="error-text">{turnStatus.errorMessage}</p>

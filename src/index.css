@@ -48,6 +48,13 @@ body,
   gap: 0.4rem;
 }
 
+.setup-panel,
+.victory-panel,
+.game-menu-panel {
+  display: grid;
+  gap: 0.6rem;
+}
+
 .board-grid {
   display: grid;
   grid-template-columns: repeat(1, minmax(0, 1fr));
