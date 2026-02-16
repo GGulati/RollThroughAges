@@ -111,6 +111,19 @@ function cloneStandardLookaheadSettings(): LookaheadSettings {
   };
 }
 
+function createEmptyHeadlessInstrumentation(): ReturnType<
+  typeof getHeadlessBotInstrumentation
+> {
+  return {
+    runHeadlessBotGameCalls: 0,
+    runHeadlessBotGameMsTotal: 0,
+    completedGames: 0,
+    stalledGames: 0,
+    turnsPlayedTotal: 0,
+    actionLogEntriesTotal: 0,
+  };
+}
+
 function createPlayers(
   count: number,
   controllers: Record<number, ControllerOption>,
@@ -630,6 +643,37 @@ function App() {
           acc[reason] = (acc[reason] ?? 0) + 1;
           return acc;
         }, {});
+      const aggregatedHeadless = result.games.reduce((acc, gameResult) => {
+        const headless = gameResult.instrumentation.headless;
+        acc.runHeadlessBotGameCalls += headless.runHeadlessBotGameCalls;
+        acc.runHeadlessBotGameMsTotal += headless.runHeadlessBotGameMsTotal;
+        acc.completedGames += headless.completedGames;
+        acc.stalledGames += headless.stalledGames;
+        acc.turnsPlayedTotal += headless.turnsPlayedTotal;
+        acc.actionLogEntriesTotal += headless.actionLogEntriesTotal;
+        return acc;
+      }, createEmptyHeadlessInstrumentation());
+      const participantInstrumentation = result.games.reduce<
+        BotEvaluationSummary['instrumentation']['byParticipantKey']
+      >((acc, gameResult) => {
+        gameResult.seats.forEach((seat) => {
+          const playerCore = gameResult.instrumentation.coreByPlayerId[seat.playerId];
+          const actorStats = playerCore?.byActorId?.[seat.playerId];
+          const actorMetrics = actorStats?.metrics ?? {};
+          const existing = acc[seat.participantKey] ?? {
+            label: seat.participantLabel,
+            strategyId: actorStats?.strategyId ?? seat.strategyId,
+            metrics: {},
+          };
+          existing.label = seat.participantLabel;
+          existing.strategyId = actorStats?.strategyId ?? seat.strategyId;
+          Object.entries(actorMetrics).forEach(([key, value]) => {
+            existing.metrics[key] = (existing.metrics[key] ?? 0) + value;
+          });
+          acc[seat.participantKey] = existing;
+        });
+        return acc;
+      }, {});
       const summary: BotEvaluationSummary = {
         createdAtLabel: new Date().toLocaleString(),
         playerCount: selectedPlayers.length,
@@ -639,6 +683,10 @@ function App() {
         incompleteGames: result.incompleteGames,
         standings: result.standings,
         stallReasons,
+        instrumentation: {
+          headless: aggregatedHeadless,
+          byParticipantKey: participantInstrumentation,
+        },
       };
       setBotEvaluations((current) => [...current, summary]);
     } finally {

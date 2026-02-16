@@ -785,7 +785,7 @@ export function SetupScreen({
           ) : null}
         </article>
       </section>
-      {headlessSimulations.length > 0 || botEvaluations.length > 0 ? (
+      {headlessSimulations.length > 0 || botEvaluations.length > 0 || isBotEvalRunning ? (
         <section className="app-panel setup-panel">
           <div className="collapsible-header">
             <h2>AI Testing</h2>
@@ -798,6 +798,9 @@ export function SetupScreen({
             </button>
           </div>
           <div className="development-list">
+            {isBotEvalRunning ? (
+              <p className="scoreboard-row">Running bot evaluation...</p>
+            ) : null}
             {botEvaluations.map((evaluation, index) => (
               <article
                 key={`bot-eval-${index + 1}`}
@@ -849,6 +852,66 @@ export function SetupScreen({
                     ))}
                   </>
                 ) : null}
+                <p className="choice-label">Instrumentation</p>
+                <p className="scoreboard-row">
+                  Headless: runs=
+                  {evaluation.instrumentation?.headless.runHeadlessBotGameCalls ?? 0},
+                  completed={evaluation.instrumentation?.headless.completedGames ?? 0}, stalled=
+                  {evaluation.instrumentation?.headless.stalledGames ?? 0}, turnsTotal=
+                  {evaluation.instrumentation?.headless.turnsPlayedTotal ?? 0}
+                </p>
+                <p className="scoreboard-row">
+                  Headless timing: runMsTotal=
+                  {evaluation.instrumentation?.headless.runHeadlessBotGameMsTotal ?? 0},
+                  actionLogEntries=
+                  {evaluation.instrumentation?.headless.actionLogEntriesTotal ?? 0}
+                </p>
+                <p className="choice-label">Per Bot Metrics</p>
+                {Object.entries(evaluation.instrumentation?.byParticipantKey ?? {})
+                  .sort(([a], [b]) => a.localeCompare(b))
+                  .map(([participantKey, participantStats]) => (
+                    <article
+                      key={`bot-eval-metrics-${index + 1}-${participantKey}`}
+                      className="development-card"
+                    >
+                      <p className="development-title">
+                        {participantStats.label} ({participantStats.strategyId})
+                      </p>
+                      <p className="scoreboard-row">
+                        Turns={getMetric(participantStats.metrics, 'runBotTurnCalls')}, Completed=
+                        {getMetric(participantStats.metrics, 'runBotTurnCompletedTurns')}, Steps=
+                        {getMetric(participantStats.metrics, 'runBotTurnStepsTotal')}
+                      </p>
+                      <p className="scoreboard-row">
+                        Timing: runBotTurnMsTotal=
+                        {getMetric(participantStats.metrics, 'runBotTurnMsTotal')},
+                        runBotStepMsTotal=
+                        {getMetric(participantStats.metrics, 'runBotStepMsTotal')},
+                        chooseMsTotal=
+                        {getMetric(participantStats.metrics, 'strategyChooseActionMsTotal')},
+                        applyMsTotal=
+                        {getMetric(participantStats.metrics, 'applyBotActionMsTotal')},
+                        overheadMsTotal=
+                        {getMetric(participantStats.metrics, 'runBotTurnOverheadMsTotal')}
+                      </p>
+                      <p className="scoreboard-row">
+                        Apply: attempts=
+                        {getMetric(participantStats.metrics, 'applyBotActionAttempts')},
+                        successes=
+                        {getMetric(participantStats.metrics, 'applyBotActionSuccesses')},
+                        fallbackSelections=
+                        {getMetric(participantStats.metrics, 'fallbackSelections')},
+                        fallbackApplyAttempts=
+                        {getMetric(participantStats.metrics, 'fallbackApplyAttempts')}
+                      </p>
+                      {Object.keys(getExtensionMetrics(participantStats.metrics)).length > 0 ? (
+                        <>
+                          <p className="choice-label">Extension Metrics</p>
+                          {renderMetricRows(getExtensionMetrics(participantStats.metrics))}
+                        </>
+                      ) : null}
+                    </article>
+                  ))}
               </article>
             ))}
             {headlessSimulations.map((simulation, index) => (

@@ -39,6 +39,17 @@ export type BotEvaluationSummary = {
   incompleteGames: number;
   standings: HeadlessBotEvaluationStanding[];
   stallReasons: Record<string, number>;
+  instrumentation: {
+    headless: HeadlessBotInstrumentation;
+    byParticipantKey: Record<
+      string,
+      {
+        label: string;
+        strategyId: string;
+        metrics: Record<string, number>;
+      }
+    >;
+  };
 };
 
 export type HeuristicUpdateHandlers = {
