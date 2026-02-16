@@ -41,11 +41,11 @@ export type HeuristicConfig = {
 
 export const HEURISTIC_STANDARD_CONFIG: HeuristicConfig = {
   productionWeights: {
-    workers: 3,
+    workers: 4.5,
     coins: 1,
     food: 3.2,
     goods: 6,
-    skulls: -8,
+    skulls: -10.8,
   },
   developmentWeights: {
     points: 1,
@@ -59,8 +59,8 @@ export const HEURISTIC_STANDARD_CONFIG: HeuristicConfig = {
   buildWeights: {
     cityProgress: 2,
     cityWorkersUsed: 0.1,
-    cityExtraDieFutureValue: 0.15,
-    cityDeferredCompletionValueScale: 0.2,
+    cityExtraDieFutureValue: 0.27,
+    cityDeferredCompletionValueScale: 0.32,
     monumentPoints: 2.85,
     monumentPointEfficiency: 3,
     monumentProgress: 1.5,
