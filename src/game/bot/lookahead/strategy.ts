@@ -29,9 +29,6 @@ type EvaluationBudget = {
 
 type SearchMemo = {
   stateSignatureCache: WeakMap<GameState, string>;
-  legalActionsByState: Map<string, BotAction[]>;
-  actionPreScoreByKey: Map<string, number>;
-  appliedActionByKey: Map<string, GameState | null>;
   rollOutcomeByKey: Map<string, GameState>;
   utilityByStateAndRoot: Map<string, number>;
   recordMetric?: (metric: string, value?: number) => void;
@@ -122,9 +119,6 @@ function createSearchMemo(
 ): SearchMemo {
   return {
     stateSignatureCache: new WeakMap<GameState, string>(),
-    legalActionsByState: new Map<string, BotAction[]>(),
-    actionPreScoreByKey: new Map<string, number>(),
-    appliedActionByKey: new Map<string, GameState | null>(),
     rollOutcomeByKey: new Map<string, GameState>(),
     utilityByStateAndRoot: new Map<string, number>(),
     recordMetric,
@@ -193,19 +187,6 @@ function getStateSignature(game: GameState, memo: SearchMemo): string {
   ].join('#');
   memo.stateSignatureCache.set(game, signature);
   return signature;
-}
-
-function getLegalActionsCached(game: GameState, memo: SearchMemo): BotAction[] {
-  const stateSig = getStateSignature(game, memo);
-  const cached = memo.legalActionsByState.get(stateSig);
-  if (cached) {
-    recordLookaheadMetric(memo, 'legalActionsCacheHits');
-    return cached;
-  }
-  recordLookaheadMetric(memo, 'legalActionsCacheMisses');
-  const actions = getLegalBotActions(game);
-  memo.legalActionsByState.set(stateSig, actions);
-  return actions;
 }
 
 function scoreProductionChoice(
@@ -513,14 +494,6 @@ function getActionPreScore(
   rootPlayerId: string,
   memo: SearchMemo,
 ): number {
-  const preScoreKey = `${rootPlayerId}|${getStateSignature(game, memo)}|${botActionKey(action)}`;
-  const cached = memo.actionPreScoreByKey.get(preScoreKey);
-  if (cached !== undefined) {
-    recordLookaheadMetric(memo, 'actionPreScoreCacheHits');
-    return cached;
-  }
-  recordLookaheadMetric(memo, 'actionPreScoreCacheMisses');
-
   let score = Number.NEGATIVE_INFINITY;
   if (action.type === 'rollDice' || action.type === 'rerollSingleDie') {
     const probeBudget = createEvaluationBudget(
@@ -535,7 +508,6 @@ function getActionPreScore(
       probeBudget,
       memo,
     );
-    memo.actionPreScoreByKey.set(preScoreKey, score);
     return score;
   }
 
@@ -543,7 +515,6 @@ function getActionPreScore(
   if (result.applied) {
     score = evaluateResolvedTurnUtility(result.game, rootPlayerId, config, memo);
   }
-  memo.actionPreScoreByKey.set(preScoreKey, score);
   return score;
 }
 
@@ -694,23 +665,6 @@ function evaluateChanceAction(
   return total;
 }
 
-function getAppliedActionCached(
-  game: GameState,
-  action: BotAction,
-  memo: SearchMemo,
-): GameState | null {
-  const actionKey = `${getStateSignature(game, memo)}|${botActionKey(action)}`;
-  if (memo.appliedActionByKey.has(actionKey)) {
-    recordLookaheadMetric(memo, 'appliedActionCacheHits');
-    return memo.appliedActionByKey.get(actionKey) ?? null;
-  }
-  recordLookaheadMetric(memo, 'appliedActionCacheMisses');
-  const result = applyBotAction(game, action);
-  const nextGame = result.applied ? result.game : null;
-  memo.appliedActionByKey.set(actionKey, nextGame);
-  return nextGame;
-}
-
 function evaluateDeterministicAction(
   game: GameState,
   action: BotAction,
@@ -721,7 +675,8 @@ function evaluateDeterministicAction(
   memo: SearchMemo,
 ): number {
   recordLookaheadMetric(memo, 'evaluateDeterministicActionCalls');
-  const nextGame = getAppliedActionCached(game, action, memo);
+  const result = applyBotAction(game, action);
+  const nextGame = result.applied ? result.game : null;
   if (!nextGame) {
     return Number.NEGATIVE_INFINITY;
   }
@@ -741,7 +696,7 @@ function evaluateActionValue(
     return evaluateResolvedTurnUtilityBudgeted(game, rootPlayerId, config, budget, memo);
   }
 
-  const allLegalActions = getLegalActionsCached(game, memo);
+  const allLegalActions = getLegalBotActions(game);
   if (allLegalActions.length === 0) {
     return evaluateResolvedTurnUtilityBudgeted(game, rootPlayerId, config, budget, memo);
   }
@@ -797,9 +752,10 @@ function pickBestLookaheadAction(
   if (!rootPlayerId) {
     return null;
   }
+  const rootLegalActions = getLegalBotActions(game);
   const legalActions = getPrioritizedActions(
     game,
-    getLegalActionsCached(game, memo),
+    rootLegalActions,
     config,
     rootPlayerId,
     true,
