@@ -81,6 +81,7 @@ type DimensionDef =
 type CliOptions = {
   outDir: string;
   botType: BotConfigFile['botType'];
+  seed: number;
   iterations: number;
   beamWidth: number;
   childrenPerParent: number;
@@ -329,6 +330,7 @@ function printUsage(): void {
   console.log('Options:');
   console.log('  --out-dir <dir>            Output directory (default: output/bot-beam)');
   console.log('  --bot-type <type>          heuristic|lookahead (default: heuristic)');
+  console.log('  --seed <n>                 Seed for expansion randomness (default: 1)');
   console.log('  --iterations <n>           Beam iterations (default: 5)');
   console.log('  --beam-width <n>           Candidates kept per iteration (default: 8)');
   console.log('  --children-per-parent <n>  New expansions per parent (default: 4)');
@@ -345,6 +347,7 @@ function parseArgs(argv: string[]): CliOptions {
   const options: CliOptions = {
     outDir: 'output/bot-beam',
     botType: 'heuristic',
+    seed: 1,
     iterations: 5,
     beamWidth: 8,
     childrenPerParent: 4,
@@ -376,6 +379,10 @@ function parseArgs(argv: string[]): CliOptions {
           throw new Error('--bot-type must be "heuristic" or "lookahead".');
         }
         options.botType = next;
+        i += 1;
+        break;
+      case '--seed':
+        options.seed = parseNumber(next, '--seed');
         i += 1;
         break;
       case '--iterations':
@@ -421,6 +428,9 @@ function parseArgs(argv: string[]): CliOptions {
 
   if (!Number.isInteger(options.iterations) || options.iterations <= 0) {
     throw new Error('--iterations must be a positive integer.');
+  }
+  if (!Number.isInteger(options.seed) || options.seed < 0) {
+    throw new Error('--seed must be a non-negative integer.');
   }
   if (!Number.isInteger(options.beamWidth) || options.beamWidth <= 0) {
     throw new Error('--beam-width must be a positive integer.');
@@ -494,6 +504,46 @@ function getApplicablePath(
   return botType === 'lookahead'
     ? dimension.lookaheadPath
     : dimension.heuristicPath;
+}
+
+function getOrderedDimensionIds(botType: BotConfigFile['botType']): string[] {
+  if (botType !== 'lookahead') {
+    return DIMENSIONS.map((dimension) => dimension.id);
+  }
+
+  const nativeLookahead: string[] = [];
+  const heuristicFallback: string[] = [];
+  for (const dimension of DIMENSIONS) {
+    const path = dimension.lookaheadPath;
+    if (!path) {
+      continue;
+    }
+    if (path.startsWith('heuristicFallbackConfig.')) {
+      heuristicFallback.push(dimension.id);
+    } else {
+      nativeLookahead.push(dimension.id);
+    }
+  }
+  return [...nativeLookahead, ...heuristicFallback];
+}
+
+function createSeededRng(seed: number): () => number {
+  let state = (seed >>> 0) || 1;
+  return () => {
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    return (state >>> 0) / 4294967296;
+  };
+}
+
+function shuffleWithRng<T>(items: T[], rng: () => number): T[] {
+  const result = [...items];
+  for (let i = result.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rng() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
 }
 
 function applyScale(
@@ -642,6 +692,7 @@ function main(): void {
   nextId += 1;
 
   let beam: BeamCandidate[] = [baseline];
+  const orderedDimensionIds = getOrderedDimensionIds(options.botType);
   const history: Array<{
     iteration: number;
     candidateCount: number;
@@ -684,10 +735,14 @@ function main(): void {
     ensureCandidate([]);
     for (const parent of beam) {
       ensureCandidate(parent.dimensions);
-      const available = DIMENSIONS.map((dimension) => dimension.id).filter(
+      const available = orderedDimensionIds.filter(
         (id) => !parent.dimensions.includes(id),
       );
-      for (const addId of available.slice(0, options.childrenPerParent)) {
+      const expansionRng = createSeededRng(
+        options.seed + iteration * 10007 + parent.id * 7919,
+      );
+      const randomizedAvailable = shuffleWithRng(available, expansionRng);
+      for (const addId of randomizedAvailable.slice(0, options.childrenPerParent)) {
         ensureCandidate([...parent.dimensions, addId]);
       }
     }
