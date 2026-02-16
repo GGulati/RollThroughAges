@@ -7,10 +7,9 @@ import {
   allocateGoods,
   allocateSingleGood,
   resolveProduction,
-  hasGranaries,
-  exchangeFoodForCoins,
-  hasEngineering,
-  exchangeStoneForWorkers,
+  getAvailableExchangeEffects,
+  hasExchange,
+  exchangeResources,
 } from '../../game/engine/productionEngine';
 import { GamePhase } from '../../game/game';
 import {
@@ -226,167 +225,70 @@ describe('productionEngine', () => {
     });
   });
 
-  describe('hasGranaries', () => {
-    it('returns false without development', () => {
-      const player = createTestPlayer('p1', settings);
-      expect(hasGranaries(player, settings)).toBe(false);
-    });
-
-    it('returns true with Granaries', () => {
-      const player = createTestPlayer('p1', settings, { developments: ['granaries'] });
-      expect(hasGranaries(player, settings)).toBe(true);
-    });
-
-    it('returns true for any matching exchange effect', () => {
-      const customSettings = createTestSettings(2);
-      customSettings.developmentDefinitions = customSettings.developmentDefinitions.map((dev) =>
-        dev.id === 'leadership'
-          ? {
-              ...dev,
-              specialEffect: {
-                type: 'exchange' as const,
-                from: 'food',
-                to: 'coins',
-                rate: 4,
-              },
-            }
-          : dev,
-      );
-      const player = createTestPlayer('p1', customSettings, {
-        developments: ['leadership'],
+  describe('exchange effects', () => {
+    it('lists purchased exchange effects with source development metadata', () => {
+      const player = createTestPlayer('p1', settings, {
+        developments: ['granaries', 'engineering'],
       });
-      expect(hasGranaries(player, customSettings)).toBe(true);
-    });
-  });
-
-  describe('exchangeFoodForCoins', () => {
-    it('returns null without Granaries', () => {
-      const player = createTestPlayer('p1', settings);
-      const turn = createTestTurn('p1');
-
-      const result = exchangeFoodForCoins(player, turn, 2, settings);
-      expect(result).toBeNull();
+      const effects = getAvailableExchangeEffects(player, settings);
+      expect(effects.some((effect) => effect.developmentId === 'granaries')).toBe(
+        true,
+      );
+      expect(
+        effects.some(
+          (effect) => effect.from === 'stone' && effect.to === 'workers',
+        ),
+      ).toBe(true);
     });
 
-    it('exchanges food for coins with Granaries', () => {
+    it('checks exchange availability for a resource pair', () => {
+      const player = createTestPlayer('p1', settings, { developments: ['granaries'] });
+      expect(hasExchange(player, 'food', 'coins', settings)).toBe(true);
+      expect(hasExchange(player, 'stone', 'workers', settings)).toBe(false);
+    });
+
+    it('exchanges food into coins when the effect exists', () => {
       const player = createTestPlayer('p1', settings, { developments: ['granaries'] });
       player.food = 5;
       const turn = createTestTurn('p1');
-
-      const result = exchangeFoodForCoins(player, turn, 2, settings);
-
-      if (result) {
-        expect(result.player.food).toBe(3);
-        expect(result.turn.turnProduction.coins).toBeGreaterThan(0);
-      }
-    });
-
-    it('returns null when insufficient food', () => {
-      const player = createTestPlayer('p1', settings, { developments: ['granaries'] });
-      player.food = 1;
-      const turn = createTestTurn('p1');
-
-      const result = exchangeFoodForCoins(player, turn, 5, settings);
-      expect(result).toBeNull();
-    });
-
-    it('uses exchange effect metadata instead of granaries id', () => {
-      const customSettings = createTestSettings(2);
-      customSettings.developmentDefinitions = customSettings.developmentDefinitions.map((dev) =>
-        dev.id === 'leadership'
-          ? {
-              ...dev,
-              specialEffect: {
-                type: 'exchange' as const,
-                from: 'food',
-                to: 'coins',
-                rate: 4,
-              },
-            }
-          : dev,
-      );
-
-      const player = createTestPlayer('p1', customSettings, {
-        developments: ['leadership'],
-      });
-      player.food = 5;
-      const turn = createTestTurn('p1');
-      const result = exchangeFoodForCoins(player, turn, 2, customSettings);
+      const result = exchangeResources(player, turn, 'food', 'coins', 2, settings);
 
       expect(result).not.toBeNull();
       if (result) {
         expect(result.player.food).toBe(3);
-        expect(result.turn.turnProduction.coins).toBe(8);
+        expect(result.turn.turnProduction.coins).toBe(12);
       }
     });
-  });
 
-  describe('hasEngineering', () => {
-    it('returns false without development', () => {
-      const player = createTestPlayer('p1', settings);
-      expect(hasEngineering(player, settings)).toBe(false);
-    });
-
-    it('returns true with Engineering', () => {
-      const player = createTestPlayer('p1', settings, { developments: ['engineering'] });
-      expect(hasEngineering(player, settings)).toBe(true);
-    });
-
-    it('returns true for any matching stone->workers exchange effect', () => {
-      const customSettings = createTestSettings(2);
-      customSettings.developmentDefinitions = customSettings.developmentDefinitions.map((dev) =>
-        dev.id === 'leadership'
-          ? {
-              ...dev,
-              specialEffect: {
-                type: 'exchange' as const,
-                from: 'stone',
-                to: 'workers',
-                rate: 2,
-              },
-            }
-          : dev,
-      );
-      const player = createTestPlayer('p1', customSettings, {
-        developments: ['leadership'],
-      });
-      expect(hasEngineering(player, customSettings)).toBe(true);
-    });
-  });
-
-  describe('exchangeStoneForWorkers', () => {
-    it('returns null without Engineering', () => {
-      let player = createTestPlayer('p1', settings);
-      player = setPlayerGoods(player, 'Stone', 5, settings);
-      const turn = createTestTurn('p1');
-
-      const result = exchangeStoneForWorkers(player, turn, 2, settings);
-      expect(result).toBeNull();
-    });
-
-    it('exchanges stone for workers with Engineering', () => {
+    it('exchanges goods into turn resources case-insensitively', () => {
       let player = createTestPlayer('p1', settings, { developments: ['engineering'] });
       player = setPlayerGoods(player, 'Stone', 5, settings);
       const turn = createTestTurn('p1');
+      const result = exchangeResources(player, turn, 'STONE', 'workers', 2, settings);
 
-      const result = exchangeStoneForWorkers(player, turn, 2, settings);
-
+      expect(result).not.toBeNull();
       if (result) {
         expect(getPlayerGoods(result.player, 'Stone', settings)).toBe(3);
-        expect(result.turn.turnProduction.workers).toBeGreaterThan(0);
+        expect(result.turn.turnProduction.workers).toBe(6);
       }
     });
 
-    it('returns null when insufficient stone', () => {
-      let player = createTestPlayer('p1', settings, { developments: ['engineering'] });
-      player = setPlayerGoods(player, 'Stone', 1, settings);
+    it('returns null when effect does not exist or amount is invalid', () => {
+      const player = createTestPlayer('p1', settings);
       const turn = createTestTurn('p1');
+      expect(exchangeResources(player, turn, 'food', 'coins', 2, settings)).toBeNull();
+      expect(exchangeResources(player, turn, 'food', 'coins', 0, settings)).toBeNull();
+    });
 
-      const result = exchangeStoneForWorkers(player, turn, 5, settings);
+    it('returns null when resources are insufficient', () => {
+      const player = createTestPlayer('p1', settings, { developments: ['granaries'] });
+      player.food = 1;
+      const turn = createTestTurn('p1');
+      const result = exchangeResources(player, turn, 'food', 'coins', 5, settings);
       expect(result).toBeNull();
     });
 
-    it('uses exchange effect metadata instead of engineering id', () => {
+    it('uses exchange effect metadata independent of development id', () => {
       const customSettings = createTestSettings(2);
       customSettings.developmentDefinitions = customSettings.developmentDefinitions.map((dev) =>
         dev.id === 'leadership'
@@ -401,13 +303,19 @@ describe('productionEngine', () => {
             }
           : dev,
       );
-
       let player = createTestPlayer('p1', customSettings, {
         developments: ['leadership'],
       });
       player = setPlayerGoods(player, 'Stone', 4, customSettings);
       const turn = createTestTurn('p1');
-      const result = exchangeStoneForWorkers(player, turn, 2, customSettings);
+      const result = exchangeResources(
+        player,
+        turn,
+        'stone',
+        'workers',
+        2,
+        customSettings,
+      );
 
       expect(result).not.toBeNull();
       if (result) {

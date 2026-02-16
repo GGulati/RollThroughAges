@@ -231,11 +231,24 @@ export function resolveProduction(
   };
 }
 
-/**
- * Check if player has Granaries development (convert food to coins).
- */
-export function hasGranaries(player: PlayerState, settings: GameSettings): boolean {
-  return Boolean(getExchangeEffect(player, 'food', 'coins', settings));
+function normalizeResourceName(resource: string): string {
+  return resource.trim().toLowerCase();
+}
+
+function getGoodsTypeForResource(
+  player: PlayerState,
+  settings: GameSettings,
+  resource: string
+): GoodsType | undefined {
+  const normalized = normalizeResourceName(resource);
+  const settingsType = settings.goodsTypes.find(
+    (goodsType) => normalizeResourceName(goodsType.name) === normalized
+  );
+  if (!settingsType) {
+    return undefined;
+  }
+
+  return findGoodsTypeByName(player.goods, settingsType.name) ?? settingsType;
 }
 
 function getExchangeEffect(
@@ -244,6 +257,9 @@ function getExchangeEffect(
   to: string,
   settings: GameSettings
 ): { from: string; to: string; rate: number } | undefined {
+  const normalizedFrom = normalizeResourceName(from);
+  const normalizedTo = normalizeResourceName(to);
+
   for (const development of settings.developmentDefinitions) {
     if (!player.developments.includes(development.id)) {
       continue;
@@ -252,8 +268,8 @@ function getExchangeEffect(
       continue;
     }
     if (
-      development.specialEffect.from.toLowerCase() === from.toLowerCase() &&
-      development.specialEffect.to.toLowerCase() === to.toLowerCase()
+      normalizeResourceName(development.specialEffect.from) === normalizedFrom &&
+      normalizeResourceName(development.specialEffect.to) === normalizedTo
     ) {
       return development.specialEffect;
     }
@@ -262,70 +278,161 @@ function getExchangeEffect(
   return undefined;
 }
 
+export type ExchangeEffectRule = {
+  from: string;
+  to: string;
+  rate: number;
+  developmentId: string;
+  developmentName: string;
+};
+
 /**
- * Exchange food for coins using Granaries.
+ * List all exchange effects currently granted by purchased developments.
  */
-export function exchangeFoodForCoins(
+export function getAvailableExchangeEffects(
+  player: PlayerState,
+  settings: GameSettings
+): ExchangeEffectRule[] {
+  return settings.developmentDefinitions.flatMap((development) => {
+    if (!player.developments.includes(development.id)) {
+      return [];
+    }
+    if (development.specialEffect.type !== 'exchange') {
+      return [];
+    }
+
+    return [
+      {
+        from: development.specialEffect.from,
+        to: development.specialEffect.to,
+        rate: development.specialEffect.rate,
+        developmentId: development.id,
+        developmentName: development.name,
+      },
+    ];
+  });
+}
+
+function getResourceAmount(
   player: PlayerState,
   turn: TurnState,
-  foodAmount: number,
-  settings: GameSettings
-): { player: PlayerState; turn: TurnState } | null {
-  const exchangeEffect = getExchangeEffect(player, 'food', 'coins', settings);
-  if (!exchangeEffect) return null;
-  if (player.food < foodAmount) return null;
-  const coinsGained = foodAmount * exchangeEffect.rate;
+  settings: GameSettings,
+  resource: string
+): number {
+  const normalized = normalizeResourceName(resource);
+  if (normalized === 'food') {
+    return player.food;
+  }
 
-  return {
-    player: { ...player, food: player.food - foodAmount },
-    turn: {
-      ...turn,
-      turnProduction: {
-        ...turn.turnProduction,
-        coins: turn.turnProduction.coins + coinsGained,
+  const goodsType = getGoodsTypeForResource(player, settings, resource);
+  if (goodsType) {
+    return player.goods.get(goodsType) ?? 0;
+  }
+
+  if (normalized in turn.turnProduction) {
+    const key = normalized as keyof ResourceProduction;
+    return turn.turnProduction[key];
+  }
+
+  return 0;
+}
+
+function setResourceAmount(
+  player: PlayerState,
+  turn: TurnState,
+  settings: GameSettings,
+  resource: string,
+  amount: number
+): { player: PlayerState; turn: TurnState } {
+  const nextAmount = Math.max(0, amount);
+  const normalized = normalizeResourceName(resource);
+
+  if (normalized === 'food') {
+    return {
+      player: { ...player, food: Math.min(nextAmount, settings.maxFood) },
+      turn,
+    };
+  }
+
+  const goodsType = getGoodsTypeForResource(player, settings, resource);
+  if (goodsType) {
+    const nextGoods = new Map(player.goods);
+    nextGoods.set(goodsType, nextAmount);
+    return {
+      player: { ...player, goods: nextGoods },
+      turn,
+    };
+  }
+
+  if (normalized in turn.turnProduction) {
+    const key = normalized as keyof ResourceProduction;
+    return {
+      player,
+      turn: {
+        ...turn,
+        turnProduction: {
+          ...turn.turnProduction,
+          [key]: nextAmount,
+        },
       },
-    },
-  };
+    };
+  }
+
+  return { player, turn };
 }
 
 /**
- * Check if player has Engineering development (convert stone to workers).
+ * Check if an exchange rule exists for a resource pair.
  */
-export function hasEngineering(player: PlayerState, settings: GameSettings): boolean {
-  return Boolean(getExchangeEffect(player, 'stone', 'workers', settings));
+export function hasExchange(
+  player: PlayerState,
+  from: string,
+  to: string,
+  settings: GameSettings
+): boolean {
+  return Boolean(getExchangeEffect(player, from, to, settings));
 }
 
 /**
- * Exchange stone for workers using Engineering.
+ * Apply an exchange rule by spending one resource and gaining another.
  */
-export function exchangeStoneForWorkers(
+export function exchangeResources(
   player: PlayerState,
   turn: TurnState,
-  stoneAmount: number,
+  from: string,
+  to: string,
+  fromAmount: number,
   settings: GameSettings
 ): { player: PlayerState; turn: TurnState } | null {
-  const exchangeEffect = getExchangeEffect(player, 'stone', 'workers', settings);
-  if (!exchangeEffect) return null;
+  if (fromAmount <= 0) {
+    return null;
+  }
 
-  const stoneType = settings.goodsTypes.find((g) => g.name === 'Stone');
-  if (!stoneType) return null;
+  const exchangeEffect = getExchangeEffect(player, from, to, settings);
+  if (!exchangeEffect) {
+    return null;
+  }
 
-  const currentStone = player.goods.get(stoneType) ?? 0;
-  if (currentStone < stoneAmount) return null;
+  const fromCurrent = getResourceAmount(player, turn, settings, from);
+  if (fromCurrent < fromAmount) {
+    return null;
+  }
 
-  const workersGained = stoneAmount * exchangeEffect.rate;
+  const toCurrent = getResourceAmount(player, turn, settings, to);
+  const toAmount = fromAmount * exchangeEffect.rate;
 
-  const newGoods = new Map(player.goods);
-  newGoods.set(stoneType, currentStone - stoneAmount);
-
-  return {
-    player: { ...player, goods: newGoods },
-    turn: {
-      ...turn,
-      turnProduction: {
-        ...turn.turnProduction,
-        workers: turn.turnProduction.workers + workersGained,
-      },
-    },
-  };
+  const afterSpend = setResourceAmount(
+    player,
+    turn,
+    settings,
+    from,
+    fromCurrent - fromAmount
+  );
+  return setResourceAmount(
+    afterSpend.player,
+    afterSpend.turn,
+    settings,
+    to,
+    toCurrent + toAmount
+  );
 }
