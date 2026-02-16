@@ -17,6 +17,7 @@ import { LookaheadConfig, LOOKAHEAD_STANDARD_CONFIG } from './config';
 type ChanceOutcome = {
   probability: number;
   game: GameState;
+  quickScore: number;
 };
 
 type EvaluationBudget = {
@@ -316,20 +317,71 @@ function applyRollOutcome(
   return outcome;
 }
 
-function enumerateFaceCombinations(count: number, faces: number): number[][] {
-  if (count <= 0) {
+function getFaceQuickScore(
+  game: GameState,
+  faceIndex: number,
+  config: LookaheadConfig,
+): number {
+  const face = game.settings.diceFaces[faceIndex];
+  if (!face || face.production.length === 0) {
+    return Number.NEGATIVE_INFINITY;
+  }
+  const foodWeight = getFoodUrgencyWeight(game, config);
+  let best = Number.NEGATIVE_INFINITY;
+  for (const production of face.production) {
+    const score = scoreProductionChoice(
+      production,
+      config.heuristicFallbackConfig.productionWeights,
+      foodWeight,
+    );
+    if (score > best) {
+      best = score;
+    }
+  }
+  return best;
+}
+
+function getCandidateFacesByDie(
+  game: GameState,
+  rerolledDieIndices: number[],
+  config: LookaheadConfig,
+): number[][] {
+  const faceCount = game.settings.diceFaces.length;
+  const fullFaces = Array.from({ length: faceCount }, (_, faceIndex) => faceIndex);
+  if (
+    rerolledDieIndices.length < config.chanceTopKMinDice ||
+    config.chanceTopKFacesPerDie >= faceCount
+  ) {
+    return rerolledDieIndices.map(() => fullFaces);
+  }
+
+  const topK = Math.max(1, Math.min(faceCount, config.chanceTopKFacesPerDie));
+  return rerolledDieIndices.map(() => {
+    const scored = fullFaces.map((faceIndex) => ({
+      faceIndex,
+      score: getFaceQuickScore(game, faceIndex, config),
+    }));
+    scored.sort(
+      (a, b) => b.score - a.score || a.faceIndex - b.faceIndex,
+    );
+    return scored.slice(0, topK).map((entry) => entry.faceIndex);
+  });
+}
+
+function enumerateFaceCombinationsFromCandidates(candidateFacesByDie: number[][]): number[][] {
+  if (candidateFacesByDie.length === 0) {
     return [[]];
   }
   const combinations: number[][] = [];
-  const current = Array<number>(count).fill(0);
+  const current: number[] = new Array(candidateFacesByDie.length).fill(0);
 
   const walk = (index: number) => {
-    if (index >= count) {
+    if (index >= candidateFacesByDie.length) {
       combinations.push([...current]);
       return;
     }
-    for (let face = 0; face < faces; face += 1) {
-      current[index] = face;
+    for (const faceIndex of candidateFacesByDie[index]) {
+      current[index] = faceIndex;
       walk(index + 1);
     }
   };
@@ -443,6 +495,7 @@ function evaluateChanceAction(
   rootPlayerId: string,
   depth: number,
   budget: EvaluationBudget,
+  rootBestSoFar?: number,
 ): number {
   const rerolledDieIndices =
     action.type === 'rollDice'
@@ -471,10 +524,12 @@ function evaluateChanceAction(
   }
 
   const faceCount = game.settings.diceFaces.length;
-  const outcomes = enumerateFaceCombinations(rerolledDieIndices.length, faceCount);
-  const probability = 1 / Math.max(1, outcomes.length);
-  const chanceOutcomes: ChanceOutcome[] = outcomes.map((faces) => ({
-    probability,
+  const exactOutcomeCount = faceCount ** rerolledDieIndices.length;
+  const candidateFacesByDie = getCandidateFacesByDie(game, rerolledDieIndices, config);
+  const facesToEvaluate = enumerateFaceCombinationsFromCandidates(candidateFacesByDie);
+  const trueOutcomeProbability = 1 / Math.max(1, exactOutcomeCount);
+  const chanceOutcomes: ChanceOutcome[] = facesToEvaluate.map((faces) => ({
+    probability: trueOutcomeProbability,
     game: applyRollOutcome(
       game,
       rerolledDieIndices,
@@ -482,24 +537,54 @@ function evaluateChanceAction(
       config,
       action.type,
     ),
+    quickScore: faces.reduce(
+      (sum, faceIndex) => sum + getFaceQuickScore(game, faceIndex, config),
+      0,
+    ),
   }));
+  chanceOutcomes.sort(
+    (a, b) => b.quickScore - a.quickScore,
+  );
 
   let total = 0;
+  let evaluatedProbability = 0;
+  let bestObserved = Number.NEGATIVE_INFINITY;
+  const fallbackUtility = evaluateResolvedTurnUtility(game, rootPlayerId, config);
+  let evaluatedOutcomes = 0;
+
   for (const outcome of chanceOutcomes) {
     if ((budget.remainingByPhase[outcome.game.state.phase] ?? 0) <= 0) {
       break;
     }
-    total +=
-      outcome.probability *
-      evaluateActionValue(
-        outcome.game,
-        config,
-        rootPlayerId,
-        depth - 1,
-        budget,
-      );
+    const outcomeValue = evaluateActionValue(
+      outcome.game,
+      config,
+      rootPlayerId,
+      depth - 1,
+      budget,
+    );
+    total += outcome.probability * outcomeValue;
+    evaluatedProbability += outcome.probability;
+    evaluatedOutcomes += 1;
+    if (outcomeValue > bestObserved) {
+      bestObserved = outcomeValue;
+    }
+
+    if (
+      rootBestSoFar !== undefined &&
+      evaluatedOutcomes >= config.chancePruneMinOutcomes
+    ) {
+      const remainingProbability = Math.max(0, 1 - evaluatedProbability);
+      const optimisticRemainingValue =
+        remainingProbability * Math.max(bestObserved, fallbackUtility);
+      const optimisticTotal = total + optimisticRemainingValue;
+      if (optimisticTotal + config.chancePruneSlack < rootBestSoFar) {
+        return optimisticTotal;
+      }
+    }
   }
-  return total;
+  const remainingProbability = Math.max(0, 1 - evaluatedProbability);
+  return total + remainingProbability * fallbackUtility;
 }
 
 function evaluateDeterministicAction(
@@ -629,7 +714,11 @@ function pickBestLookaheadAction(
     return null;
   }
 
-  const scored = legalActions.map((action) => {
+  let bestAction: BotAction | null = null;
+  let bestValue = Number.NEGATIVE_INFINITY;
+  let bestActionKey = '';
+
+  for (const action of legalActions) {
     const actionStartMs = nowMs();
     const budget = createEvaluationBudget(config.maxEvaluations);
     const value =
@@ -641,6 +730,7 @@ function pickBestLookaheadAction(
             rootPlayerId,
             config.depth,
             budget,
+            bestValue,
           )
         : evaluateDeterministicAction(
             game,
@@ -661,14 +751,18 @@ function pickBestLookaheadAction(
         elapsedMs,
       );
     }
-    return { action, value };
-  });
+    const actionKey = botActionKey(action);
+    if (
+      value > bestValue ||
+      (value === bestValue && (bestAction === null || actionKey.localeCompare(bestActionKey) < 0))
+    ) {
+      bestValue = value;
+      bestAction = action;
+      bestActionKey = actionKey;
+    }
+  }
 
-  scored.sort(
-    (a, b) =>
-      b.value - a.value || botActionKey(a.action).localeCompare(botActionKey(b.action)),
-  );
-  return scored[0]?.action ?? null;
+  return bestAction;
 }
 
 export function chooseLookaheadBotAction(

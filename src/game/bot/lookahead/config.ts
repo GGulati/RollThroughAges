@@ -3,6 +3,10 @@ import { HEURISTIC_STANDARD_CONFIG, HeuristicConfig } from '../heuristic';
 export type LookaheadConfig = {
   depth: number;
   maxEnumeratedRollDice: number;
+  chanceTopKFacesPerDie: number;
+  chanceTopKMinDice: number;
+  chancePruneMinOutcomes: number;
+  chancePruneSlack: number;
   maxActionsPerNode: number;
   maxEvaluations: number;
   utilityWeights: {
@@ -21,6 +25,10 @@ export type LookaheadConfig = {
 export const LOOKAHEAD_STANDARD_CONFIG: LookaheadConfig = {
   depth: 2,
   maxEnumeratedRollDice: 4,
+  chanceTopKFacesPerDie: 3,
+  chanceTopKMinDice: 3,
+  chancePruneMinOutcomes: 8,
+  chancePruneSlack: 0,
   maxActionsPerNode: 10,
   maxEvaluations: 1200,
   utilityWeights: {
