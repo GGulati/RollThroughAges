@@ -1,5 +1,8 @@
 import { readdirSync, writeFileSync } from 'node:fs';
 import { resolve, join, basename } from 'node:path';
+import { performance } from 'node:perf_hooks';
+import { availableParallelism, cpus } from 'node:os';
+import Piscina from 'piscina';
 import {
   createHeuristicBot,
   getHeadlessScoreSummary,
@@ -29,6 +32,9 @@ type CliOptions = {
   minWinRate: number;
   minVpDelta: number;
   outputJson?: string;
+  profile: boolean;
+  maxCandidates?: number;
+  workers: number | 'auto';
 };
 
 type GameEvaluation = {
@@ -67,7 +73,48 @@ type CandidateResult = {
   path: string;
   quick: EvaluationSummary;
   final?: EvaluationSummary;
+  timingsMs?: {
+    quick: number;
+    final?: number;
+  };
 };
+
+type TournamentProfile = {
+  totalMs: number;
+  candidateLoadMs: number;
+  runHeadlessMs: number;
+  scoreSummaryMs: number;
+  postGameProcessingMs: number;
+  evaluateSingleGameCalls: number;
+  gamesSimulated: number;
+  quickRoundMs: number;
+  finalRoundMs: number;
+};
+
+function createTournamentProfile(): TournamentProfile {
+  return {
+    totalMs: 0,
+    candidateLoadMs: 0,
+    runHeadlessMs: 0,
+    scoreSummaryMs: 0,
+    postGameProcessingMs: 0,
+    evaluateSingleGameCalls: 0,
+    gamesSimulated: 0,
+    quickRoundMs: 0,
+    finalRoundMs: 0,
+  };
+}
+
+function mergeProfile(target: TournamentProfile, source: TournamentProfile): void {
+  target.candidateLoadMs += source.candidateLoadMs;
+  target.runHeadlessMs += source.runHeadlessMs;
+  target.scoreSummaryMs += source.scoreSummaryMs;
+  target.postGameProcessingMs += source.postGameProcessingMs;
+  target.evaluateSingleGameCalls += source.evaluateSingleGameCalls;
+  target.gamesSimulated += source.gamesSimulated;
+  target.quickRoundMs += source.quickRoundMs;
+  target.finalRoundMs += source.finalRoundMs;
+}
 
 function printUsage(): void {
   console.log('Usage: npx tsx scripts/bot_tournament.ts --candidates-dir <dir> [options]');
@@ -88,6 +135,11 @@ function printUsage(): void {
   console.log('  --min-win-rate <0..1>     Clear margin win-rate threshold (default: 0.6)');
   console.log('  --min-vp-delta <n>        Clear margin VP threshold (default: 1)');
   console.log('  --output-json <path>      Write tournament results JSON');
+  console.log('  --profile                 Print detailed timing instrumentation');
+  console.log('  --max-candidates <n>      Limit number of candidate configs loaded');
+  console.log(
+    '  --workers <n|auto>        Parallel workers for quick round (default: auto)',
+  );
   console.log('  --help                    Show help');
 }
 
@@ -102,6 +154,8 @@ function parseArgs(argv: string[]): CliOptions {
     maxStepsPerTurn: 300,
     minWinRate: 0.6,
     minVpDelta: 1,
+    profile: false,
+    workers: 'auto',
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -109,6 +163,10 @@ function parseArgs(argv: string[]): CliOptions {
     if (arg === '--help' || arg === '-h') {
       printUsage();
       process.exit(0);
+    }
+    if (arg === '--profile') {
+      options.profile = true;
+      continue;
     }
 
     const next = argv[i + 1];
@@ -171,6 +229,18 @@ function parseArgs(argv: string[]): CliOptions {
         options.outputJson = next;
         i += 1;
         break;
+      case '--max-candidates':
+        options.maxCandidates = parseNumber(next, '--max-candidates');
+        i += 1;
+        break;
+      case '--workers':
+        if (next.toLowerCase() === 'auto') {
+          options.workers = 'auto';
+        } else {
+          options.workers = parseNumber(next, '--workers');
+        }
+        i += 1;
+        break;
       default:
         throw new Error(`Unknown argument: ${arg}`);
     }
@@ -210,8 +280,42 @@ function parseArgs(argv: string[]): CliOptions {
   if (options.minVpDelta < 0) {
     throw new Error('--min-vp-delta must be >= 0.');
   }
+  if (
+    options.maxCandidates !== undefined &&
+    (!Number.isInteger(options.maxCandidates) || options.maxCandidates <= 0)
+  ) {
+    throw new Error('--max-candidates must be a positive integer when provided.');
+  }
+  if (
+    options.workers !== 'auto' &&
+    (!Number.isInteger(options.workers) || options.workers <= 0)
+  ) {
+    throw new Error('--workers must be a positive integer or "auto".');
+  }
 
   return options;
+}
+
+function getDetectedCpuCount(): number {
+  if (typeof availableParallelism === 'function') {
+    return availableParallelism();
+  }
+  return cpus().length;
+}
+
+function resolveWorkerCount(
+  requestedWorkers: number | 'auto',
+  maxTasks: number,
+): number {
+  if (maxTasks <= 0) {
+    return 1;
+  }
+  if (requestedWorkers === 'auto') {
+    const detected = getDetectedCpuCount();
+    // Cap auto mode to avoid oversubscribing lightweight workloads.
+    return Math.max(1, Math.min(maxTasks, detected, 8));
+  }
+  return Math.max(1, Math.min(maxTasks, requestedWorkers));
 }
 
 function getCandidateFiles(dir: string): string[] {
@@ -252,6 +356,7 @@ function evaluateSingleGame(
   configA: HeuristicConfig,
   configB: HeuristicConfig,
   options: CliOptions,
+  profile: TournamentProfile,
 ): GameEvaluation {
   const strategyByPlayer = Object.fromEntries(
     players.map((player) => [
@@ -262,12 +367,19 @@ function evaluateSingleGame(
     ]),
   );
 
+  const headlessStart = performance.now();
   const result = runHeadlessBotMatch(players, {
     strategyByPlayerId: strategyByPlayer,
     maxTurns: options.maxTurns,
     maxStepsPerTurn: options.maxStepsPerTurn,
   });
+  profile.runHeadlessMs += performance.now() - headlessStart;
+
+  const summaryStart = performance.now();
   const summary = getHeadlessScoreSummary(result.finalGame);
+  profile.scoreSummaryMs += performance.now() - summaryStart;
+
+  const postStart = performance.now();
   const scoresA: number[] = [];
   const scoresB: number[] = [];
   for (const entry of summary) {
@@ -284,6 +396,9 @@ function evaluateSingleGame(
   const delta = averageScoreA - averageScoreB;
   const winner: StrategyLabel | 'Tie' =
     delta > 0 ? 'A' : delta < 0 ? 'B' : 'Tie';
+  profile.postGameProcessingMs += performance.now() - postStart;
+  profile.evaluateSingleGameCalls += 1;
+  profile.gamesSimulated += 1;
 
   return {
     averageScoreA,
@@ -343,6 +458,7 @@ function evaluateConfigVsBaseline(
   configB: HeuristicConfig,
   games: number,
   options: CliOptions,
+  profile: TournamentProfile,
 ): EvaluationSummary {
   const evaluations: GameEvaluation[] = [];
   const stallOccurrences: EvaluationSummary['stallOccurrences'] = [];
@@ -356,6 +472,7 @@ function evaluateConfigVsBaseline(
       configA,
       configB,
       options,
+      profile,
     );
     evaluations.push(evaluation);
     if (!evaluation.completed) {
@@ -368,6 +485,85 @@ function evaluateConfigVsBaseline(
   }
 
   return summarizeEvaluations(evaluations, options, stallOccurrences);
+}
+
+function evaluateCandidateFile(
+  file: string,
+  baselineConfig: HeuristicConfig,
+  options: CliOptions,
+  profile: TournamentProfile,
+): CandidateResult {
+  const candidateStart = performance.now();
+  const candidateConfig = loadConfig(file);
+  const quick = evaluateConfigVsBaseline(
+    candidateConfig,
+    baselineConfig,
+    options.games,
+    options,
+    profile,
+  );
+  const candidateElapsed = performance.now() - candidateStart;
+  return {
+    name: basename(file, '.json'),
+    path: file,
+    quick,
+    timingsMs: { quick: candidateElapsed },
+  };
+}
+
+type WorkerQuickEvalRequest = {
+  candidateFiles: string[];
+  baselineConfig: HeuristicConfig;
+  options: CliOptions;
+};
+
+type WorkerQuickEvalResponse = {
+  results: CandidateResult[];
+  profile: TournamentProfile;
+};
+
+async function evaluateQuickRoundParallel(
+  candidateFiles: string[],
+  baselineConfig: HeuristicConfig,
+  options: CliOptions,
+  profile: TournamentProfile,
+  workerCount: number,
+): Promise<CandidateResult[]> {
+  if (workerCount <= 1) {
+    return candidateFiles.map((file) =>
+      evaluateCandidateFile(file, baselineConfig, options, profile),
+    );
+  }
+
+  const chunks: string[][] = Array.from({ length: workerCount }, () => []);
+  candidateFiles.forEach((file, index) => {
+    chunks[index % workerCount].push(file);
+  });
+
+  const pool = new Piscina({
+    filename: new URL('./bot_tournament_worker.ts', import.meta.url).href,
+    minThreads: workerCount,
+    maxThreads: workerCount,
+    execArgv: ['--import', 'tsx'],
+  });
+
+  const requests = chunks.filter((chunk) => chunk.length > 0).map((chunk) => ({
+    candidateFiles: chunk,
+    baselineConfig,
+    options,
+  }));
+
+  const responses = (await Promise.all(
+    requests.map((request) => pool.run(request)),
+  )) as WorkerQuickEvalResponse[];
+  await pool.destroy();
+
+  const allResults: CandidateResult[] = [];
+  responses.forEach((response) => {
+    mergeProfile(profile, response.profile);
+    allResults.push(...response.results);
+  });
+  return allResults;
 }
 
 function sortResults(results: CandidateResult[]): CandidateResult[] {
@@ -418,11 +614,23 @@ function printRound(title: string, results: CandidateResult[], pickFinal: boolea
   }
 }
 
-function main(): void {
+async function main(): Promise<void> {
+  const totalStart = performance.now();
   const options = parseArgs(process.argv.slice(2));
+  const profile = createTournamentProfile();
   const baselineConfig = loadConfig(options.baselinePath);
+  const candidateLoadStart = performance.now();
   const candidateFiles = getCandidateFiles(options.candidatesDir);
-  if (candidateFiles.length === 0) {
+  profile.candidateLoadMs += performance.now() - candidateLoadStart;
+  const limitedCandidateFiles =
+    options.maxCandidates !== undefined
+      ? candidateFiles.slice(0, options.maxCandidates)
+      : candidateFiles;
+  const resolvedWorkers = resolveWorkerCount(
+    options.workers,
+    limitedCandidateFiles.length,
+  );
+  if (limitedCandidateFiles.length === 0) {
     throw new Error(`No .json candidate files found in ${resolve(options.candidatesDir)}.`);
   }
 
@@ -433,36 +641,46 @@ function main(): void {
   console.log(`Quick games: ${options.games}`);
   console.log(`Final games: ${options.finalGames}`);
   console.log(`Top finalists: ${options.top}`);
-
-  const quickResults: CandidateResult[] = candidateFiles.map((file) => {
-    const candidateConfig = loadConfig(file);
-    const quick = evaluateConfigVsBaseline(
-      candidateConfig,
-      baselineConfig,
-      options.games,
-      options,
+  console.log(`Workers: ${options.workers} (resolved: ${resolvedWorkers})`);
+  if (options.maxCandidates !== undefined) {
+    console.log(
+      `Candidate limit: ${options.maxCandidates} (of ${candidateFiles.length} total)`,
     );
-    return {
-      name: basename(file, '.json'),
-      path: file,
-      quick,
-    };
-  });
+  }
+
+  const quickStart = performance.now();
+  const quickResults: CandidateResult[] = await evaluateQuickRoundParallel(
+    limitedCandidateFiles,
+    baselineConfig,
+    options,
+    profile,
+    resolvedWorkers,
+  );
+  profile.quickRoundMs += performance.now() - quickStart;
 
   const rankedQuick = sortResults(quickResults);
   printRound('Quick Round Ranking', rankedQuick, false);
 
   const finalists = rankedQuick.slice(0, Math.min(options.top, rankedQuick.length));
   if (options.finalGames > options.games && finalists.length > 0) {
+    const finalStart = performance.now();
     for (const finalist of finalists) {
+      const finalistStart = performance.now();
       const config = loadConfig(finalist.path);
       finalist.final = evaluateConfigVsBaseline(
         config,
         baselineConfig,
         options.finalGames,
         options,
+        profile,
       );
+      const finalistElapsed = performance.now() - finalistStart;
+      finalist.timingsMs = {
+        ...finalist.timingsMs,
+        final: finalistElapsed,
+      };
     }
+    profile.finalRoundMs += performance.now() - finalStart;
   }
 
   const finalRanked = sortResults(rankedQuick);
@@ -483,6 +701,7 @@ function main(): void {
     });
   }
 
+  profile.totalMs = performance.now() - totalStart;
   if (options.outputJson) {
     const outputPath = resolve(options.outputJson);
     writeFileSync(
@@ -492,6 +711,7 @@ function main(): void {
           options,
           generatedAt: new Date().toISOString(),
           results: finalRanked,
+          profile,
         },
         null,
         2,
@@ -500,6 +720,42 @@ function main(): void {
     );
     console.log(`Wrote JSON: ${outputPath}`);
   }
-}
+  if (options.profile) {
+    const gameComputeMs =
+      profile.runHeadlessMs + profile.scoreSummaryMs + profile.postGameProcessingMs;
+    const nonGameMs = Math.max(0, profile.totalMs - gameComputeMs);
+    const pct = (value: number, total: number) =>
+      total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
 
-main();
+    console.log('');
+    console.log('=== Instrumentation ===');
+    console.log(`Total time: ${formatNum(profile.totalMs)} ms`);
+    console.log(
+      `Games simulated: ${profile.gamesSimulated} (${profile.evaluateSingleGameCalls} evaluateSingleGame calls)`,
+    );
+    console.log(
+      `runHeadlessBotMatch: ${formatNum(profile.runHeadlessMs)} ms (${pct(profile.runHeadlessMs, profile.totalMs)}%)`,
+    );
+    console.log(
+      `getHeadlessScoreSummary: ${formatNum(profile.scoreSummaryMs)} ms (${pct(profile.scoreSummaryMs, profile.totalMs)}%)`,
+    );
+    console.log(
+      `Post-game processing: ${formatNum(profile.postGameProcessingMs)} ms (${pct(profile.postGameProcessingMs, profile.totalMs)}%)`,
+    );
+    console.log(
+      `Candidate file load: ${formatNum(profile.candidateLoadMs)} ms (${pct(profile.candidateLoadMs, profile.totalMs)}%)`,
+    );
+    console.log(
+      `Quick round loop: ${formatNum(profile.quickRoundMs)} ms (${pct(profile.quickRoundMs, profile.totalMs)}%)`,
+    );
+    if (profile.finalRoundMs > 0) {
+      console.log(
+        `Final round loop: ${formatNum(profile.finalRoundMs)} ms (${pct(profile.finalRoundMs, profile.totalMs)}%)`,
+      );
+    }
+    console.log(
+      `Other/non-game time: ${formatNum(nonGameMs)} ms (${pct(nonGameMs, profile.totalMs)}%)`,
+    );
+  }
+}
+void main();

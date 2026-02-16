@@ -44,6 +44,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "jsdom": "^27.2.0",
+    "piscina": "^5.1.4",
     "prettier": "^3.7.1",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
