@@ -79,8 +79,28 @@ type BeamCandidate = {
 type TournamentResult = {
   name: string;
   path: string;
-  quick: { winRateA: number; meanDelta: number };
-  final?: { winRateA: number; meanDelta: number };
+  quick: {
+    winsA: number;
+    winsB: number;
+    ties: number;
+    decisiveGames: number;
+    totalGames: number;
+    winRateA: number;
+    meanDelta: number;
+    avgScoreA: number;
+    avgScoreB: number;
+  };
+  final?: {
+    winsA: number;
+    winsB: number;
+    ties: number;
+    decisiveGames: number;
+    totalGames: number;
+    winRateA: number;
+    meanDelta: number;
+    avgScoreA: number;
+    avgScoreB: number;
+  };
 };
 
 type TournamentJson = {
@@ -412,6 +432,19 @@ function main(): void {
   const history: Array<{
     iteration: number;
     candidateCount: number;
+    winner: {
+      name: string;
+      path: string;
+      gamesWon: number;
+      gamesLost: number;
+      ties: number;
+      decisiveGames: number;
+      totalGames: number;
+      winRatePct: number;
+      winRateDecisivePct: number;
+      avgScore: number;
+      opponentAvgScore: number;
+    } | null;
     beam: Array<{ name: string; path: string }>;
   }> = [];
 
@@ -449,6 +482,8 @@ function main(): void {
     const resultsPath = join(iterDir, 'tournament-results.json');
     const tournament = runTournament(iterDir, baseline.path, resultsPath, options);
     const selected = tournament.results.slice(0, options.beamWidth);
+    const winner = selected[0];
+    const winnerSummary = winner?.final ?? winner?.quick;
     const nextBeam: BeamCandidate[] = [];
 
     for (const result of selected) {
@@ -465,12 +500,44 @@ function main(): void {
     history.push({
       iteration,
       candidateCount: byKey.size,
+      winner: winnerSummary
+        ? {
+            name: winner.name,
+            path: winner.path,
+            gamesWon: winnerSummary.winsA,
+            gamesLost: winnerSummary.winsB,
+            ties: winnerSummary.ties,
+            decisiveGames: winnerSummary.decisiveGames,
+            totalGames: winnerSummary.totalGames,
+            winRatePct:
+              Math.round(
+                (winnerSummary.winsA / Math.max(1, winnerSummary.totalGames)) * 10000,
+              ) / 100,
+            winRateDecisivePct:
+              Math.round(
+                (winnerSummary.winsA / Math.max(1, winnerSummary.decisiveGames)) *
+                  10000,
+              ) / 100,
+            avgScore: Math.round(winnerSummary.avgScoreA * 100) / 100,
+            opponentAvgScore: Math.round(winnerSummary.avgScoreB * 100) / 100,
+          }
+        : null,
       beam: selected.map((entry) => ({ name: entry.name, path: entry.path })),
     });
 
     console.log(
       `Beam iteration ${iteration}: candidates=${byKey.size}, kept=${beam.length}`,
     );
+    if (winnerSummary) {
+      console.log(
+        `  winner=${winner.name}, finalRound=${winnerSummary.winsA}-${winnerSummary.winsB}-${winnerSummary.ties}, ` +
+          `winRate=${(
+            (winnerSummary.winsA / Math.max(1, winnerSummary.totalGames)) *
+            100
+          ).toFixed(2)}%, ` +
+          `decisiveWinRate=${(winnerSummary.winRateA * 100).toFixed(2)}%`,
+      );
+    }
 
     if (beam.length === 0) {
       break;
