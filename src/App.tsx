@@ -9,7 +9,6 @@ import {
   discardGoods,
   endTurn,
   applyExchange,
-  addTestingResources,
   keepDie,
   redo,
   rerollSingleDie,
@@ -323,54 +322,6 @@ function App() {
         ) : null}
         {turnStatus.isGameActive && !endgameStatus.isGameOver ? (
           <>
-            <section className="app-panel game-menu-panel">
-              <h2>Game Menu</h2>
-              <div className="title-actions">
-                <label className="player-count-control" htmlFor="player-count-select-restart">
-                  <span>Players</span>
-                  <select
-                    id="player-count-select-restart"
-                    value={playerCount}
-                    onChange={(event) => setPlayerCount(Number(event.target.value))}
-                  >
-                    {Array.from(
-                      { length: MAX_PLAYERS - MIN_PLAYERS + 1 },
-                      (_, index) => MIN_PLAYERS + index,
-                    ).map((count) => (
-                      <option key={count} value={count}>
-                        {count}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  onClick={() =>
-                    dispatch(startGame({ players: createPlayers(playerCount) }))
-                  }
-                >
-                  Restart Game
-                </button>
-              </div>
-            </section>
-            <section className="app-panel">
-              <h2>Testing</h2>
-              <p className="inline-note">Testing-only shortcuts for quick e2e validation.</p>
-              <div className="panel-actions">
-                <button
-                  type="button"
-                  onClick={() => dispatch(addTestingResources({ workers: 10 }))}
-                >
-                  +10 Workers
-                </button>
-                <button
-                  type="button"
-                  onClick={() => dispatch(addTestingResources({ coins: 100 }))}
-                >
-                  +100 Coins
-                </button>
-              </div>
-            </section>
             <div className="board-grid">
           <section className={getPanelClassName('turnStatus')} aria-live="polite">
             <h2>Turn Status</h2>

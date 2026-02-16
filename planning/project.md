@@ -36,6 +36,7 @@
 - **S5.1 Mode toggles**: Add menu to choose how many human vs bot players there are.
 - **S5.2 Bot strategy v1**: Implement deterministic heuristic bot module.
 - **S5.3 Bot tuning/tests**: Simulate batches to validate bot legality and difficulty sliders.
+- **Detailed breakdown**: See `planning/stage5-implementation-breakdown.md`.
 
 ### Stage 6 - Polish & Delivery
 - **S6.1 Audio/feedback**: Light SFX for rolls, milestone completion confetti, accessibility review.
