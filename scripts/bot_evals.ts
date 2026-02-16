@@ -4,13 +4,10 @@ import {
   HEURISTIC_STANDARD_CONFIG,
 } from '../src/game/bot/index.ts';
 import {
+  BotCoreInstrumentation,
   CORE_BOT_METRIC_KEYS,
-  getBotCoreInstrumentation,
-  getHeadlessBotInstrumentation,
-  getHeadlessScoreSummary,
-  resetBotCoreInstrumentation,
-  resetHeadlessBotInstrumentation,
-  runHeadlessBotMatch,
+  HeadlessBotInstrumentation,
+  runHeadlessBotEvaluation,
 } from '../src/game/automation/index.ts';
 import { PlayerConfig } from '../src/game/index.ts';
 import {
@@ -93,8 +90,8 @@ type PerGameInstrumentation = {
   stallReason: string | null;
   scoresByPlayerId: Record<string, number>;
   byConfig: PerGameConfigInstrumentation[];
-  headless: ReturnType<typeof getHeadlessBotInstrumentation>;
-  coreByPlayerId: Record<string, ReturnType<typeof getBotCoreInstrumentation>>;
+  headless: HeadlessBotInstrumentation;
+  coreByPlayerId: Record<string, BotCoreInstrumentation>;
 };
 
 const CORE_METRIC_KEY_SET = new Set<string>(CORE_BOT_METRIC_KEYS as readonly string[]);
@@ -241,7 +238,6 @@ function buildConfigPool(paths: string[]): ConfigEntry[] {
 function createPlayers(
   players: number,
   configPool: ConfigEntry[],
-  rotation: number,
 ): {
   playerConfigs: PlayerConfig[];
   configByPlayerId: Record<string, ConfigEntry>;
@@ -250,7 +246,7 @@ function createPlayers(
   const configByPlayerId: Record<string, ConfigEntry> = {};
 
   for (let seat = 0; seat < players; seat += 1) {
-    const configIndex = (seat + rotation) % configPool.length;
+    const configIndex = seat % configPool.length;
     const config = configPool[configIndex];
     const playerId = `p${seat + 1}`;
     playerConfigs.push({
@@ -267,6 +263,22 @@ function createPlayers(
 function main(): void {
   const options = parseArgs(process.argv.slice(2));
   const configPool = buildConfigPool(options.configPaths);
+  const { playerConfigs, configByPlayerId } = createPlayers(options.players, configPool);
+  const strategyByPlayerId = Object.fromEntries(
+    playerConfigs.map((player) => [
+      player.id,
+      createBotStrategy(
+        configByPlayerId[player.id],
+        `${configByPlayerId[player.id].botType}-${configByPlayerId[player.id].id}`,
+      ),
+    ]),
+  );
+  const participantKeyByPlayerId = Object.fromEntries(
+    playerConfigs.map((player) => [player.id, configByPlayerId[player.id].key]),
+  );
+  const participantLabelByKey = Object.fromEntries(
+    configPool.map((config) => [config.key, config.label]),
+  );
 
   const statsByConfigKey = new Map<string, ConfigStats>();
   for (const config of configPool) {
@@ -282,109 +294,76 @@ function main(): void {
   let incompleteGames = 0;
   const stalls: StallRecord[] = [];
   const perGameInstrumentation: PerGameInstrumentation[] = [];
+  const evaluation = runHeadlessBotEvaluation(playerConfigs, {
+    rounds: options.rounds,
+    rotateSeats: true,
+    maxTurns: options.maxTurns,
+    maxStepsPerTurn: options.maxStepsPerTurn,
+    strategyByPlayerId,
+    participantKeyByPlayerId,
+    participantLabelByKey,
+  });
+  totalGames = evaluation.totalGames;
+  incompleteGames = evaluation.incompleteGames;
 
-  for (let round = 0; round < options.rounds; round += 1) {
-    for (let rotation = 0; rotation < options.players; rotation += 1) {
-      const { playerConfigs, configByPlayerId } = createPlayers(
-        options.players,
-        configPool,
-        rotation,
-      );
-      const strategyByPlayerId = Object.fromEntries(
-        playerConfigs.map((player) => [
-          player.id,
-          createBotStrategy(
-            configByPlayerId[player.id],
-            `${configByPlayerId[player.id].botType}-${configByPlayerId[player.id].id}`,
-          ),
-        ]),
-      );
-      resetHeadlessBotInstrumentation();
-      Object.values(strategyByPlayerId).forEach((strategy) =>
-        resetBotCoreInstrumentation(strategy),
-      );
-
-      const result = runHeadlessBotMatch(playerConfigs, {
-        strategyByPlayerId,
-        maxTurns: options.maxTurns,
-        maxStepsPerTurn: options.maxStepsPerTurn,
+  for (const game of evaluation.games) {
+    if (!game.completed) {
+      stalls.push({
+        round: game.round,
+        rotation: game.rotation,
+        reason: game.stallReason ?? 'Unknown stall reason',
+        seatConfigs: game.seats.map((seat) => seat.participantLabel),
       });
-      totalGames += 1;
-      if (!result.completed) {
-        incompleteGames += 1;
-        stalls.push({
-          round: round + 1,
-          rotation: rotation + 1,
-          reason: result.stallReason ?? 'Unknown stall reason',
-          seatConfigs: playerConfigs.map((player) => configByPlayerId[player.id].label),
-        });
-      }
-
-      const summary = getHeadlessScoreSummary(result.finalGame);
-      const scoreByPlayerId = Object.fromEntries(
-        summary.map((entry) => [entry.playerId, entry.total]),
-      );
-      const headlessInstrumentation = getHeadlessBotInstrumentation();
-      const coreByPlayerId = Object.fromEntries(
-        playerConfigs.map((player) => [
-          player.id,
-          getBotCoreInstrumentation(strategyByPlayerId[player.id]),
-        ]),
-      );
-      const byConfig: PerGameConfigInstrumentation[] = playerConfigs.map((player) => {
-        const playerCore = coreByPlayerId[player.id];
-        const actorStats = playerCore.byActorId[player.id];
-        const actorMetrics = actorStats?.metrics ?? {};
-        const config = configByPlayerId[player.id];
-        return {
-          playerId: player.id,
-          playerName: player.name,
-          configKey: config.key,
-          configLabel: config.label,
-          strategyId: actorStats?.strategyId ?? 'unknown',
-          runBotTurnCalls: getMetric(actorMetrics, 'runBotTurnCalls'),
-          runBotTurnMsTotal: getMetric(actorMetrics, 'runBotTurnMsTotal'),
-          runBotStepCalls: getMetric(actorMetrics, 'runBotStepCalls'),
-          runBotStepMsTotal: getMetric(actorMetrics, 'runBotStepMsTotal'),
-          strategyChooseActionCalls: getMetric(actorMetrics, 'strategyChooseActionCalls'),
-          strategyChooseActionMsTotal: getMetric(actorMetrics, 'strategyChooseActionMsTotal'),
-          applyBotActionAttempts: getMetric(actorMetrics, 'applyBotActionAttempts'),
-          applyBotActionSuccesses: getMetric(actorMetrics, 'applyBotActionSuccesses'),
-          fallbackSelections: getMetric(actorMetrics, 'fallbackSelections'),
-          fallbackApplyAttempts: getMetric(actorMetrics, 'fallbackApplyAttempts'),
-          extensionMetrics: getExtensionMetrics(actorMetrics),
-        };
-      });
-      perGameInstrumentation.push({
-        round: round + 1,
-        rotation: rotation + 1,
-        completed: result.completed,
-        turnsPlayed: result.turnsPlayed,
-        stallReason: result.stallReason,
-        scoresByPlayerId: scoreByPlayerId,
-        byConfig,
-        headless: headlessInstrumentation,
-        coreByPlayerId,
-      });
-
-      const topScore = Math.max(...summary.map((entry) => entry.total));
-      const topPlayers = summary.filter((entry) => entry.total === topScore);
-      const sharedWin = topPlayers.length > 0 ? 1 / topPlayers.length : 0;
-
-      for (const entry of summary) {
-        const config = configByPlayerId[entry.playerId];
-        const stats = statsByConfigKey.get(config.key);
-        if (!stats) {
-          continue;
-        }
-        stats.appearances += 1;
-        stats.totalVp += entry.total;
-        if (entry.total === topScore) {
-          stats.topFinishes += 1;
-          stats.winShare += sharedWin;
-        }
-      }
     }
+    const scoreByPlayerId = Object.fromEntries(
+      game.seats.map((seat) => [seat.playerId, seat.score]),
+    );
+    const coreByPlayerId = game.instrumentation?.coreByPlayerId ?? {};
+    const byConfig: PerGameConfigInstrumentation[] = game.seats.map((seat) => {
+      const playerCore = coreByPlayerId[seat.playerId];
+      const actorStats = playerCore?.byActorId?.[seat.playerId];
+      const actorMetrics = actorStats?.metrics ?? {};
+      return {
+        playerId: seat.playerId,
+        playerName: seat.playerName,
+        configKey: seat.participantKey,
+        configLabel: seat.participantLabel,
+        strategyId: actorStats?.strategyId ?? seat.strategyId,
+        runBotTurnCalls: getMetric(actorMetrics, 'runBotTurnCalls'),
+        runBotTurnMsTotal: getMetric(actorMetrics, 'runBotTurnMsTotal'),
+        runBotStepCalls: getMetric(actorMetrics, 'runBotStepCalls'),
+        runBotStepMsTotal: getMetric(actorMetrics, 'runBotStepMsTotal'),
+        strategyChooseActionCalls: getMetric(actorMetrics, 'strategyChooseActionCalls'),
+        strategyChooseActionMsTotal: getMetric(actorMetrics, 'strategyChooseActionMsTotal'),
+        applyBotActionAttempts: getMetric(actorMetrics, 'applyBotActionAttempts'),
+        applyBotActionSuccesses: getMetric(actorMetrics, 'applyBotActionSuccesses'),
+        fallbackSelections: getMetric(actorMetrics, 'fallbackSelections'),
+        fallbackApplyAttempts: getMetric(actorMetrics, 'fallbackApplyAttempts'),
+        extensionMetrics: getExtensionMetrics(actorMetrics),
+      };
+    });
+    perGameInstrumentation.push({
+      round: game.round,
+      rotation: game.rotation,
+      completed: game.completed,
+      turnsPlayed: game.turnsPlayed,
+      stallReason: game.stallReason,
+      scoresByPlayerId: scoreByPlayerId,
+      byConfig,
+      headless: game.instrumentation.headless,
+      coreByPlayerId,
+    });
+  }
+
+  for (const standing of evaluation.standings) {
+    const stats = statsByConfigKey.get(standing.key);
+    if (!stats) {
+      continue;
+    }
+    stats.appearances = standing.appearances;
+    stats.totalVp = standing.totalVp;
+    stats.topFinishes = standing.topFinishes;
+    stats.winShare = standing.winShare;
   }
 
   const standings: Standing[] = configPool.map((config) => {

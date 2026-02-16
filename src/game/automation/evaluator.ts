@@ -1,11 +1,21 @@
 import { PlayerConfig } from '../game';
 import {
+  getHeadlessBotInstrumentation,
+  HeadlessBotGameResult,
+  HeadlessBotInstrumentation,
   getHeadlessScoreSummary,
   HeadlessBotGameOptions,
+  resetHeadlessBotInstrumentation,
   runHeadlessBotMatch,
 } from './headless';
 import { heuristicStandardBot } from '../bot/heuristic';
 import { BotStrategy } from '../bot/types';
+import { PlayerEndStateSummary } from '../reporting';
+import {
+  BotCoreInstrumentation,
+  getBotCoreInstrumentation,
+  resetBotCoreInstrumentation,
+} from './runner';
 
 export type HeadlessBotEvaluationOptions = Omit<HeadlessBotGameOptions, 'strategyByPlayerId'> & {
   rounds?: number;
@@ -13,6 +23,8 @@ export type HeadlessBotEvaluationOptions = Omit<HeadlessBotGameOptions, 'strateg
   strategyByPlayerId?: Record<string, BotStrategy>;
   participantKeyByPlayerId?: Record<string, string>;
   participantLabelByKey?: Record<string, string>;
+  beforeGame?: (context: HeadlessBotEvaluationGameContext) => void;
+  afterGame?: (context: HeadlessBotEvaluationGameContext) => void;
 };
 
 export type HeadlessBotEvaluationStanding = {
@@ -45,6 +57,7 @@ export type HeadlessBotEvaluationGameResult = {
   winners: string[];
   seats: HeadlessBotEvaluationSeatResult[];
   actionLog: string[];
+  instrumentation: HeadlessBotEvaluationGameInstrumentation;
 };
 
 export type HeadlessBotEvaluationResult = {
@@ -54,6 +67,22 @@ export type HeadlessBotEvaluationResult = {
   incompleteGames: number;
   standings: HeadlessBotEvaluationStanding[];
   games: HeadlessBotEvaluationGameResult[];
+};
+
+export type HeadlessBotEvaluationGameInstrumentation = {
+  headless: HeadlessBotInstrumentation;
+  coreByPlayerId: Record<string, BotCoreInstrumentation>;
+};
+
+export type HeadlessBotEvaluationGameContext = {
+  round: number;
+  rotation: number;
+  players: PlayerConfig[];
+  strategyByPlayerId: Record<string, BotStrategy>;
+  participantByPlayerId: Record<string, { key: string; label: string }>;
+  result?: HeadlessBotGameResult;
+  summary?: PlayerEndStateSummary[];
+  seats?: HeadlessBotEvaluationSeatResult[];
 };
 
 type SeatAssignment = {
@@ -166,6 +195,18 @@ export function runHeadlessBotEvaluation(
         baseAssignments,
         rotation,
       );
+      const baseContext: HeadlessBotEvaluationGameContext = {
+        round: round + 1,
+        rotation: rotation + 1,
+        players,
+        strategyByPlayerId,
+        participantByPlayerId,
+      };
+      resetHeadlessBotInstrumentation();
+      Object.values(strategyByPlayerId).forEach((strategy) =>
+        resetBotCoreInstrumentation(strategy),
+      );
+      options.beforeGame?.(baseContext);
       const game = runHeadlessBotMatch(players, {
         maxTurns: options.maxTurns,
         maxStepsPerTurn: options.maxStepsPerTurn,
@@ -192,6 +233,21 @@ export function runHeadlessBotEvaluation(
           score: entry.total,
         };
       });
+      const instrumentation = {
+        headless: getHeadlessBotInstrumentation(),
+        coreByPlayerId: Object.fromEntries(
+          players.map((player) => [
+            player.id,
+            getBotCoreInstrumentation(strategyByPlayerId[player.id]),
+          ]),
+        ),
+      };
+      options.afterGame?.({
+        ...baseContext,
+        result: game,
+        summary,
+        seats,
+      });
 
       for (const seat of seats) {
         const stats = statsByParticipant.get(seat.participantKey);
@@ -215,6 +271,7 @@ export function runHeadlessBotEvaluation(
         winners: game.winners,
         seats,
         actionLog: game.actionLog,
+        instrumentation,
       });
     }
   }

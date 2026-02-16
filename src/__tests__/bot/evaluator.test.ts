@@ -59,6 +59,8 @@ describe('headless bot evaluation runner', () => {
     expect(result.totalGames).toBe(3);
     expect(result.games).toHaveLength(3);
     expect(result.standings).toHaveLength(2);
+    expect(result.games[0].instrumentation).toBeDefined();
+    expect(result.games[0].instrumentation?.headless.runHeadlessBotGameCalls).toBe(1);
     randomSpy.mockRestore();
   });
 
@@ -71,4 +73,3 @@ describe('headless bot evaluation runner', () => {
     ).toThrow(/bot-only players/i);
   });
 });
-

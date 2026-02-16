@@ -6,7 +6,7 @@ import Piscina from 'piscina';
 import {
   HEURISTIC_STANDARD_CONFIG,
 } from '../src/game/bot/index.ts';
-import { getHeadlessScoreSummary, runHeadlessBotMatch } from '../src/game/automation/index.ts';
+import { runHeadlessBotEvaluation } from '../src/game/automation/index.ts';
 import { PlayerConfig } from '../src/game/index.ts';
 import {
   average,
@@ -351,67 +351,6 @@ function createPlayersForGame(
   return { players, strategyByPlayerId };
 }
 
-function evaluateSingleGame(
-  players: PlayerConfig[],
-  strategyByPlayerId: Record<string, StrategyLabel>,
-  candidateA: LoadedBotConfig,
-  candidateB: LoadedBotConfig,
-  options: CliOptions,
-  profile: TournamentProfile,
-): GameEvaluation {
-  const strategyByPlayer = Object.fromEntries(
-    players.map((player) => [
-      player.id,
-      strategyByPlayerId[player.id] === 'A'
-        ? createBotStrategy(candidateA, `candidate-a-${candidateA.id}`)
-        : createBotStrategy(candidateB, `baseline-b-${candidateB.id}`),
-    ]),
-  );
-
-  const headlessStart = performance.now();
-  const result = runHeadlessBotMatch(players, {
-    strategyByPlayerId: strategyByPlayer,
-    maxTurns: options.maxTurns,
-    maxStepsPerTurn: options.maxStepsPerTurn,
-  });
-  profile.runHeadlessMs += performance.now() - headlessStart;
-
-  const summaryStart = performance.now();
-  const summary = getHeadlessScoreSummary(result.finalGame);
-  profile.scoreSummaryMs += performance.now() - summaryStart;
-
-  const postStart = performance.now();
-  const scoresA: number[] = [];
-  const scoresB: number[] = [];
-  for (const entry of summary) {
-    const strategy = strategyByPlayerId[entry.playerId];
-    if (strategy === 'A') {
-      scoresA.push(entry.total);
-    } else if (strategy === 'B') {
-      scoresB.push(entry.total);
-    }
-  }
-
-  const averageScoreA = average(scoresA);
-  const averageScoreB = average(scoresB);
-  const delta = averageScoreA - averageScoreB;
-  const winner: StrategyLabel | 'Tie' =
-    delta > 0 ? 'A' : delta < 0 ? 'B' : 'Tie';
-  profile.postGameProcessingMs += performance.now() - postStart;
-  profile.evaluateSingleGameCalls += 1;
-  profile.gamesSimulated += 1;
-
-  return {
-    averageScoreA,
-    averageScoreB,
-    deltaAminusB: delta,
-    winner,
-    completed: result.completed,
-    turnsPlayed: result.turnsPlayed,
-    stallReason: result.stallReason,
-  };
-}
-
 function summarizeEvaluations(
   evaluations: GameEvaluation[],
   options: CliOptions,
@@ -461,29 +400,70 @@ function evaluateConfigVsBaseline(
   options: CliOptions,
   profile: TournamentProfile,
 ): EvaluationSummary {
+  const baseSetup = createPlayersForGame(options.players, 0);
+  const strategyByPlayer = Object.fromEntries(
+    baseSetup.players.map((player) => [
+      player.id,
+      baseSetup.strategyByPlayerId[player.id] === 'A'
+        ? createBotStrategy(candidateA, `candidate-a-${candidateA.id}`)
+        : createBotStrategy(candidateB, `baseline-b-${candidateB.id}`),
+    ]),
+  );
+  const participantKeyByPlayerId = Object.fromEntries(
+    baseSetup.players.map((player) => [player.id, baseSetup.strategyByPlayerId[player.id]]),
+  );
+  const participantLabelByKey = {
+    A: `A:${candidateA.name}`,
+    B: `B:${candidateB.name}`,
+  };
+  const rounds = Math.ceil(games / options.players);
+  const headlessStart = performance.now();
+  const evaluation = runHeadlessBotEvaluation(baseSetup.players, {
+    rounds,
+    rotateSeats: true,
+    maxTurns: options.maxTurns,
+    maxStepsPerTurn: options.maxStepsPerTurn,
+    strategyByPlayerId: strategyByPlayer,
+    participantKeyByPlayerId,
+    participantLabelByKey,
+  });
+  profile.runHeadlessMs += performance.now() - headlessStart;
   const evaluations: GameEvaluation[] = [];
   const stallOccurrences: EvaluationSummary['stallOccurrences'] = [];
-  for (let gameIndex = 0; gameIndex < games; gameIndex += 1) {
-    const rotation = gameIndex % options.players;
-    const round = Math.floor(gameIndex / options.players) + 1;
-    const gameSetup = createPlayersForGame(options.players, rotation);
-    const evaluation = evaluateSingleGame(
-      gameSetup.players,
-      gameSetup.strategyByPlayerId,
-      candidateA,
-      baselineCandidate,
-      options,
-      profile,
-    );
-    evaluations.push(evaluation);
-    if (!evaluation.completed) {
+  const gamesToProcess = evaluation.games.slice(0, games);
+  const postStart = performance.now();
+  for (const game of gamesToProcess) {
+    const scoresA = game.seats
+      .filter((seat) => seat.participantKey === 'A')
+      .map((seat) => seat.score);
+    const scoresB = game.seats
+      .filter((seat) => seat.participantKey === 'B')
+      .map((seat) => seat.score);
+    const averageScoreA = average(scoresA);
+    const averageScoreB = average(scoresB);
+    const delta = averageScoreA - averageScoreB;
+    const winner: StrategyLabel | 'Tie' = delta > 0 ? 'A' : delta < 0 ? 'B' : 'Tie';
+    const gameEvaluation: GameEvaluation = {
+      averageScoreA,
+      averageScoreB,
+      deltaAminusB: delta,
+      winner,
+      completed: game.completed,
+      turnsPlayed: game.turnsPlayed,
+      stallReason: game.stallReason,
+    };
+    evaluations.push(gameEvaluation);
+    if (!game.completed) {
       stallOccurrences.push({
-        round,
-        rotation: rotation + 1,
-        reason: evaluation.stallReason ?? 'Unknown stall reason',
+        round: game.round,
+        rotation: game.rotation,
+        reason: game.stallReason ?? 'Unknown stall reason',
       });
     }
   }
+  profile.postGameProcessingMs += performance.now() - postStart;
+  profile.evaluateSingleGameCalls += gamesToProcess.length;
+  profile.gamesSimulated += gamesToProcess.length;
 
   return summarizeEvaluations(evaluations, options, stallOccurrences);
 }
