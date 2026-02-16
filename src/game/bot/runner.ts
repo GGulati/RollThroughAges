@@ -1,4 +1,5 @@
 import { isGameOver } from '../engine';
+import { autoAdvanceForcedPhases } from '../engine';
 import { GameState } from '../game';
 import { BotAction, BotContext, BotStrategy } from './types';
 import { getLegalBotActions } from './candidates';
@@ -53,16 +54,17 @@ function findRequestedAction(
 }
 
 export function runBotStep(game: GameState, strategy: BotStrategy): RunBotStepResult {
-  const phaseBefore = game.state.phase;
-  const legalActions = getLegalBotActions(game);
+  const normalizedGame = autoAdvanceForcedPhases(game);
+  const phaseBefore = normalizedGame.state.phase;
+  const legalActions = getLegalBotActions(normalizedGame);
   if (legalActions.length === 0) {
     return {
-      game,
+      game: normalizedGame,
       applied: false,
       action: null,
       trace: {
         phaseBefore,
-        phaseAfter: game.state.phase,
+        phaseAfter: normalizedGame.state.phase,
         requestedAction: null,
         appliedAction: null,
         usedFallback: false,
@@ -71,7 +73,7 @@ export function runBotStep(game: GameState, strategy: BotStrategy): RunBotStepRe
     };
   }
 
-  const context: BotContext = { game };
+  const context: BotContext = { game: normalizedGame };
   const requestedAction = strategy.chooseAction(context);
   const matchedRequestedAction = findRequestedAction(legalActions, requestedAction);
   const primaryAction = matchedRequestedAction ?? chooseFallbackAction(legalActions);
@@ -91,7 +93,7 @@ export function runBotStep(game: GameState, strategy: BotStrategy): RunBotStepRe
     };
   }
 
-  const primaryAttempt = applyBotAction(game, primaryAction);
+  const primaryAttempt = applyBotAction(normalizedGame, primaryAction);
   if (primaryAttempt.applied) {
     return {
       game: primaryAttempt.game,
@@ -111,7 +113,7 @@ export function runBotStep(game: GameState, strategy: BotStrategy): RunBotStepRe
     if (botActionKey(action) === botActionKey(primaryAction)) {
       continue;
     }
-    const fallbackAttempt = applyBotAction(game, action);
+    const fallbackAttempt = applyBotAction(normalizedGame, action);
     if (fallbackAttempt.applied) {
       return {
         game: fallbackAttempt.game,
@@ -129,7 +131,7 @@ export function runBotStep(game: GameState, strategy: BotStrategy): RunBotStepRe
   }
 
   return {
-    game,
+    game: normalizedGame,
     applied: false,
     action: null,
     trace: {

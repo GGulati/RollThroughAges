@@ -335,6 +335,18 @@ describe('gameSlice', () => {
     randomSpy.mockRestore();
   });
 
+  it('auto-advances no-action roll states at game start', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.2); // all skull dice
+    const state = reduce(undefined, startGame({ players: PLAYERS }));
+
+    expect(state.lastError).toBeNull();
+    expect(state.game).not.toBeNull();
+    expect(state.game!.state.phase).not.toBe(GamePhase.RollDice);
+    expect(state.game!.state.phase).not.toBe(GamePhase.DecideDice);
+    expect(state.game!.state.phase).not.toBe(GamePhase.ResolveProduction);
+    randomSpy.mockRestore();
+  });
+
   it('does not auto-skip development when exchange effects can generate coins', () => {
     let state = reduce(undefined, startGame({ players: PLAYERS }));
     const game = state.game!;

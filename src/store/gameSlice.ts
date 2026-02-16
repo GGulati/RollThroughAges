@@ -9,7 +9,10 @@ import {
   exchangeResources as exchangeResourcesEngine,
   getCityWorkerCost,
   getBuildOptions,
-  getAvailableExchangeEffects,
+  autoAdvanceForcedPhases,
+  getPostDevelopmentCompletionPhase,
+  getNextPostDevelopmentPhase,
+  resolveProductionPhase,
   areAllDiceLocked,
   countPendingChoices,
   createGame,
@@ -19,14 +22,12 @@ import {
   getMaxRollsAllowed,
   getSingleDieRerollsAllowed,
   getAvailableDevelopments,
-  getTotalPurchasingPower,
   keepDie as keepDieEngine,
   performRoll,
   purchaseDevelopment,
   performSingleDieReroll as performSingleDieRerollEngine,
   redo as redoEngine,
   resolveDiscardGoods,
-  resolveProduction as resolveProductionEngine,
   spendWorkers,
   selectProduction as selectProductionEngine,
   undo as undoEngine,
@@ -164,119 +165,6 @@ function applyMutationWithoutHistory(
   };
 }
 
-function getNextPostDevelopmentPhase(
-  game: GameState,
-  activePlayer = game.state.players[game.state.activePlayerIndex],
-  turn = game.state.turn,
-): GamePhase {
-  const potentialExchangeCoinGain = getAvailableExchangeEffects(
-    activePlayer,
-    game.settings,
-  ).reduce((sum, exchange) => {
-    if (exchange.to.toLowerCase() !== 'coins') {
-      return sum;
-    }
-    const sourceAmount = getExchangeResourceAmount(
-      activePlayer,
-      turn,
-      game.settings,
-      exchange.from,
-    );
-    return sourceAmount > 0 ? sum + sourceAmount * exchange.rate : sum;
-  }, 0);
-  const potentialPurchasingPower =
-    getTotalPurchasingPower(activePlayer, turn) + potentialExchangeCoinGain;
-  const canAffordAnyDevelopment = getAvailableDevelopments(
-    activePlayer,
-    game.settings,
-  ).some((development) => potentialPurchasingPower >= development.cost);
-  if (canAffordAnyDevelopment) {
-    return GamePhase.Development;
-  }
-
-  if (potentialExchangeCoinGain > 0) {
-    return GamePhase.Development;
-  }
-
-  const overflow = calculateGoodsOverflow(
-    activePlayer.goods,
-    activePlayer,
-    game.settings,
-  );
-  return overflow > 0 ? GamePhase.DiscardGoods : GamePhase.EndTurn;
-}
-
-function getPostDevelopmentCompletionPhase(
-  activePlayer: GameStateSnapshot['players'][number],
-  settings: GameState['settings'],
-): GamePhase {
-  const overflow = calculateGoodsOverflow(activePlayer.goods, activePlayer, settings);
-  return overflow > 0 ? GamePhase.DiscardGoods : GamePhase.EndTurn;
-}
-
-function resolveProductionMutation(game: GameState): GameState {
-  const resolved = resolveProductionEngine(
-    game.state,
-    game.state.players,
-    game.settings,
-  );
-  const nextPhase =
-    resolved.turnProduction.workers > 0
-      ? GamePhase.Build
-      : getNextPostDevelopmentPhase(
-          game,
-          resolved.players[game.state.activePlayerIndex],
-          {
-            ...game.state.turn,
-            pendingChoices: 0,
-            turnProduction: resolved.turnProduction,
-          },
-        );
-
-  return {
-    ...game,
-    state: {
-      ...game.state,
-      players: resolved.players,
-      phase: nextPhase,
-        turn: {
-          ...game.state.turn,
-          pendingChoices: 0,
-          foodShortage: resolved.foodShortage,
-          turnProduction: resolved.turnProduction,
-        },
-      },
-  };
-}
-
-function autoResolveProductionIfReady(game: GameState): GameState {
-  if (
-    game.state.phase !== GamePhase.DecideDice &&
-    game.state.phase !== GamePhase.ResolveProduction
-  ) {
-    return game;
-  }
-
-  const pendingChoices = countPendingChoices(
-    game.state.turn.dice,
-    game.settings,
-  );
-  if (pendingChoices > 0) {
-    return {
-      ...game,
-      state: {
-        ...game.state,
-        turn: {
-          ...game.state.turn,
-          pendingChoices,
-        },
-      },
-    };
-  }
-
-  return resolveProductionMutation(game);
-}
-
 const gameSlice = createSlice({
   name: 'game',
   initialState,
@@ -287,7 +175,7 @@ const gameSlice = createSlice({
       state.actionLog = [];
     },
     startGame: (state, action: PayloadAction<{ players: PlayerConfig[] }>) => {
-      state.game = createGame(action.payload.players);
+      state.game = autoAdvanceForcedPhases(createGame(action.payload.players));
       state.lastError = null;
       state.actionLog = [
         `[System] Game started with ${action.payload.players.length} players: ${action.payload.players
@@ -308,7 +196,7 @@ const gameSlice = createSlice({
         return;
       }
 
-      const resolvedGame = autoResolveProductionIfReady(nextGame);
+      const resolvedGame = autoAdvanceForcedPhases(nextGame);
       const beforeSnapshot = state.game.state;
       const afterSnapshot = resolvedGame.state;
       state.game = resolvedGame;
@@ -403,7 +291,7 @@ const gameSlice = createSlice({
       }
 
       const beforeSnapshot = state.game.state;
-      const endedGame = endTurnEngine(state.game);
+      const endedGame = autoAdvanceForcedPhases(endTurnEngine(state.game));
       state.game = {
         ...endedGame,
         history: [],
@@ -542,7 +430,7 @@ const gameSlice = createSlice({
           },
         };
 
-        return autoResolveProductionIfReady(nextState);
+        return autoAdvanceForcedPhases(nextState);
       });
 
       if (!nextGame) {
@@ -631,7 +519,7 @@ const gameSlice = createSlice({
           },
         };
 
-        return autoResolveProductionIfReady(nextState);
+        return autoAdvanceForcedPhases(nextState);
       });
 
       if (!nextGame) {
@@ -690,9 +578,8 @@ const gameSlice = createSlice({
         return;
       }
 
-      const nextGame = applyMutationWithHistory(
-        state.game,
-        resolveProductionMutation,
+      const nextGame = applyMutationWithHistory(state.game, (game) =>
+        autoAdvanceForcedPhases(resolveProductionPhase(game)),
       );
 
       if (!nextGame) {
@@ -768,7 +655,7 @@ const gameSlice = createSlice({
             ? game.state.phase
             : getNextPostDevelopmentPhase(game, player, turn);
 
-        return {
+        return autoAdvanceForcedPhases({
           ...game,
           state: {
             ...game.state,
@@ -776,7 +663,7 @@ const gameSlice = createSlice({
             players,
             turn,
           },
-        };
+        });
       });
 
       if (!nextGame) {
@@ -862,7 +749,7 @@ const gameSlice = createSlice({
             ? game.state.phase
             : getNextPostDevelopmentPhase(game, player, turn);
 
-        return {
+        return autoAdvanceForcedPhases({
           ...game,
           state: {
             ...game.state,
@@ -870,7 +757,7 @@ const gameSlice = createSlice({
             players,
             turn,
           },
-        };
+        });
       });
 
       if (!nextGame) {
@@ -976,18 +863,18 @@ const gameSlice = createSlice({
 
         const players = [...game.state.players];
         players[activeIndex] = result.player;
-        return {
+        return autoAdvanceForcedPhases({
           ...game,
           state: {
             ...game.state,
-            phase: getPostDevelopmentCompletionPhase(result.player, game.settings),
+            phase: getPostDevelopmentCompletionPhase(result.player, game),
             players,
             turn: {
               ...result.turn,
               developmentPurchased: true,
             },
           },
-        };
+        });
       });
 
       if (!nextGame) {
@@ -1030,21 +917,18 @@ const gameSlice = createSlice({
 
       const nextGame = applyMutationWithHistory(state.game, (game) => {
         const activePlayer = game.state.players[game.state.activePlayerIndex];
-        const nextPhase = getPostDevelopmentCompletionPhase(
-          activePlayer,
-          game.settings,
-        );
+        const nextPhase = getPostDevelopmentCompletionPhase(activePlayer, game);
         if (nextPhase === game.state.phase) {
           return game;
         }
 
-        return {
+        return autoAdvanceForcedPhases({
           ...game,
           state: {
             ...game.state,
             phase: nextPhase,
           },
-        };
+        });
       });
 
       if (!nextGame) {
@@ -1115,7 +999,7 @@ const gameSlice = createSlice({
         }
         const players = [...game.state.players];
         players[activeIndex] = result.player;
-        return {
+        return autoAdvanceForcedPhases({
           ...game,
           state: {
             ...game.state,
@@ -1123,7 +1007,7 @@ const gameSlice = createSlice({
             players,
             turn: result.turn,
           },
-        };
+        });
       });
 
       if (!nextGame) {

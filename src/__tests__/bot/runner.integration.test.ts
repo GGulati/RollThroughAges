@@ -45,4 +45,16 @@ describe('bot runner integration', () => {
 
     randomSpy.mockRestore();
   });
+
+  it('does not stall when roll phase has no legal actions', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.2); // all skull dice
+    const game = createGame(PLAYERS);
+
+    const result = runBotTurn(game, heuristicStandardBot);
+
+    expect(result.completedTurn).toBe(true);
+    expect(result.steps).toBeGreaterThan(0);
+    expect(result.game.state.activePlayerIndex).toBe(1);
+    randomSpy.mockRestore();
+  });
 });

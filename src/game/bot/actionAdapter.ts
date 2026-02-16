@@ -1,24 +1,23 @@
-import { GamePhase, GameState, GameSettings, PlayerState } from '../game';
+import { GamePhase, GameState } from '../game';
 import {
   allocateWorkersToCity,
   allocateWorkersToMonument,
   areAllDiceLocked,
-  calculateGoodsOverflow,
   countPendingChoices,
   endTurn,
   exchangeResources,
   findGoodsTypeByName,
   getAvailableDevelopments,
-  getAvailableExchangeEffects,
   getBuildOptions,
-  getExchangeResourceAmount,
-  getTotalPurchasingPower,
   keepDie as keepDieEngine,
+  autoAdvanceForcedPhases,
+  getPostDevelopmentCompletionPhase,
+  getNextPostDevelopmentPhase,
+  resolveProductionPhase,
   performRoll,
   performSingleDieReroll,
   purchaseDevelopment,
   resolveDiscardGoods,
-  resolveProduction,
   selectProduction,
   spendWorkers,
 } from '../engine';
@@ -30,118 +29,9 @@ type ApplyBotActionResult = {
   error?: string;
 };
 
-function getPostDevelopmentCompletionPhase(
-  activePlayer: PlayerState,
-  settings: GameSettings,
-): GamePhase {
-  const overflow = calculateGoodsOverflow(activePlayer.goods, activePlayer, settings);
-  return overflow > 0 ? GamePhase.DiscardGoods : GamePhase.EndTurn;
-}
-
-function getNextPostDevelopmentPhase(
-  game: GameState,
-  activePlayer = game.state.players[game.state.activePlayerIndex],
-  turn = game.state.turn,
-): GamePhase {
-  const potentialExchangeCoinGain = getAvailableExchangeEffects(
-    activePlayer,
-    game.settings,
-  ).reduce((sum, exchange) => {
-    if (exchange.to.toLowerCase() !== 'coins') {
-      return sum;
-    }
-    const sourceAmount = getExchangeResourceAmount(
-      activePlayer,
-      turn,
-      game.settings,
-      exchange.from,
-    );
-    return sourceAmount > 0 ? sum + sourceAmount * exchange.rate : sum;
-  }, 0);
-  const potentialPurchasingPower =
-    getTotalPurchasingPower(activePlayer, turn) + potentialExchangeCoinGain;
-  const canAffordAnyDevelopment = getAvailableDevelopments(
-    activePlayer,
-    game.settings,
-  ).some((development) => potentialPurchasingPower >= development.cost);
-  if (canAffordAnyDevelopment || potentialExchangeCoinGain > 0) {
-    return GamePhase.Development;
-  }
-
-  const overflow = calculateGoodsOverflow(
-    activePlayer.goods,
-    activePlayer,
-    game.settings,
-  );
-  return overflow > 0 ? GamePhase.DiscardGoods : GamePhase.EndTurn;
-}
-
-function resolveProductionMutation(game: GameState): GameState {
-  const resolved = resolveProduction(
-    game.state,
-    game.state.players,
-    game.settings,
-  );
-  const nextPhase =
-    resolved.turnProduction.workers > 0
-      ? GamePhase.Build
-      : getNextPostDevelopmentPhase(
-          game,
-          resolved.players[game.state.activePlayerIndex],
-          {
-            ...game.state.turn,
-            pendingChoices: 0,
-            turnProduction: resolved.turnProduction,
-          },
-        );
-
-  return {
-    ...game,
-    state: {
-      ...game.state,
-      players: resolved.players,
-      phase: nextPhase,
-      turn: {
-        ...game.state.turn,
-        pendingChoices: 0,
-        foodShortage: resolved.foodShortage,
-        turnProduction: resolved.turnProduction,
-      },
-    },
-  };
-}
-
-function autoResolveProductionIfReady(game: GameState): GameState {
-  if (
-    game.state.phase !== GamePhase.DecideDice &&
-    game.state.phase !== GamePhase.ResolveProduction
-  ) {
-    return game;
-  }
-
-  const pendingChoices = countPendingChoices(
-    game.state.turn.dice,
-    game.settings,
-  );
-  if (pendingChoices > 0) {
-    return {
-      ...game,
-      state: {
-        ...game.state,
-        turn: {
-          ...game.state.turn,
-          pendingChoices,
-        },
-      },
-    };
-  }
-
-  return resolveProductionMutation(game);
-}
-
 export function applyBotAction(game: GameState, action: BotAction): ApplyBotActionResult {
   if (action.type === 'rollDice') {
-    const nextGame = autoResolveProductionIfReady(performRoll(game));
+    const nextGame = autoAdvanceForcedPhases(performRoll(game));
     return nextGame === game
       ? { applied: false, game, error: 'Roll not allowed.' }
       : { applied: true, game: nextGame };
@@ -165,7 +55,7 @@ export function applyBotAction(game: GameState, action: BotAction): ApplyBotActi
     const nextDice = keepDieEngine(game.state.turn.dice, action.dieIndex);
     const shouldAdvance = areAllDiceLocked(nextDice);
     const nextPhase = shouldAdvance ? GamePhase.DecideDice : game.state.phase;
-    const nextGame = autoResolveProductionIfReady({
+    const nextGame = autoAdvanceForcedPhases({
       ...game,
       state: {
         ...game.state,
@@ -210,7 +100,7 @@ export function applyBotAction(game: GameState, action: BotAction): ApplyBotActi
       pendingChoices === 0 && game.state.phase === GamePhase.DecideDice
         ? GamePhase.ResolveProduction
         : game.state.phase;
-    const nextGame = autoResolveProductionIfReady({
+    const nextGame = autoAdvanceForcedPhases({
       ...game,
       state: {
         ...game.state,
@@ -239,7 +129,7 @@ export function applyBotAction(game: GameState, action: BotAction): ApplyBotActi
     if (pendingChoices > 0) {
       return { applied: false, game, error: 'Production choices are still pending.' };
     }
-    return { applied: true, game: resolveProductionMutation(game) };
+    return { applied: true, game: autoAdvanceForcedPhases(resolveProductionPhase(game)) };
   }
 
   if (action.type === 'buildCity') {
@@ -277,7 +167,7 @@ export function applyBotAction(game: GameState, action: BotAction): ApplyBotActi
         : getNextPostDevelopmentPhase(game, player, turn);
     return {
       applied: true,
-      game: {
+      game: autoAdvanceForcedPhases({
         ...game,
         state: {
           ...game.state,
@@ -285,7 +175,7 @@ export function applyBotAction(game: GameState, action: BotAction): ApplyBotActi
           turn,
           phase,
         },
-      },
+      }),
     };
   }
 
@@ -325,7 +215,7 @@ export function applyBotAction(game: GameState, action: BotAction): ApplyBotActi
         : getNextPostDevelopmentPhase(game, player, turn);
     return {
       applied: true,
-      game: {
+      game: autoAdvanceForcedPhases({
         ...game,
         state: {
           ...game.state,
@@ -333,7 +223,7 @@ export function applyBotAction(game: GameState, action: BotAction): ApplyBotActi
           turn,
           phase,
         },
-      },
+      }),
     };
   }
 
@@ -379,18 +269,18 @@ export function applyBotAction(game: GameState, action: BotAction): ApplyBotActi
     players[activeIndex] = result.player;
     return {
       applied: true,
-      game: {
+      game: autoAdvanceForcedPhases({
         ...game,
         state: {
           ...game.state,
           players,
-          phase: getPostDevelopmentCompletionPhase(result.player, game.settings),
+          phase: getPostDevelopmentCompletionPhase(result.player, game),
           turn: {
             ...result.turn,
             developmentPurchased: true,
           },
         },
-      },
+      }),
     };
   }
 
@@ -399,16 +289,16 @@ export function applyBotAction(game: GameState, action: BotAction): ApplyBotActi
       return { applied: false, game, error: 'Skip development not allowed in phase.' };
     }
     const activePlayer = game.state.players[game.state.activePlayerIndex];
-    const phase = getPostDevelopmentCompletionPhase(activePlayer, game.settings);
+    const phase = getPostDevelopmentCompletionPhase(activePlayer, game);
     return {
       applied: true,
-      game: {
+      game: autoAdvanceForcedPhases({
         ...game,
         state: {
           ...game.state,
           phase,
         },
-      },
+      }),
     };
   }
 
@@ -440,7 +330,7 @@ export function applyBotAction(game: GameState, action: BotAction): ApplyBotActi
     players[activeIndex] = result.player;
     return {
       applied: true,
-      game: {
+      game: autoAdvanceForcedPhases({
         ...game,
         state: {
           ...game.state,
@@ -448,7 +338,7 @@ export function applyBotAction(game: GameState, action: BotAction): ApplyBotActi
           phase: getNextPostDevelopmentPhase(game, result.player, result.turn),
           turn: result.turn,
         },
-      },
+      }),
     };
   }
 

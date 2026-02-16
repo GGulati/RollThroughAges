@@ -7,3 +7,4 @@ export * from './developmentEngine';
 export * from './scoreEngine';
 export * from './reportingEngine';
 export * from './gameEngine';
+export * from './phaseTransitionEngine';
