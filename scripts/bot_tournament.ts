@@ -21,8 +21,8 @@ type CliOptions = {
   candidatesDir: string;
   baselinePath?: string;
   players: number;
-  rounds: number;
-  finalRounds: number;
+  games: number;
+  finalGames: number;
   top: number;
   maxTurns: number;
   maxStepsPerTurn: number;
@@ -76,15 +76,17 @@ function printUsage(): void {
   console.log('  --candidates-dir <dir>    Directory containing candidate *.json configs');
   console.log('  --baseline <path>         Baseline config JSON (default: standard config)');
   console.log('  --players <n>             Player count 2-4 (default: 2)');
-  console.log('  --rounds <n>              Quick round count per candidate (default: 10)');
-  console.log('  --final-rounds <n>        Final round count for top candidates (default: 30)');
+  console.log('  --games <n>               Quick game count per candidate (default: 50)');
+  console.log('  --final-games <n>         Final game count for top candidates (default: 50)');
+  console.log('  --rounds <n>              Alias: rounds * players = games (deprecated)');
+  console.log('  --final-rounds <n>        Alias: final-rounds * players = final-games (deprecated)');
   console.log('  --pairs <n>               Alias for --rounds (deprecated)');
   console.log('  --final-pairs <n>         Alias for --final-rounds (deprecated)');
   console.log('  --top <n>                 Number of candidates in final round (default: 3)');
   console.log('  --max-turns <n>           Max turns per game (default: 500)');
   console.log('  --max-steps-per-turn <n>  Max bot steps per turn (default: 300)');
   console.log('  --min-win-rate <0..1>     Clear margin win-rate threshold (default: 0.6)');
-  console.log('  --min-vp-delta <n>        Clear margin VP threshold (default: 3)');
+  console.log('  --min-vp-delta <n>        Clear margin VP threshold (default: 1)');
   console.log('  --output-json <path>      Write tournament results JSON');
   console.log('  --help                    Show help');
 }
@@ -93,13 +95,13 @@ function parseArgs(argv: string[]): CliOptions {
   const options: CliOptions = {
     candidatesDir: '',
     players: 2,
-    rounds: 10,
-    finalRounds: 30,
+    games: 50,
+    finalGames: 50,
     top: 3,
     maxTurns: 500,
     maxStepsPerTurn: 300,
     minWinRate: 0.6,
-    minVpDelta: 3,
+    minVpDelta: 1,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -127,14 +129,22 @@ function parseArgs(argv: string[]): CliOptions {
         options.players = parseNumber(next, '--players');
         i += 1;
         break;
+      case '--games':
+        options.games = parseNumber(next, '--games');
+        i += 1;
+        break;
       case '--rounds':
       case '--pairs':
-        options.rounds = parseNumber(next, arg);
+        options.games = parseNumber(next, arg);
+        i += 1;
+        break;
+      case '--final-games':
+        options.finalGames = parseNumber(next, '--final-games');
         i += 1;
         break;
       case '--final-rounds':
       case '--final-pairs':
-        options.finalRounds = parseNumber(next, arg);
+        options.finalGames = parseNumber(next, arg);
         i += 1;
         break;
       case '--top':
@@ -176,11 +186,11 @@ function parseArgs(argv: string[]): CliOptions {
   ) {
     throw new Error('--players must be an integer from 2 to 4.');
   }
-  if (!Number.isInteger(options.rounds) || options.rounds <= 0) {
-    throw new Error('--rounds must be a positive integer.');
+  if (!Number.isInteger(options.games) || options.games <= 0) {
+    throw new Error('--games must be a positive integer.');
   }
-  if (!Number.isInteger(options.finalRounds) || options.finalRounds <= 0) {
-    throw new Error('--final-rounds must be a positive integer.');
+  if (!Number.isInteger(options.finalGames) || options.finalGames <= 0) {
+    throw new Error('--final-games must be a positive integer.');
   }
   if (!Number.isInteger(options.top) || options.top <= 0) {
     throw new Error('--top must be a positive integer.');
@@ -331,29 +341,29 @@ function summarizeEvaluations(
 function evaluateConfigVsBaseline(
   configA: HeuristicConfig,
   configB: HeuristicConfig,
-  rounds: number,
+  games: number,
   options: CliOptions,
 ): EvaluationSummary {
   const evaluations: GameEvaluation[] = [];
   const stallOccurrences: EvaluationSummary['stallOccurrences'] = [];
-  for (let round = 1; round <= rounds; round += 1) {
-    for (let rotation = 1; rotation <= options.players; rotation += 1) {
-      const gameSetup = createPlayersForGame(options.players, rotation - 1);
-      const evaluation = evaluateSingleGame(
-        gameSetup.players,
-        gameSetup.strategyByPlayerId,
-        configA,
-        configB,
-        options,
-      );
-      evaluations.push(evaluation);
-      if (!evaluation.completed) {
-        stallOccurrences.push({
-          round,
-          rotation,
-          reason: evaluation.stallReason ?? 'Unknown stall reason',
-        });
-      }
+  for (let gameIndex = 0; gameIndex < games; gameIndex += 1) {
+    const rotation = gameIndex % options.players;
+    const round = Math.floor(gameIndex / options.players) + 1;
+    const gameSetup = createPlayersForGame(options.players, rotation);
+    const evaluation = evaluateSingleGame(
+      gameSetup.players,
+      gameSetup.strategyByPlayerId,
+      configA,
+      configB,
+      options,
+    );
+    evaluations.push(evaluation);
+    if (!evaluation.completed) {
+      stallOccurrences.push({
+        round,
+        rotation: rotation + 1,
+        reason: evaluation.stallReason ?? 'Unknown stall reason',
+      });
     }
   }
 
@@ -363,8 +373,8 @@ function evaluateConfigVsBaseline(
 function sortResults(results: CandidateResult[]): CandidateResult[] {
   return [...results].sort(
     (a, b) =>
-      (b.final?.meanDelta ?? b.quick.meanDelta) - (a.final?.meanDelta ?? a.quick.meanDelta) ||
       (b.final?.winRateA ?? b.quick.winRateA) - (a.final?.winRateA ?? a.quick.winRateA) ||
+      (b.final?.meanDelta ?? b.quick.meanDelta) - (a.final?.meanDelta ?? a.quick.meanDelta) ||
       a.name.localeCompare(b.name),
   );
 }
@@ -420,8 +430,8 @@ function main(): void {
   console.log(`Candidates directory: ${resolve(options.candidatesDir)}`);
   console.log(`Baseline: ${options.baselinePath ? resolve(options.baselinePath) : 'HEURISTIC_STANDARD_CONFIG'}`);
   console.log(`Players: ${options.players}`);
-  console.log(`Quick rounds: ${options.rounds}`);
-  console.log(`Final rounds: ${options.finalRounds}`);
+  console.log(`Quick games: ${options.games}`);
+  console.log(`Final games: ${options.finalGames}`);
   console.log(`Top finalists: ${options.top}`);
 
   const quickResults: CandidateResult[] = candidateFiles.map((file) => {
@@ -429,7 +439,7 @@ function main(): void {
     const quick = evaluateConfigVsBaseline(
       candidateConfig,
       baselineConfig,
-      options.rounds,
+      options.games,
       options,
     );
     return {
@@ -443,13 +453,13 @@ function main(): void {
   printRound('Quick Round Ranking', rankedQuick, false);
 
   const finalists = rankedQuick.slice(0, Math.min(options.top, rankedQuick.length));
-  if (options.finalRounds > options.rounds && finalists.length > 0) {
+  if (options.finalGames > options.games && finalists.length > 0) {
     for (const finalist of finalists) {
       const config = loadConfig(finalist.path);
       finalist.final = evaluateConfigVsBaseline(
         config,
         baselineConfig,
-        options.finalRounds,
+        options.finalGames,
         options,
       );
     }
