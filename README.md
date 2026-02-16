@@ -73,7 +73,7 @@ npx tsx scripts/bot_beam_search.ts --help
 
 These scripts write result artifacts to `output/`.
 
-## Using AI AGents in This Repo
+## Using AI Agents in This Repo
 
 This repository is configured for AI-assisted coding with `AGENTS.md`
 
