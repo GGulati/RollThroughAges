@@ -174,7 +174,10 @@ function evaluateConfigVsBaseline(
       player.id,
       baseSetup.strategyByPlayerId[player.id] === 'A'
         ? createBotStrategy(candidateA, `candidate-a-${candidateA.id}`)
-        : createBotStrategy(candidateB, `baseline-b-${candidateB.id}`),
+        : createBotStrategy(
+            baselineCandidate,
+            `baseline-b-${baselineCandidate.id}`,
+          ),
     ]),
   );
   const participantKeyByPlayerId = Object.fromEntries(
@@ -182,7 +185,7 @@ function evaluateConfigVsBaseline(
   );
   const participantLabelByKey = {
     A: `A:${candidateA.name}`,
-    B: `B:${candidateB.name}`,
+    B: `B:${baselineCandidate.name}`,
   };
   const rounds = Math.ceil(games / options.players);
   const headlessStart = performance.now();
