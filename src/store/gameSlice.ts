@@ -7,12 +7,15 @@ import {
   allocateWorkersToMonument,
   calculateGoodsOverflow,
   canAffordDevelopment,
+  exchangeResources as exchangeResourcesEngine,
   getBuildOptions,
+  getAvailableExchangeEffects,
   areAllDiceLocked,
   countPendingChoices,
   createGame,
   endTurn as endTurnEngine,
   findGoodsTypeByName,
+  getExchangeResourceAmount,
   getAvailableDevelopments,
   keepDie as keepDieEngine,
   performRoll,
@@ -132,6 +135,22 @@ function getNextPostDevelopmentPhase(
     canAffordDevelopment(activePlayer, turn, development.id, game.settings),
   );
   if (canAffordAnyDevelopment) {
+    return GamePhase.Development;
+  }
+
+  const hasAnyUsableExchange = getAvailableExchangeEffects(
+    activePlayer,
+    game.settings,
+  ).some(
+    (exchange) =>
+      getExchangeResourceAmount(
+        activePlayer,
+        turn,
+        game.settings,
+        exchange.from,
+      ) > 0,
+  );
+  if (hasAnyUsableExchange) {
     return GamePhase.Development;
   }
 
@@ -758,6 +777,73 @@ const gameSlice = createSlice({
       state.lastError = null;
       appendLog(state, `Purchased development ${action.payload.developmentId}.`);
     },
+    applyExchange: (
+      state,
+      action: PayloadAction<{ from: string; to: string; amount: number }>,
+    ) => {
+      if (!state.game) {
+        setError(state, 'NO_GAME', 'Start a game before applying exchanges.');
+        return;
+      }
+      if (
+        state.game.state.phase !== GamePhase.Build &&
+        state.game.state.phase !== GamePhase.Development
+      ) {
+        setError(
+          state,
+          'INVALID_PHASE',
+          'Exchanges are only available during build/development.',
+        );
+        return;
+      }
+      if (!Number.isFinite(action.payload.amount) || action.payload.amount <= 0) {
+        setError(state, 'INVALID_EXCHANGE', 'Exchange amount must be at least 1.');
+        return;
+      }
+
+      const nextGame = applyMutationWithHistory(state.game, (game) => {
+        const activeIndex = game.state.activePlayerIndex;
+        const activePlayer = game.state.players[activeIndex];
+        const result = exchangeResourcesEngine(
+          activePlayer,
+          game.state.turn,
+          action.payload.from,
+          action.payload.to,
+          Math.floor(action.payload.amount),
+          game.settings,
+        );
+        if (!result) {
+          return game;
+        }
+        const players = [...game.state.players];
+        players[activeIndex] = result.player;
+        return {
+          ...game,
+          state: {
+            ...game.state,
+            phase: getNextPostDevelopmentPhase(game, result.player, result.turn),
+            players,
+            turn: result.turn,
+          },
+        };
+      });
+
+      if (!nextGame) {
+        setError(
+          state,
+          'INVALID_EXCHANGE',
+          'That exchange is not valid with current resources.',
+        );
+        return;
+      }
+
+      state.game = nextGame;
+      state.lastError = null;
+      appendLog(
+        state,
+        `Exchanged ${Math.floor(action.payload.amount)} ${action.payload.from} for ${action.payload.to}.`,
+      );
+    },
     undo: (state) => {
       if (!state.game) {
         setError(state, 'NO_GAME', 'Start a game before undoing moves.');
@@ -803,6 +889,7 @@ export const {
   buildCity,
   buildMonument,
   buyDevelopment,
+  applyExchange,
   discardGoods,
   undo,
   redo,

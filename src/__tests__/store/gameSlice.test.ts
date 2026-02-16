@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  applyExchange,
   buyDevelopment,
   buildCity,
   buildMonument,
@@ -231,6 +232,49 @@ describe('gameSlice', () => {
     expect(activePlayer.developments).toContain('leadership');
     expect(state.game!.state.turn.turnProduction.coins).toBeLessThan(coinsBefore);
     randomSpy.mockRestore();
+  });
+
+  it('applies partial exchange during development', () => {
+    let state = reduce(undefined, startGame({ players: PLAYERS }));
+    const game = state.game!;
+    const activeIndex = game.state.activePlayerIndex;
+    state = {
+      ...state,
+      game: {
+        ...game,
+        state: {
+          ...game.state,
+          phase: GamePhase.Development,
+          players: game.state.players.map((player, index) =>
+            index === activeIndex
+              ? { ...player, developments: ['engineering'] }
+              : player,
+          ),
+        },
+      },
+    };
+
+    const stone = state.game!.settings.goodsTypes.find((g) => g.name === 'Stone')!;
+    const withStone = new Map(state.game!.state.players[activeIndex].goods);
+    withStone.set(stone, 3);
+    state = {
+      ...state,
+      game: {
+        ...state.game!,
+        state: {
+          ...state.game!.state,
+          players: state.game!.state.players.map((player, index) =>
+            index === activeIndex ? { ...player, goods: withStone } : player,
+          ),
+        },
+      },
+    };
+
+    state = reduce(state, applyExchange({ from: 'stone', to: 'workers', amount: 1 }));
+
+    const activePlayer = state.game!.state.players[activeIndex];
+    expect(activePlayer.goods.get(stone)).toBe(2);
+    expect(state.game!.state.turn.turnProduction.workers).toBe(3);
   });
 
   it('rejects development purchase in invalid phase', () => {

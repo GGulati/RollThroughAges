@@ -27,7 +27,8 @@ export type GameActionErrorCode =
   | 'NO_WORKERS_AVAILABLE'
   | 'INVALID_BUILD_TARGET'
   | 'INVALID_DEVELOPMENT'
-  | 'DEVELOPMENT_NOT_AFFORDABLE';
+  | 'DEVELOPMENT_NOT_AFFORDABLE'
+  | 'INVALID_EXCHANGE';
 
 export interface GameSliceState {
   game: GameState | null;

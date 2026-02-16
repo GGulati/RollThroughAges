@@ -3,6 +3,7 @@ import { GamePhase } from '@/game';
 import {
   getBuildOptions,
   getAvailableDevelopments,
+  getAvailableExchangeEffects,
   getTotalPurchasingPower,
   getCityWorkerCost,
   getRemainingCityWorkers,
@@ -14,6 +15,7 @@ import {
   findGoodsTypeByName,
   getCitiesToFeed,
   getDisasterPreview,
+  getExchangeResourceAmount,
   getMaxRollsAllowed,
   getRewrittenDisasterTargeting,
   getGoodsLimit,
@@ -549,6 +551,61 @@ export const selectDevelopmentPanelModel = createSelector(selectGame, (game) => 
     availableDevelopments,
     developmentCatalog,
     ownedDevelopments: activePlayer.developments,
+  };
+});
+
+export const selectExchangePanelModel = createSelector(selectGame, (game) => {
+  if (!game) {
+    return {
+      isActionAllowed: false,
+      reason: 'Start a game to use exchanges.',
+      exchanges: [] as Array<{
+        key: string;
+        from: string;
+        to: string;
+        rate: number;
+        developmentId: string;
+        developmentName: string;
+        sourceAmount: number;
+        canApply: boolean;
+      }>,
+    };
+  }
+
+  const activePlayer = game.state.players[game.state.activePlayerIndex];
+  const isActionAllowed =
+    game.state.phase === GamePhase.Build || game.state.phase === GamePhase.Development;
+  const exchanges = getAvailableExchangeEffects(activePlayer, game.settings).map(
+    (effect) => {
+      const sourceAmount = getExchangeResourceAmount(
+        activePlayer,
+        game.state.turn,
+        game.settings,
+        effect.from,
+      );
+      return {
+        key: `${effect.developmentId}:${effect.from}->${effect.to}`,
+        from: effect.from,
+        to: effect.to,
+        rate: effect.rate,
+        developmentId: effect.developmentId,
+        developmentName: effect.developmentName,
+        sourceAmount,
+        canApply: isActionAllowed && sourceAmount > 0,
+      };
+    },
+  );
+
+  const reason = !isActionAllowed
+    ? 'Exchanges are only available during build/development.'
+    : exchanges.length === 0
+      ? 'No exchange effects are available.'
+      : null;
+
+  return {
+    isActionAllowed,
+    reason,
+    exchanges,
   };
 });
 

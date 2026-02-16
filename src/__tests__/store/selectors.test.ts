@@ -15,6 +15,7 @@ import {
   selectCanRedo,
   selectCanUndo,
   selectDevelopmentPanelModel,
+  selectExchangePanelModel,
   selectDisasterPanelModel,
   selectDicePanelModel,
   selectDiceOutcomeModel,
@@ -71,6 +72,9 @@ describe('store selectors', () => {
     expect(selectDevelopmentPanelModel(state).reason).toBe(
       'Start a game to purchase developments.',
     );
+    expect(selectExchangePanelModel(state).reason).toBe(
+      'Start a game to use exchanges.',
+    );
     expect(selectDiscardPanelModel(state).reason).toBe(
       'Start a game to discard goods.',
     );
@@ -122,7 +126,12 @@ describe('store selectors', () => {
     const store = createTestStore();
     store.dispatch(startGame({ players: PLAYERS }));
     store.dispatch(keepDie({ dieIndex: 0 }));
-    store.dispatch(keepDie({ dieIndex: 1 }));
+    if (!selectCanUndo(store.getState())) {
+      store.dispatch(keepDie({ dieIndex: 1 }));
+    }
+    if (!selectCanUndo(store.getState())) {
+      store.dispatch(keepDie({ dieIndex: 2 }));
+    }
 
     expect(selectCanUndo(store.getState())).toBe(true);
     expect(selectCanRedo(store.getState())).toBe(false);
@@ -245,6 +254,41 @@ describe('store selectors', () => {
     );
 
     randomSpy.mockRestore();
+  });
+
+  it('returns exchange options during development when exchange effects are owned', () => {
+    const store = createTestStore();
+    store.dispatch(startGame({ players: PLAYERS }));
+    const root = store.getState();
+    const game = root.game.game!;
+    const activeIndex = game.state.activePlayerIndex;
+    const stateWithExchange = {
+      ...root,
+      game: {
+        ...root.game,
+        game: {
+          ...game,
+          state: {
+            ...game.state,
+            phase: GamePhase.Development,
+            players: game.state.players.map((player, index) =>
+              index === activeIndex
+                ? { ...player, developments: [...player.developments, 'granaries'] }
+                : player,
+            ),
+          },
+        },
+      },
+    };
+
+    const exchangePanel = selectExchangePanelModel(stateWithExchange);
+    expect(exchangePanel.isActionAllowed).toBe(true);
+    expect(exchangePanel.exchanges.length).toBeGreaterThan(0);
+    expect(
+      exchangePanel.exchanges.some(
+        (exchange) => exchange.from === 'food' && exchange.to === 'coins',
+      ),
+    ).toBe(true);
   });
 
   it('keeps purchased developments visible in catalog', () => {

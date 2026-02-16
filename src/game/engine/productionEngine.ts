@@ -313,7 +313,7 @@ export function getAvailableExchangeEffects(
   });
 }
 
-function getResourceAmount(
+export function getExchangeResourceAmount(
   player: PlayerState,
   turn: TurnState,
   settings: GameSettings,
@@ -413,12 +413,12 @@ export function exchangeResources(
     return null;
   }
 
-  const fromCurrent = getResourceAmount(player, turn, settings, from);
+  const fromCurrent = getExchangeResourceAmount(player, turn, settings, from);
   if (fromCurrent < fromAmount) {
     return null;
   }
 
-  const toCurrent = getResourceAmount(player, turn, settings, to);
+  const toCurrent = getExchangeResourceAmount(player, turn, settings, to);
   const toAmount = fromAmount * exchangeEffect.rate;
 
   const afterSpend = setResourceAmount(
