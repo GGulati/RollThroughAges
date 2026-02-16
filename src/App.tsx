@@ -156,6 +156,17 @@ function App() {
     () => createHeuristicBot(heuristicConfig, 'heuristic-settings'),
     [heuristicConfig],
   );
+  const configuredLookaheadBot = useMemo(
+    () =>
+      createLookaheadBot(
+        {
+          ...LOOKAHEAD_STANDARD_CONFIG,
+          heuristicFallbackConfig: heuristicConfig,
+        },
+        'lookahead-settings',
+      ),
+    [heuristicConfig],
+  );
   const standardHeuristicBot = useMemo(
     () => createHeuristicBot(HEURISTIC_STANDARD_CONFIG, 'heuristic-standard-fixed'),
     [],
@@ -301,6 +312,7 @@ function App() {
     pauseBotActions: isBotTurn && isBotPhaseAnimating,
     activeGameBotProfilesByPlayerId,
     configuredHeuristicBot,
+    configuredLookaheadBot,
     standardHeuristicBot,
     standardLookaheadBot,
     botStepDelayMs,
@@ -369,6 +381,8 @@ function App() {
         profiles[player.id] = 'heuristicCustom';
       } else if (selected === 'lookaheadStandard') {
         profiles[player.id] = 'lookaheadStandard';
+      } else if (selected === 'lookaheadCustom') {
+        profiles[player.id] = 'lookaheadCustom';
       }
     });
     return profiles;
@@ -446,6 +460,8 @@ function App() {
         player.id,
         botProfilesByPlayerId[player.id] === 'heuristicStandard'
           ? standardHeuristicBot
+          : botProfilesByPlayerId[player.id] === 'lookaheadCustom'
+            ? configuredLookaheadBot
           : botProfilesByPlayerId[player.id] === 'lookaheadStandard'
             ? standardLookaheadBot
           : configuredHeuristicBot,

@@ -5,12 +5,14 @@ export type ControllerOption =
   | 'human'
   | 'heuristicStandard'
   | 'heuristicCustom'
-  | 'lookaheadStandard';
+  | 'lookaheadStandard'
+  | 'lookaheadCustom';
 export type BotSpeedOption = 'normal' | 'fast' | 'veryFast';
 export type BotProfile =
   | 'heuristicStandard'
   | 'heuristicCustom'
-  | 'lookaheadStandard';
+  | 'lookaheadStandard'
+  | 'lookaheadCustom';
 
 export type HeadlessSimulationSummary = {
   completed: boolean;

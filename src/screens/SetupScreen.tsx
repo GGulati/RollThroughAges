@@ -73,6 +73,7 @@ export function SetupScreen({
               <option value="heuristicStandard">Heuristic Bot</option>
               <option value="heuristicCustom">Heuristic Bot (Custom)</option>
               <option value="lookaheadStandard">Lookahead Bot</option>
+              <option value="lookaheadCustom">Lookahead Bot (Custom)</option>
             </select>
           </label>
         );

@@ -10,6 +10,7 @@ type UseBotTurnRunnerParams = {
   pauseBotActions: boolean;
   activeGameBotProfilesByPlayerId: Record<string, BotProfile>;
   configuredHeuristicBot: BotStrategy;
+  configuredLookaheadBot: BotStrategy;
   standardHeuristicBot: BotStrategy;
   standardLookaheadBot: BotStrategy;
   botStepDelayMs: number;
@@ -23,6 +24,7 @@ export function useBotTurnRunner({
   pauseBotActions,
   activeGameBotProfilesByPlayerId,
   configuredHeuristicBot,
+  configuredLookaheadBot,
   standardHeuristicBot,
   standardLookaheadBot,
   botStepDelayMs,
@@ -52,6 +54,8 @@ export function useBotTurnRunner({
       const strategy =
         profile === 'heuristicStandard'
           ? standardHeuristicBot
+          : profile === 'lookaheadCustom'
+            ? configuredLookaheadBot
           : profile === 'lookaheadStandard'
             ? standardLookaheadBot
             : configuredHeuristicBot;
@@ -72,6 +76,7 @@ export function useBotTurnRunner({
   }, [
     activeGameBotProfilesByPlayerId,
     botStepDelayMs,
+    configuredLookaheadBot,
     configuredHeuristicBot,
     dispatchBotAction,
     game,
