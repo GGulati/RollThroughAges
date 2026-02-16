@@ -8,13 +8,31 @@ import {
 import { createTestGame, createTestDice, DICE_FACE } from '../testUtils';
 
 describe('heuristic bot', () => {
-  it('prefers rollDice in roll phase when available', () => {
+  it('avoids risky rerolls when skull pressure is already high', () => {
     const game = createTestGame(2, GamePhase.RollDice);
     game.state.turn.rollsUsed = 1;
     game.state.turn.dice = createTestDice([
-      DICE_FACE.ONE_GOOD,
-      DICE_FACE.THREE_FOOD,
+      DICE_FACE.TWO_GOODS_SKULL,
+      DICE_FACE.TWO_GOODS_SKULL,
       DICE_FACE.THREE_WORKERS,
+    ], [
+      'skull',
+      'skull',
+      'unlocked',
+    ]);
+
+    const action = chooseHeuristicBotAction(game, HEURISTIC_STANDARD_CONFIG);
+    expect(action?.type).toBe('keepDie');
+  });
+
+  it('rerolls when projected food shortage is high', () => {
+    const game = createTestGame(2, GamePhase.RollDice);
+    game.state.players[0].food = 0;
+    game.state.turn.rollsUsed = 1;
+    game.state.turn.dice = createTestDice([
+      DICE_FACE.ONE_GOOD,
+      DICE_FACE.THREE_WORKERS,
+      DICE_FACE.SEVEN_COINS,
     ]);
 
     const action = chooseHeuristicBotAction(game, HEURISTIC_STANDARD_CONFIG);

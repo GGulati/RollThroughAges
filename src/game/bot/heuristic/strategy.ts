@@ -1,6 +1,11 @@
 import { GamePhase, GameState } from '../../game';
 import { ResourceProduction } from '../../dice';
-import { getGoodsValue } from '../../engine';
+import {
+  getCitiesToFeed,
+  getGoodsValue,
+  getMaxRollsAllowed,
+  resolveProduction,
+} from '../../engine';
 import { BotAction, BotContext, BotStrategy } from '../types';
 import { getLegalBotActions } from '../candidates';
 import { botActionKey } from '../actionKey';
@@ -14,14 +19,163 @@ import {
 function scoreProductionChoice(
   production: ResourceProduction,
   weights: HeuristicProductionWeights,
+  foodWeight: number,
 ): number {
   return (
     production.workers * weights.workers +
     production.coins * weights.coins +
-    production.food * weights.food +
+    production.food * foodWeight +
     production.goods * weights.goods +
     production.skulls * weights.skulls
   );
+}
+
+function getFoodUrgencyWeight(game: GameState, config: HeuristicConfig): number {
+  const activePlayer = game.state.players[game.state.activePlayerIndex];
+  const citiesToFeed = getCitiesToFeed(activePlayer);
+  const currentFood = activePlayer.food;
+  const deficit = Math.max(0, citiesToFeed - currentFood);
+  return config.productionWeights.food + deficit * 3;
+}
+
+function evaluateResolvedTurnUtility(game: GameState, config: HeuristicConfig): number {
+  const resolved = resolveProduction(game.state, game.state.players, game.settings);
+  const foodWeight = getFoodUrgencyWeight(game, config) + resolved.foodShortage * 4;
+  const productionScore = scoreProductionChoice(
+    resolved.turnProduction,
+    config.productionWeights,
+    foodWeight,
+  );
+  const starvationPenalty = resolved.foodShortage * 20;
+  return productionScore - starvationPenalty;
+}
+
+function applyProductionChoice(
+  game: GameState,
+  action: Extract<BotAction, { type: 'selectProduction' }>,
+): GameState {
+  const nextDice = game.state.turn.dice.map((die, index) =>
+    index === action.dieIndex ? { ...die, productionIndex: action.productionIndex } : die,
+  );
+  return {
+    ...game,
+    state: {
+      ...game.state,
+      turn: {
+        ...game.state.turn,
+        dice: nextDice,
+      },
+    },
+  };
+}
+
+function scoreDieProduction(
+  production: ResourceProduction,
+  config: HeuristicConfig,
+  foodWeight: number,
+): number {
+  return scoreProductionChoice(production, config.productionWeights, foodWeight);
+}
+
+function getCurrentDieScore(
+  game: GameState,
+  dieIndex: number,
+  config: HeuristicConfig,
+  foodWeight: number,
+): number {
+  const die = game.state.turn.dice[dieIndex];
+  const face = game.settings.diceFaces[die.diceFaceIndex];
+  if (!face || face.production.length === 0) {
+    return 0;
+  }
+
+  const selected = die.productionIndex;
+  if (selected >= 0 && selected < face.production.length) {
+    return scoreDieProduction(face.production[selected], config, foodWeight);
+  }
+
+  return Math.max(
+    ...face.production.map((production) =>
+      scoreDieProduction(production, config, foodWeight),
+    ),
+  );
+}
+
+function getBestFaceScore(
+  game: GameState,
+  config: HeuristicConfig,
+  foodWeight: number,
+): number {
+  return Math.max(
+    ...game.settings.diceFaces.map((face) =>
+      Math.max(
+        ...face.production.map((production) =>
+          scoreDieProduction(production, config, foodWeight),
+        ),
+      ),
+    ),
+  );
+}
+
+function estimateExpectedRerollGain(game: GameState, config: HeuristicConfig): number {
+  const foodWeight = getFoodUrgencyWeight(game, config);
+  const bestFaceScore = getBestFaceScore(game, config, foodWeight);
+  let bestCaseGain = 0;
+
+  game.state.turn.dice.forEach((die, index) => {
+    if (die.lockDecision !== 'unlocked') {
+      return;
+    }
+    const currentScore = getCurrentDieScore(game, index, config, foodWeight);
+    bestCaseGain += Math.max(0, bestFaceScore - currentScore);
+  });
+
+  // Convert optimistic gain into expected gain for one reroll.
+  return bestCaseGain * 0.35;
+}
+
+function shouldRollDice(
+  game: GameState,
+  legalActions: BotAction[],
+  config: HeuristicConfig,
+): boolean {
+  const hasRollAction = legalActions.some((action) => action.type === 'rollDice');
+  if (!hasRollAction) {
+    return false;
+  }
+
+  const activePlayer = game.state.players[game.state.activePlayerIndex];
+  const rerollsRemaining =
+    getMaxRollsAllowed(activePlayer, game.settings) - game.state.turn.rollsUsed;
+  if (rerollsRemaining <= 0) {
+    return false;
+  }
+
+  const resolved = resolveProduction(game.state, game.state.players, game.settings);
+  if (resolved.foodShortage > 0) {
+    return true;
+  }
+
+  if (resolved.turnProduction.skulls >= 2) {
+    return false;
+  }
+
+  const currentUtility = evaluateResolvedTurnUtility(game, config);
+  const expectedRerollGain = estimateExpectedRerollGain(game, config);
+  if (expectedRerollGain <= 1) {
+    return false;
+  }
+
+  if (resolved.turnProduction.skulls === 1 && expectedRerollGain < 3) {
+    return false;
+  }
+
+  // If the current resolved turn is already solid, require stronger upside.
+  if (currentUtility >= 0 && expectedRerollGain < 2) {
+    return false;
+  }
+
+  return true;
 }
 
 function pickDeterministic(actions: BotAction[]): BotAction | null {
@@ -42,12 +196,10 @@ function pickBestProductionChoice(
   }
 
   const scored = choices.map((action) => {
-    const die = game.state.turn.dice[action.dieIndex];
-    const production =
-      game.settings.diceFaces[die.diceFaceIndex].production[action.productionIndex];
+    const hypotheticalGame = applyProductionChoice(game, action);
     return {
       action,
-      score: scoreProductionChoice(production, config.productionWeights),
+      score: evaluateResolvedTurnUtility(hypotheticalGame, config),
     };
   });
   scored.sort(
@@ -128,13 +280,13 @@ function chooseForPhase(
   const phase = game.state.phase;
 
   if (phase === GamePhase.RollDice) {
-    const roll = legalActions.find((action) => action.type === 'rollDice');
-    if (roll) {
-      return roll;
-    }
     const productionChoice = pickBestProductionChoice(game, legalActions, config);
     if (productionChoice) {
       return productionChoice;
+    }
+    const roll = legalActions.find((action) => action.type === 'rollDice');
+    if (roll && shouldRollDice(game, legalActions, config)) {
+      return roll;
     }
     const keep = pickDeterministic(
       legalActions.filter((action) => action.type === 'keepDie'),
