@@ -33,8 +33,8 @@
 - **Canonical smoke flow**: Keep one stable E2E test that always verifies one full playable turn and undo/redo behavior.
 
 ### Stage 5 - Bot & Modes
-- **S5.1 Mode toggles**: Add menu to choose pass-and-play vs solo, manage per-player prompts/curtains.
-- **S5.2 Bot strategy v1**: Implement deterministic heuristic bot module using selectors + thunks.
+- **S5.1 Mode toggles**: Add menu to choose how many human vs bot players there are.
+- **S5.2 Bot strategy v1**: Implement deterministic heuristic bot module.
 - **S5.3 Bot tuning/tests**: Simulate batches to validate bot legality and difficulty sliders.
 
 ### Stage 6 - Polish & Delivery
