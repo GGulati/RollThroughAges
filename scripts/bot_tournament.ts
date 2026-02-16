@@ -1,5 +1,5 @@
 import { readdirSync, writeFileSync } from 'node:fs';
-import { resolve, join, basename } from 'node:path';
+import { resolve, join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { availableParallelism, cpus } from 'node:os';
 import Piscina from 'piscina';
@@ -15,6 +15,7 @@ import {
   formatNum,
   formatPercent,
   loadConfig,
+  loadConfigEntry,
   parseNumber,
 } from './helpers.ts';
 
@@ -494,9 +495,9 @@ function evaluateCandidateFile(
   profile: TournamentProfile,
 ): CandidateResult {
   const candidateStart = performance.now();
-  const candidateConfig = loadConfig(file);
+  const candidate = loadConfigEntry(file);
   const quick = evaluateConfigVsBaseline(
-    candidateConfig,
+    candidate.config,
     baselineConfig,
     options.games,
     options,
@@ -504,8 +505,8 @@ function evaluateCandidateFile(
   );
   const candidateElapsed = performance.now() - candidateStart;
   return {
-    name: basename(file, '.json'),
-    path: file,
+    name: candidate.name,
+    path: candidate.source,
     quick,
     timingsMs: { quick: candidateElapsed },
   };

@@ -1,4 +1,4 @@
-import { basename, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import {
   createHeuristicBot,
   getHeadlessScoreSummary,
@@ -7,7 +7,7 @@ import {
   runHeadlessBotMatch,
 } from '../src/game/bot/index.ts';
 import { PlayerConfig } from '../src/game/index.ts';
-import { formatNum, loadConfig, parseNumber } from './helpers.ts';
+import { formatNum, loadConfigEntry, parseNumber } from './helpers.ts';
 
 type CliOptions = {
   rounds: number;
@@ -153,12 +153,15 @@ function buildConfigPool(paths: string[]): ConfigEntry[] {
     ];
   }
 
-  return paths.map((path, index) => ({
-    id: `cfg${index + 1}`,
-    label: basename(path).replace(/\.json$/i, ''),
-    source: resolve(path),
-    config: loadConfig(path),
-  }));
+  return paths.map((path, index) => {
+    const loaded = loadConfigEntry(path);
+    return {
+      id: loaded.id || `cfg${index + 1}`,
+      label: loaded.name,
+      source: loaded.source ?? resolve(path),
+      config: loaded.config,
+    };
+  });
 }
 
 function createPlayers(

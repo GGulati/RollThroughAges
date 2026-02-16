@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { HEURISTIC_STANDARD_CONFIG, HeuristicConfig } from '../src/game/bot/index.ts';
-import { parseNumber } from './helpers.ts';
+import { BotConfigFile } from './helpers.ts';
 
 type CliOptions = {
   outDir: string;
@@ -22,6 +22,9 @@ type NumericPath =
   | 'buildWeights.cityDeferredCompletionValueScale'
   | 'buildWeights.monumentPoints'
   | 'buildWeights.monumentPointEfficiency'
+  | 'buildWeights.monumentProgress'
+  | 'buildWeights.monumentWorkersUsed'
+  | 'buildWeights.monumentSpecialEffect'
   | 'buildWeights.monumentDeferredCompletionValueScale'
   | 'buildWeights.monumentDeferredMaxTurnsToComplete';
 
@@ -102,6 +105,33 @@ const DIMENSIONS: DimensionDef[] = [
     max: 30,
   },
   {
+    id: 'monumentProgressBias',
+    label: 'Higher monument progress focus',
+    type: 'scale',
+    path: 'buildWeights.monumentProgress',
+    factor: 1.6,
+    min: 0,
+    max: 10,
+  },
+  {
+    id: 'monumentWorkersBias',
+    label: 'Higher monument worker spend focus',
+    type: 'scale',
+    path: 'buildWeights.monumentWorkersUsed',
+    factor: 1.8,
+    min: 0,
+    max: 5,
+  },
+  {
+    id: 'monumentEffectBias',
+    label: 'Higher monument special-effect focus',
+    type: 'scale',
+    path: 'buildWeights.monumentSpecialEffect',
+    factor: 1.7,
+    min: 0,
+    max: 10,
+  },
+  {
     id: 'cityDieBias',
     label: 'Higher city future die value',
     type: 'scale',
@@ -169,7 +199,7 @@ function printUsage(): void {
   console.log('  --out-dir <dir>          Output directory (default: output/bot-candidates)');
   console.log('  --dimensions <ids>       Comma-separated dimension ids to power-set');
   console.log(`                           Default: ${DEFAULT_DIMENSIONS.join(',')}`);
-  console.log('  --include-baseline       Also emit baseline config as cfg-000-baseline.json');
+  console.log('  --include-baseline       Also emit baseline config as 0.json');
   console.log('  --overwrite              Replace existing files');
   console.log('  --help                   Show help');
   console.log('');
@@ -283,6 +313,15 @@ function setNumeric(config: HeuristicConfig, path: NumericPath, value: number): 
     case 'buildWeights.monumentPointEfficiency':
       config.buildWeights.monumentPointEfficiency = rounded;
       break;
+    case 'buildWeights.monumentProgress':
+      config.buildWeights.monumentProgress = rounded;
+      break;
+    case 'buildWeights.monumentWorkersUsed':
+      config.buildWeights.monumentWorkersUsed = rounded;
+      break;
+    case 'buildWeights.monumentSpecialEffect':
+      config.buildWeights.monumentSpecialEffect = rounded;
+      break;
     case 'buildWeights.monumentDeferredCompletionValueScale':
       config.buildWeights.monumentDeferredCompletionValueScale = rounded;
       break;
@@ -316,6 +355,12 @@ function getNumeric(config: HeuristicConfig, path: NumericPath): number {
       return config.buildWeights.monumentPoints;
     case 'buildWeights.monumentPointEfficiency':
       return config.buildWeights.monumentPointEfficiency;
+    case 'buildWeights.monumentProgress':
+      return config.buildWeights.monumentProgress;
+    case 'buildWeights.monumentWorkersUsed':
+      return config.buildWeights.monumentWorkersUsed;
+    case 'buildWeights.monumentSpecialEffect':
+      return config.buildWeights.monumentSpecialEffect;
     case 'buildWeights.monumentDeferredCompletionValueScale':
       return config.buildWeights.monumentDeferredCompletionValueScale;
     case 'buildWeights.monumentDeferredMaxTurnsToComplete':
@@ -367,10 +412,16 @@ function main(): void {
   let written = 0;
 
   if (options.includeBaseline) {
-    const baselinePath = join(outDir, 'cfg-000-baseline.json');
+    const baselinePath = join(outDir, '0.json');
+    const baselineFile: BotConfigFile = {
+      id: 0,
+      name: 'baseline',
+      dimensions: [],
+      config: HEURISTIC_STANDARD_CONFIG,
+    };
     writeFileSync(
       baselinePath,
-      JSON.stringify(HEURISTIC_STANDARD_CONFIG, null, 2),
+      JSON.stringify(baselineFile, null, 2),
       { encoding: 'utf8', flag: options.overwrite ? 'w' : 'wx' },
     );
     written += 1;
@@ -390,11 +441,16 @@ function main(): void {
     }
 
     const index = options.includeBaseline ? mask : mask - 1;
-    const fileName =
-      `cfg-${String(index).padStart(3, '0')}-` +
-      `${activeDimensions.join('__')}.json`;
+    const configFile: BotConfigFile = {
+      id: index,
+      name: activeDimensions.length > 0 ? activeDimensions.join('+') : 'baseline',
+      dimensions: activeDimensions,
+      config,
+    };
+    // Keep filenames minimal to avoid Windows path-length limits.
+    const fileName = `${index}.json`;
     const path = join(outDir, fileName);
-    writeFileSync(path, JSON.stringify(config, null, 2), {
+    writeFileSync(path, JSON.stringify(configFile, null, 2), {
       encoding: 'utf8',
       flag: options.overwrite ? 'w' : 'wx',
     });

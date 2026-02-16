@@ -1,4 +1,3 @@
-import { basename } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import {
   createHeuristicBot,
@@ -7,7 +6,7 @@ import {
   runHeadlessBotMatch,
 } from '../src/game/bot/index.ts';
 import { PlayerConfig } from '../src/game/index.ts';
-import { average, loadConfig } from './helpers.ts';
+import { average, loadConfigEntry } from './helpers.ts';
 
 type StrategyLabel = 'A' | 'B';
 
@@ -263,9 +262,9 @@ function evaluateCandidateFile(
   profile: TournamentProfile,
 ): CandidateResult {
   const candidateStart = performance.now();
-  const candidateConfig = loadConfig(file);
+  const candidate = loadConfigEntry(file);
   const quick = evaluateConfigVsBaseline(
-    candidateConfig,
+    candidate.config,
     baselineConfig,
     options.games,
     options,
@@ -273,8 +272,8 @@ function evaluateCandidateFile(
   );
   const candidateElapsed = performance.now() - candidateStart;
   return {
-    name: basename(file, '.json'),
-    path: file,
+    name: candidate.name,
+    path: candidate.source,
     quick,
     timingsMs: { quick: candidateElapsed },
   };

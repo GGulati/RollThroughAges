@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { basename, resolve } from 'node:path';
 import {
   HEURISTIC_STANDARD_CONFIG,
   HeuristicConfig,
@@ -58,12 +58,89 @@ export function mergeConfig(
   };
 }
 
+export type BotConfigFile = {
+  id: number;
+  name: string;
+  config: DeepPartial<HeuristicConfig>;
+  dimensions?: string[];
+};
+
+export type LoadedBotConfig = {
+  id: string;
+  name: string;
+  source: string;
+  config: HeuristicConfig;
+  dimensions?: string[];
+};
+
+type UnknownRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === 'object' && value !== null;
+}
+
+function isBotConfigFile(value: unknown): value is BotConfigFile {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    typeof value.id === 'number' &&
+    typeof value.name === 'string' &&
+    isRecord(value.config)
+  );
+}
+
+export function parseConfigFile(
+  json: string,
+): { metadata: Pick<BotConfigFile, 'id' | 'name' | 'dimensions'> | null; config: HeuristicConfig } {
+  const parsed = JSON.parse(json) as unknown;
+  if (isBotConfigFile(parsed)) {
+    return {
+      metadata: {
+        id: parsed.id,
+        name: parsed.name,
+        dimensions: parsed.dimensions,
+      },
+      config: mergeConfig(HEURISTIC_STANDARD_CONFIG, parsed.config),
+    };
+  }
+
+  return {
+    metadata: null,
+    config: mergeConfig(HEURISTIC_STANDARD_CONFIG, parsed as DeepPartial<HeuristicConfig>),
+  };
+}
+
 export function loadConfig(path?: string): HeuristicConfig {
   if (!path) {
     return HEURISTIC_STANDARD_CONFIG;
   }
   const resolved = resolve(path);
   const raw = readFileSync(resolved, 'utf8');
-  const parsed = JSON.parse(raw) as DeepPartial<HeuristicConfig>;
-  return mergeConfig(HEURISTIC_STANDARD_CONFIG, parsed);
+  const parsed = parseConfigFile(raw);
+  return parsed.config;
+}
+
+export function loadConfigEntry(path: string): LoadedBotConfig {
+  const source = resolve(path);
+  const raw = readFileSync(source, 'utf8');
+  const parsed = parseConfigFile(raw);
+  const filenameId = basename(path).replace(/\.json$/i, '');
+
+  if (parsed.metadata) {
+    return {
+      id: String(parsed.metadata.id),
+      name: parsed.metadata.name,
+      source,
+      config: parsed.config,
+      dimensions: parsed.metadata.dimensions,
+    };
+  }
+
+  return {
+    id: filenameId,
+    name: filenameId,
+    source,
+    config: parsed.config,
+  };
 }
