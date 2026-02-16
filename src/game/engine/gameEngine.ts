@@ -102,6 +102,7 @@ export function createInitialTurn(
     dice: createInitialDice(diceCount, settings),
     pendingChoices: 0,
     foodShortage: 0,
+    developmentPurchased: false,
     turnProduction: emptyProduction(),
   };
 }

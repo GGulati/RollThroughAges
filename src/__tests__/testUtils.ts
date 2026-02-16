@@ -64,6 +64,7 @@ export function createTestTurn(
     dice: [],
     pendingChoices: 0,
     foodShortage: 0,
+    developmentPurchased: false,
     turnProduction: { goods: 0, food: 0, workers: 0, coins: 0, skulls: 0 },
     ...overrides,
   };

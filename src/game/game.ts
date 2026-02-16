@@ -86,6 +86,7 @@ export interface TurnState {
     dice: DieState[];
     pendingChoices: number;
     foodShortage: number;
+    developmentPurchased: boolean;
     turnProduction: ResourceProduction;
   }
   

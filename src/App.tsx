@@ -8,6 +8,7 @@ import {
   discardGoods,
   endTurn,
   applyExchange,
+  addTestingResources,
   keepDie,
   redo,
   rollDice,
@@ -269,6 +270,16 @@ function App() {
                 ? `Tie at ${topScore} VP: ${winners.map((winner) => winner.playerName).join(', ')}`
                 : `Winner: ${winners[0]?.playerName ?? 'Unknown'} (${topScore} VP)`}
             </p>
+            {endgameStatus.reasons.length > 0 ? (
+              <div>
+                <p className="choice-label">End Criteria Triggered</p>
+                <ul className="inline-note">
+                  {endgameStatus.reasons.map((reason) => (
+                    <li key={reason}>{reason}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             <div className="scoreboard-list">
               {turnStatus.playerPoints.map((entry) => (
                 <article key={`victory-${entry.playerId}`} className="scoreboard-card">
@@ -343,6 +354,24 @@ function App() {
                   }
                 >
                   Restart Game
+                </button>
+              </div>
+            </section>
+            <section className="app-panel">
+              <h2>Testing Panel</h2>
+              <p className="inline-note">Testing-only shortcuts for quick e2e validation.</p>
+              <div className="panel-actions">
+                <button
+                  type="button"
+                  onClick={() => dispatch(addTestingResources({ workers: 10 }))}
+                >
+                  +10 Workers
+                </button>
+                <button
+                  type="button"
+                  onClick={() => dispatch(addTestingResources({ coins: 100 }))}
+                >
+                  +100 Coins
                 </button>
               </div>
             </section>

@@ -3,6 +3,8 @@ import { GamePhase } from '@/game';
 import { SpecialEffect } from '@/game/construction';
 import {
   getBuildOptions,
+  getCompletedMonumentCount,
+  getDevelopmentCount,
   getAvailableDevelopments,
   getAvailableExchangeEffects,
   getTotalPurchasingPower,
@@ -604,8 +606,10 @@ export const selectDevelopmentPanelModel = createSelector(selectGame, (game) => 
   }
 
   const activePlayer = game.state.players[game.state.activePlayerIndex];
+  const hasPurchasedDevelopment = game.state.turn.developmentPurchased;
   const isActionAllowed =
-    game.state.phase === GamePhase.Build || game.state.phase === GamePhase.Development;
+    (game.state.phase === GamePhase.Build || game.state.phase === GamePhase.Development) &&
+    !hasPurchasedDevelopment;
   const availableDevelopments = getAvailableDevelopments(activePlayer, game.settings).map(
     (development) => ({
       id: development.id,
@@ -641,8 +645,10 @@ export const selectDevelopmentPanelModel = createSelector(selectGame, (game) => 
     };
   });
   const canPurchase = isActionAllowed && availableDevelopments.length > 0;
-  const reason = !isActionAllowed
-    ? 'Development purchases are only available during build/development.'
+  const reason = hasPurchasedDevelopment
+    ? 'Only one development can be purchased each turn.'
+    : !isActionAllowed
+      ? 'Development purchases are only available during build/development.'
     : availableDevelopments.length === 0
       ? 'All developments purchased.'
       : null;
@@ -847,4 +853,51 @@ export const selectDisasterPanelModel = createSelector(selectGame, (game) => {
 export const selectEndgameStatus = createSelector(selectGame, (game) => ({
   isGameActive: Boolean(game),
   isGameOver: game ? isGameOver(game) : false,
+  reasons: game
+    ? (() => {
+        const reasons: string[] = [];
+        const { endCondition } = game.settings;
+        if (endCondition.numRounds && game.state.round > endCondition.numRounds) {
+          reasons.push(`Round limit reached (${endCondition.numRounds} rounds).`);
+        }
+
+        if (endCondition.numDevelopments) {
+          const triggeringPlayers = game.state.players
+            .filter(
+              (player) =>
+                getDevelopmentCount(player) >= endCondition.numDevelopments!,
+            )
+            .map(
+              (player) =>
+                game.settings.players.find((entry) => entry.id === player.id)?.name ??
+                player.id,
+            );
+          if (triggeringPlayers.length > 0) {
+            reasons.push(
+              `Development threshold reached (${endCondition.numDevelopments}): ${triggeringPlayers.join(', ')}.`,
+            );
+          }
+        }
+
+        if (endCondition.numMonuments) {
+          const triggeringPlayers = game.state.players
+            .filter(
+              (player) =>
+                getCompletedMonumentCount(player) >= endCondition.numMonuments!,
+            )
+            .map(
+              (player) =>
+                game.settings.players.find((entry) => entry.id === player.id)?.name ??
+                player.id,
+            );
+          if (triggeringPlayers.length > 0) {
+            reasons.push(
+              `Monument threshold reached (${endCondition.numMonuments}): ${triggeringPlayers.join(', ')}.`,
+            );
+          }
+        }
+
+        return reasons;
+      })()
+    : [],
 }));

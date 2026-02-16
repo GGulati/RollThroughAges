@@ -85,6 +85,7 @@ describe('store selectors', () => {
     expect(selectEndgameStatus(state)).toEqual({
       isGameActive: false,
       isGameOver: false,
+      reasons: [],
     });
   });
 
@@ -443,5 +444,42 @@ describe('store selectors', () => {
     expect(discardPanel.isActionAllowed).toBe(true);
     expect(discardPanel.canEndTurn).toBe(false);
     expect(discardPanel.endTurnReason).toBe('Discard goods before ending the turn.');
+  });
+
+  it('reports game-end criteria details when thresholds are met', () => {
+    const store = createTestStore();
+    store.dispatch(startGame({ players: PLAYERS }));
+    const root = store.getState();
+    const game = root.game.game!;
+    const activeIndex = game.state.activePlayerIndex;
+    const developmentThreshold = game.settings.endCondition.numDevelopments ?? 5;
+    const completedDevelopments = game.settings.developmentDefinitions
+      .slice(0, developmentThreshold)
+      .map((development) => development.id);
+    const stateWithEndCondition = {
+      ...root,
+      game: {
+        ...root.game,
+        game: {
+          ...game,
+          state: {
+            ...game.state,
+            players: game.state.players.map((player, index) =>
+              index === activeIndex
+                ? { ...player, developments: completedDevelopments }
+                : player,
+            ),
+          },
+        },
+      },
+    };
+
+    const endgameStatus = selectEndgameStatus(stateWithEndCondition);
+    expect(endgameStatus.isGameOver).toBe(true);
+    expect(
+      endgameStatus.reasons.some((reason) =>
+        reason.includes('Development threshold reached'),
+      ),
+    ).toBe(true);
   });
 });

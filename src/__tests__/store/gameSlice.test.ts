@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   applyExchange,
+  addTestingResources,
   buyDevelopment,
   buildCity,
   buildMonument,
@@ -240,7 +241,8 @@ describe('gameSlice', () => {
     );
 
     const activePlayer = state.game!.state.players[0];
-    expect(state.game!.state.phase).toBe('development');
+    expect(state.game!.state.phase).toBe('endTurn');
+    expect(state.game!.state.turn.developmentPurchased).toBe(true);
     expect(activePlayer.developments).toContain('leadership');
     expect(state.game!.state.turn.turnProduction.coins).toBeLessThan(coinsBefore);
     randomSpy.mockRestore();
@@ -315,7 +317,7 @@ describe('gameSlice', () => {
     randomSpy.mockRestore();
   });
 
-  it('auto-ends development when no further purchases are affordable', () => {
+  it('blocks buying more than one development per turn', () => {
     const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.67); // 7 coins
     let state = reduce(undefined, startGame({ players: PLAYERS }));
 
@@ -323,17 +325,28 @@ describe('gameSlice', () => {
     state = reduce(state, keepDie({ dieIndex: 1 }));
     state = reduce(state, keepDie({ dieIndex: 2 }));
 
-    // Buy affordable developments until no more can be afforded.
-    state = reduce(
-      state,
-      buyDevelopment({ developmentId: 'leadership', goodsTypeNames: [] }),
-    );
+    state = reduce(state, buyDevelopment({ developmentId: 'leadership', goodsTypeNames: [] }));
+
+    // Force phase back to development to validate hard one-buy guard.
+    state = {
+      ...state,
+      game: {
+        ...state.game!,
+        state: {
+          ...state.game!.state,
+          phase: GamePhase.Development,
+        },
+      },
+    };
     state = reduce(
       state,
       buyDevelopment({ developmentId: 'irrigation', goodsTypeNames: [] }),
     );
 
-    expect(state.game!.state.phase).toBe('endTurn');
+    expect(state.lastError).toEqual({
+      code: 'INVALID_PHASE',
+      message: 'Only one development can be purchased each turn.',
+    });
     randomSpy.mockRestore();
   });
 
@@ -505,5 +518,18 @@ describe('gameSlice', () => {
     expect(state.lastError).toBeNull();
     expect(state.game!.state.turn.foodShortage).toBe(1);
     expect(state.game!.state.players[activeIndex].disasterPenalties).toBeGreaterThan(0);
+  });
+
+  it('adds testing workers and coins to turn production', () => {
+    let state = reduce(undefined, startGame({ players: PLAYERS }));
+    const workersBefore = state.game!.state.turn.turnProduction.workers;
+    const coinsBefore = state.game!.state.turn.turnProduction.coins;
+
+    state = reduce(state, addTestingResources({ workers: 10 }));
+    state = reduce(state, addTestingResources({ coins: 100 }));
+
+    expect(state.game!.state.turn.turnProduction.workers).toBe(workersBefore + 10);
+    expect(state.game!.state.turn.turnProduction.coins).toBe(coinsBefore + 100);
+    expect(state.game!.history.length).toBeGreaterThan(0);
   });
 });

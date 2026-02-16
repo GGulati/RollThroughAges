@@ -190,6 +190,14 @@ function getNextPostDevelopmentPhase(
   return overflow > 0 ? GamePhase.DiscardGoods : GamePhase.EndTurn;
 }
 
+function getPostDevelopmentCompletionPhase(
+  activePlayer: GameStateSnapshot['players'][number],
+  settings: GameState['settings'],
+): GamePhase {
+  const overflow = calculateGoodsOverflow(activePlayer.goods, activePlayer, settings);
+  return overflow > 0 ? GamePhase.DiscardGoods : GamePhase.EndTurn;
+}
+
 function resolveProductionMutation(game: GameState): GameState {
   const resolved = resolveProductionEngine(
     game.state,
@@ -835,6 +843,14 @@ const gameSlice = createSlice({
         );
         return;
       }
+      if (state.game.state.turn.developmentPurchased) {
+        setError(
+          state,
+          'INVALID_PHASE',
+          'Only one development can be purchased each turn.',
+        );
+        return;
+      }
 
       let failureCode: GameActionErrorCode = 'DEVELOPMENT_NOT_AFFORDABLE';
       let failureMessage =
@@ -883,9 +899,12 @@ const gameSlice = createSlice({
           ...game,
           state: {
             ...game.state,
-            phase: getNextPostDevelopmentPhase(game, result.player, result.turn),
+            phase: getPostDevelopmentCompletionPhase(result.player, game.settings),
             players,
-            turn: result.turn,
+            turn: {
+              ...result.turn,
+              developmentPurchased: true,
+            },
           },
         };
       });
@@ -1009,6 +1028,51 @@ const gameSlice = createSlice({
         `Exchanged ${exchangeAmount} ${action.payload.from} -> ${action.payload.to} (source ${sourceBefore}->${sourceAfter}, target ${targetBefore}->${targetAfter}).`,
       );
     },
+    addTestingResources: (
+      state,
+      action: PayloadAction<{ workers?: number; coins?: number }>,
+    ) => {
+      if (!state.game) {
+        setError(
+          state,
+          'NO_GAME',
+          'Start a game before applying testing resources.',
+        );
+        return;
+      }
+
+      const workersToAdd = Math.max(0, Math.floor(action.payload.workers ?? 0));
+      const coinsToAdd = Math.max(0, Math.floor(action.payload.coins ?? 0));
+      if (workersToAdd <= 0 && coinsToAdd <= 0) {
+        return;
+      }
+
+      const nextGame = applyMutationWithHistory(state.game, (game) => ({
+        ...game,
+        state: {
+          ...game.state,
+          turn: {
+            ...game.state.turn,
+            turnProduction: {
+              ...game.state.turn.turnProduction,
+              workers: game.state.turn.turnProduction.workers + workersToAdd,
+              coins: game.state.turn.turnProduction.coins + coinsToAdd,
+            },
+          },
+        },
+      }));
+
+      if (!nextGame) {
+        return;
+      }
+
+      state.game = nextGame;
+      state.lastError = null;
+      appendLog(
+        state,
+        `Testing resources added: +${workersToAdd} workers, +${coinsToAdd} coins.`,
+      );
+    },
     undo: (state) => {
       if (!state.game) {
         setError(state, 'NO_GAME', 'Start a game before undoing moves.');
@@ -1069,6 +1133,7 @@ export const {
   buildMonument,
   buyDevelopment,
   applyExchange,
+  addTestingResources,
   discardGoods,
   undo,
   redo,
