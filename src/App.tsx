@@ -15,12 +15,14 @@ import {
   getHeadlessScoreSummary,
   resetBotCoreInstrumentation,
   resetHeadlessBotInstrumentation,
+  runHeadlessBotEvaluation,
   runHeadlessBotMatch,
 } from '@/game/automation';
 import { GameOverScreen } from '@/screens/GameOverScreen';
 import { GameplayScreen } from '@/screens/GameplayScreen';
 import { SetupScreen } from '@/screens/SetupScreen';
 import {
+  BotEvaluationSummary,
   BotProfile,
   BotSpeedOption,
   ControllerOption,
@@ -166,6 +168,9 @@ function App() {
   const [headlessSimulations, setHeadlessSimulations] = useState<
     HeadlessSimulationSummary[]
   >([]);
+  const [botEvalRounds, setBotEvalRounds] = useState<number>(10);
+  const [isBotEvalRunning, setIsBotEvalRunning] = useState(false);
+  const [botEvaluations, setBotEvaluations] = useState<BotEvaluationSummary[]>([]);
   const previousPhaseRef = useRef<GamePhase | null>(turnStatus.phase);
   const botStepDelayMs = BOT_SPEED_DELAY_MS[botSpeed];
   const configuredHeuristicBot = useMemo(
@@ -191,6 +196,14 @@ function App() {
   const standardLookaheadBot = useMemo(
     () => createLookaheadBot(LOOKAHEAD_STANDARD_CONFIG, 'lookahead-standard-fixed'),
     [],
+  );
+  const selectedPlayersForSetup = useMemo(
+    () => createPlayers(playerCount, playerControllers),
+    [playerCount, playerControllers],
+  );
+  const allAiSetup = useMemo(
+    () => selectedPlayersForSetup.every((player) => player.controller === 'bot'),
+    [selectedPlayersForSetup],
   );
 
   const rerollEmoji = getRerollEmoji(dicePanel.rerollsRemaining);
@@ -405,6 +418,23 @@ function App() {
     return profiles;
   };
 
+  const getStrategyByPlayerId = (
+    players: ReturnType<typeof createPlayers>,
+    botProfilesByPlayerId: Record<string, BotProfile>,
+  ) =>
+    Object.fromEntries(
+      players.map((player) => [
+        player.id,
+        botProfilesByPlayerId[player.id] === 'heuristicStandard'
+          ? standardHeuristicBot
+          : botProfilesByPlayerId[player.id] === 'lookaheadCustom'
+            ? configuredLookaheadBot
+            : botProfilesByPlayerId[player.id] === 'lookaheadStandard'
+              ? standardLookaheadBot
+              : configuredHeuristicBot,
+      ]),
+    );
+
   const updateProductionWeight = (
     key: keyof HeuristicConfig['productionWeights'],
     value: string,
@@ -485,18 +515,7 @@ function App() {
     botProfilesByPlayerId: Record<string, BotProfile>,
   ) => {
     resetHeadlessBotInstrumentation();
-    const strategyByPlayerId = Object.fromEntries(
-      players.map((player) => [
-        player.id,
-        botProfilesByPlayerId[player.id] === 'heuristicStandard'
-          ? standardHeuristicBot
-          : botProfilesByPlayerId[player.id] === 'lookaheadCustom'
-            ? configuredLookaheadBot
-          : botProfilesByPlayerId[player.id] === 'lookaheadStandard'
-            ? standardLookaheadBot
-            : configuredHeuristicBot,
-      ]),
-    );
+    const strategyByPlayerId = getStrategyByPlayerId(players, botProfilesByPlayerId);
     Object.values(strategyByPlayerId).forEach((strategy) =>
       resetBotCoreInstrumentation(strategy),
     );
@@ -540,6 +559,63 @@ function App() {
     setHeadlessSimulations((current) => [...current, summary]);
   };
 
+  const runSetupBotEvaluation = async () => {
+    const selectedPlayers = createPlayers(playerCount, playerControllers);
+    if (!selectedPlayers.every((player) => player.controller === 'bot')) {
+      return;
+    }
+    const rounds = Math.max(1, Math.floor(botEvalRounds));
+    const botProfilesByPlayerId = getBotProfilesByPlayerId(
+      selectedPlayers,
+      playerControllers,
+    );
+    const strategyByPlayerId = getStrategyByPlayerId(
+      selectedPlayers,
+      botProfilesByPlayerId,
+    );
+    const participantKeyByPlayerId = Object.fromEntries(
+      selectedPlayers.map((player) => [player.id, botProfilesByPlayerId[player.id]]),
+    );
+    const participantLabelByKey = {
+      heuristicStandard: 'Heuristic Bot',
+      heuristicCustom: 'Heuristic Bot (Custom)',
+      lookaheadStandard: 'Lookahead Bot',
+      lookaheadCustom: 'Lookahead Bot (Custom)',
+    };
+
+    setIsBotEvalRunning(true);
+    await Promise.resolve();
+    try {
+      const result = runHeadlessBotEvaluation(selectedPlayers, {
+        rounds,
+        rotateSeats: true,
+        strategyByPlayerId,
+        participantKeyByPlayerId,
+        participantLabelByKey,
+      });
+      const stallReasons = result.games
+        .filter((gameResult) => !gameResult.completed)
+        .reduce<Record<string, number>>((acc, gameResult) => {
+          const reason = gameResult.stallReason ?? 'Unknown stall reason';
+          acc[reason] = (acc[reason] ?? 0) + 1;
+          return acc;
+        }, {});
+      const summary: BotEvaluationSummary = {
+        createdAtLabel: new Date().toLocaleString(),
+        playerCount: selectedPlayers.length,
+        rounds: result.rounds,
+        rotationsPerRound: result.rotationsPerRound,
+        totalGames: result.totalGames,
+        incompleteGames: result.incompleteGames,
+        standings: result.standings,
+        stallReasons,
+      };
+      setBotEvaluations((current) => [...current, summary]);
+    } finally {
+      setIsBotEvalRunning(false);
+    }
+  };
+
   const startConfiguredGame = () => {
     const selectedPlayers = createPlayers(playerCount, playerControllers);
     const botProfilesByPlayerId = getBotProfilesByPlayerId(
@@ -570,6 +646,7 @@ function App() {
     });
     setActiveGameBotProfilesByPlayerId({});
     setBotSpeed('normal');
+    setBotEvalRounds(10);
     setIsHeuristicSettingsExpanded(false);
     setIsLookaheadSettingsExpanded(false);
     setHeuristicConfig(cloneStandardHeuristicConfig());
@@ -637,8 +714,21 @@ function App() {
             onResetLookaheadDefaults={() => {
               setLookaheadUtilityWeights(cloneStandardLookaheadUtilityWeights());
             }}
+            allAiSetup={allAiSetup}
+            botEvalRounds={botEvalRounds}
+            onBotEvalRoundsChange={(next) => {
+              setBotEvalRounds(Number.isFinite(next) ? Math.max(1, Math.floor(next)) : 1);
+            }}
+            onRunBotEvaluation={() => {
+              void runSetupBotEvaluation();
+            }}
+            isBotEvalRunning={isBotEvalRunning}
+            botEvaluations={botEvaluations}
             headlessSimulations={headlessSimulations}
-            onClearHeadlessSimulations={() => setHeadlessSimulations([])}
+            onClearHeadlessSimulations={() => {
+              setHeadlessSimulations([]);
+              setBotEvaluations([]);
+            }}
           />
         ) : null}
         {turnStatus.isGameActive && endgameStatus.isGameOver ? (

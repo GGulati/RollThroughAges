@@ -2,6 +2,7 @@ import { HeuristicConfig, LookaheadConfig } from '@/game/bot';
 import { CORE_BOT_METRIC_KEYS } from '@/game/automation';
 import { PlayerEndStateCard } from '@/components/PlayerEndStateCard';
 import {
+  BotEvaluationSummary,
   BotSpeedOption,
   ControllerOption,
   HeadlessSimulationSummary,
@@ -35,6 +36,12 @@ type SetupScreenProps = {
   ) => void;
   onResetHeuristicDefaults: () => void;
   onResetLookaheadDefaults: () => void;
+  allAiSetup: boolean;
+  botEvalRounds: number;
+  onBotEvalRoundsChange: (next: number) => void;
+  onRunBotEvaluation: () => void;
+  isBotEvalRunning: boolean;
+  botEvaluations: BotEvaluationSummary[];
   headlessSimulations: HeadlessSimulationSummary[];
   onClearHeadlessSimulations: () => void;
 };
@@ -60,6 +67,12 @@ export function SetupScreen({
   onUpdateLookaheadUtilityWeight,
   onResetHeuristicDefaults,
   onResetLookaheadDefaults,
+  allAiSetup,
+  botEvalRounds,
+  onBotEvalRoundsChange,
+  onRunBotEvaluation,
+  isBotEvalRunning,
+  botEvaluations,
   headlessSimulations,
   onClearHeadlessSimulations,
 }: SetupScreenProps) {
@@ -134,6 +147,31 @@ export function SetupScreen({
           </select>
         </label>
         {renderControllerOptions('setup')}
+        {allAiSetup ? (
+          <div className="development-list">
+            <label className="player-count-control" htmlFor="bot-eval-rounds">
+              <span>Bot Eval Rounds</span>
+              <input
+                id="bot-eval-rounds"
+                type="number"
+                min={1}
+                step={1}
+                value={botEvalRounds}
+                onChange={(event) =>
+                  onBotEvalRoundsChange(Number(event.target.value))
+                }
+              />
+            </label>
+            <button
+              className="start-game-button"
+              type="button"
+              onClick={onRunBotEvaluation}
+              disabled={isBotEvalRunning}
+            >
+              {isBotEvalRunning ? 'Running Bot Eval...' : 'Run Bot Eval'}
+            </button>
+          </div>
+        ) : null}
         <button className="start-game-button" type="button" onClick={onStartGame}>
           Start Game
         </button>
@@ -637,7 +675,7 @@ export function SetupScreen({
           ) : null}
         </article>
       </section>
-      {headlessSimulations.length > 0 ? (
+      {headlessSimulations.length > 0 || botEvaluations.length > 0 ? (
         <section className="app-panel setup-panel">
           <div className="collapsible-header">
             <h2>AI Testing</h2>
@@ -650,6 +688,59 @@ export function SetupScreen({
             </button>
           </div>
           <div className="development-list">
+            {botEvaluations.map((evaluation, index) => (
+              <article
+                key={`bot-eval-${index + 1}`}
+                className="development-card"
+              >
+                <p className="development-title">Bot Eval {index + 1}</p>
+                <p className="scoreboard-row">When: {evaluation.createdAtLabel}</p>
+                <p className="scoreboard-row">
+                  Players: {evaluation.playerCount}, Rounds: {evaluation.rounds},
+                  Rotations: {evaluation.rotationsPerRound}
+                </p>
+                <p className="scoreboard-row">
+                  Games: {evaluation.totalGames}, Incomplete:{' '}
+                  {evaluation.incompleteGames}
+                </p>
+                <p className="choice-label">Standings</p>
+                <table className="scoreboard-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Bot</th>
+                      <th scope="col">Avg VP</th>
+                      <th scope="col">Win Share</th>
+                      <th scope="col">Top Finish</th>
+                      <th scope="col">Appearances</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {evaluation.standings.map((standing) => (
+                      <tr key={`bot-eval-standing-${index + 1}-${standing.key}`}>
+                        <td>{standing.label}</td>
+                        <td>{standing.avgVp.toFixed(2)}</td>
+                        <td>{(standing.winShareRate * 100).toFixed(1)}%</td>
+                        <td>{(standing.topFinishRate * 100).toFixed(1)}%</td>
+                        <td>{standing.appearances}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {Object.keys(evaluation.stallReasons).length > 0 ? (
+                  <>
+                    <p className="choice-label">Stall Reasons</p>
+                    {Object.entries(evaluation.stallReasons).map(([reason, count]) => (
+                      <p
+                        key={`bot-eval-stall-${index + 1}-${reason}`}
+                        className="scoreboard-row"
+                      >
+                        {count}x {reason}
+                      </p>
+                    ))}
+                  </>
+                ) : null}
+              </article>
+            ))}
             {headlessSimulations.map((simulation, index) => (
               <article
                 key={`headless-result-${index + 1}`}

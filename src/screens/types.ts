@@ -1,7 +1,7 @@
 import {
   HeuristicConfig,
 } from '@/game/bot';
-import { BotCoreInstrumentation, HeadlessBotInstrumentation } from '@/game/automation';
+import { BotCoreInstrumentation, HeadlessBotEvaluationStanding, HeadlessBotInstrumentation } from '@/game/automation';
 import { PlayerEndStateSummary } from '@/game/reporting';
 
 export type ControllerOption =
@@ -28,6 +28,17 @@ export type HeadlessSimulationSummary = {
     core: BotCoreInstrumentation;
     headless: HeadlessBotInstrumentation;
   };
+};
+
+export type BotEvaluationSummary = {
+  createdAtLabel: string;
+  playerCount: number;
+  rounds: number;
+  rotationsPerRound: number;
+  totalGames: number;
+  incompleteGames: number;
+  standings: HeadlessBotEvaluationStanding[];
+  stallReasons: Record<string, number>;
 };
 
 export type HeuristicUpdateHandlers = {
