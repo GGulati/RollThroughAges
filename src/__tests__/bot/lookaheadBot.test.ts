@@ -85,15 +85,17 @@ describe('lookahead bot', () => {
     expect(after.core.runBotTurnCalls).toBeGreaterThan(0);
     expect(after.core.strategyChooseActionCalls).toBeGreaterThan(0);
     expect(after.evaluateActionValueCalls).toBeGreaterThan(0);
+    const actorStats = after.core.byActorId.p1;
+    expect(actorStats).toBeDefined();
     const extensionKey = 'lookahead-standard.lookahead.evaluateActionValueCalls';
-    expect((after.core.strategyExtensionMetrics[extensionKey] ?? 0)).toBeGreaterThan(0);
+    expect((actorStats?.strategyExtensionMetrics[extensionKey] ?? 0)).toBeGreaterThan(0);
     expect(after.core.runBotTurnMsTotal).toBeGreaterThanOrEqual(0);
 
     resetLookaheadInstrumentation();
     const reset = getLookaheadInstrumentation();
     expect(reset.core.runBotTurnCalls).toBe(0);
     expect(reset.evaluateActionValueCalls).toBe(0);
-    expect(Object.keys(reset.core.strategyExtensionMetrics)).toHaveLength(0);
+    expect(Object.keys(reset.core.byActorId)).toHaveLength(0);
     randomSpy.mockRestore();
   });
 });

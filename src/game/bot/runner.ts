@@ -6,15 +6,19 @@ import { getLegalBotActions } from './candidates';
 import { botActionKey } from './actionKey';
 import { applyBotAction } from './actionAdapter';
 
-export type BotCoreInstrumentation = {
+export type BotActorInstrumentation = {
+  strategyId: string;
   runBotStepCalls: number;
   runBotStepMsTotal: number;
+  runBotStepOverheadMsTotal: number;
   runBotTurnCalls: number;
   runBotTurnMsTotal: number;
+  runBotTurnOverheadMsTotal: number;
   runBotTurnStepsTotal: number;
   runBotTurnCompletedTurns: number;
   strategyChooseActionCalls: number;
   strategyChooseActionMsTotal: number;
+  applyBotActionMsTotal: number;
   applyBotActionAttempts: number;
   applyBotActionSuccesses: number;
   fallbackSelections: number;
@@ -22,16 +26,39 @@ export type BotCoreInstrumentation = {
   strategyExtensionMetrics: Record<string, number>;
 };
 
-function createEmptyBotCoreInstrumentation(): BotCoreInstrumentation {
+export type BotCoreInstrumentation = {
+  runBotStepCalls: number;
+  runBotStepMsTotal: number;
+  runBotStepOverheadMsTotal: number;
+  runBotTurnCalls: number;
+  runBotTurnMsTotal: number;
+  runBotTurnOverheadMsTotal: number;
+  runBotTurnStepsTotal: number;
+  runBotTurnCompletedTurns: number;
+  strategyChooseActionCalls: number;
+  strategyChooseActionMsTotal: number;
+  applyBotActionMsTotal: number;
+  applyBotActionAttempts: number;
+  applyBotActionSuccesses: number;
+  fallbackSelections: number;
+  fallbackApplyAttempts: number;
+  byActorId: Record<string, BotActorInstrumentation>;
+};
+
+function createEmptyBotActorInstrumentation(strategyId: string): BotActorInstrumentation {
   return {
+    strategyId,
     runBotStepCalls: 0,
     runBotStepMsTotal: 0,
+    runBotStepOverheadMsTotal: 0,
     runBotTurnCalls: 0,
     runBotTurnMsTotal: 0,
+    runBotTurnOverheadMsTotal: 0,
     runBotTurnStepsTotal: 0,
     runBotTurnCompletedTurns: 0,
     strategyChooseActionCalls: 0,
     strategyChooseActionMsTotal: 0,
+    applyBotActionMsTotal: 0,
     applyBotActionAttempts: 0,
     applyBotActionSuccesses: 0,
     fallbackSelections: 0,
@@ -40,14 +67,67 @@ function createEmptyBotCoreInstrumentation(): BotCoreInstrumentation {
   };
 }
 
+function createEmptyBotCoreInstrumentation(): BotCoreInstrumentation {
+  return {
+    runBotStepCalls: 0,
+    runBotStepMsTotal: 0,
+    runBotStepOverheadMsTotal: 0,
+    runBotTurnCalls: 0,
+    runBotTurnMsTotal: 0,
+    runBotTurnOverheadMsTotal: 0,
+    runBotTurnStepsTotal: 0,
+    runBotTurnCompletedTurns: 0,
+    strategyChooseActionCalls: 0,
+    strategyChooseActionMsTotal: 0,
+    applyBotActionMsTotal: 0,
+    applyBotActionAttempts: 0,
+    applyBotActionSuccesses: 0,
+    fallbackSelections: 0,
+    fallbackApplyAttempts: 0,
+    byActorId: {},
+  };
+}
+
 const botCoreInstrumentation = createEmptyBotCoreInstrumentation();
+
+function nowMs(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
 
 export function resetBotCoreInstrumentation(): void {
   Object.assign(botCoreInstrumentation, createEmptyBotCoreInstrumentation());
 }
 
 export function getBotCoreInstrumentation(): BotCoreInstrumentation {
-  return { ...botCoreInstrumentation };
+  const byActorId = Object.fromEntries(
+    Object.entries(botCoreInstrumentation.byActorId).map(([actorId, stats]) => [
+      actorId,
+      {
+        ...stats,
+        strategyExtensionMetrics: { ...stats.strategyExtensionMetrics },
+      },
+    ]),
+  );
+  return {
+    ...botCoreInstrumentation,
+    byActorId,
+  };
+}
+
+function getActorInstrumentation(
+  actorId: string,
+  strategyId: string,
+): BotActorInstrumentation {
+  const existing = botCoreInstrumentation.byActorId[actorId];
+  if (existing) {
+    if (existing.strategyId !== strategyId) {
+      existing.strategyId = strategyId;
+    }
+    return existing;
+  }
+  const created = createEmptyBotActorInstrumentation(strategyId);
+  botCoreInstrumentation.byActorId[actorId] = created;
+  return created;
 }
 
 export type BotStepTrace = {
@@ -99,12 +179,21 @@ function findRequestedAction(
 
 export function runBotStep(game: GameState, strategy: BotStrategy): RunBotStepResult {
   botCoreInstrumentation.runBotStepCalls += 1;
-  const stepStartMs = Date.now();
+  const stepStartMs = nowMs();
+  let chooseElapsedMs = 0;
+  let applyElapsedMs = 0;
   const normalizedGame = autoAdvanceForcedPhases(game);
+  const actorId = normalizedGame.state.turn.activePlayerId;
+  const actorStats = getActorInstrumentation(actorId, strategy.id);
+  actorStats.runBotStepCalls += 1;
   const phaseBefore = normalizedGame.state.phase;
   const legalActions = getLegalBotActions(normalizedGame);
   if (legalActions.length === 0) {
-    botCoreInstrumentation.runBotStepMsTotal += Date.now() - stepStartMs;
+    const elapsedMs = nowMs() - stepStartMs;
+    botCoreInstrumentation.runBotStepMsTotal += elapsedMs;
+    actorStats.runBotStepMsTotal += elapsedMs;
+    botCoreInstrumentation.runBotStepOverheadMsTotal += elapsedMs;
+    actorStats.runBotStepOverheadMsTotal += elapsedMs;
     return {
       game: normalizedGame,
       applied: false,
@@ -125,21 +214,30 @@ export function runBotStep(game: GameState, strategy: BotStrategy): RunBotStepRe
     strategyId: strategy.id,
     addMetric: (metric: string, value = 1) => {
       const key = `${strategy.id}.${metric}`;
-      botCoreInstrumentation.strategyExtensionMetrics[key] =
-        (botCoreInstrumentation.strategyExtensionMetrics[key] ?? 0) + value;
+      actorStats.strategyExtensionMetrics[key] =
+        (actorStats.strategyExtensionMetrics[key] ?? 0) + value;
     },
   };
   botCoreInstrumentation.strategyChooseActionCalls += 1;
-  const chooseStartMs = Date.now();
+  actorStats.strategyChooseActionCalls += 1;
+  const chooseStartMs = nowMs();
   const requestedAction = strategy.chooseAction(context);
-  botCoreInstrumentation.strategyChooseActionMsTotal += Date.now() - chooseStartMs;
+  chooseElapsedMs = nowMs() - chooseStartMs;
+  botCoreInstrumentation.strategyChooseActionMsTotal += chooseElapsedMs;
+  actorStats.strategyChooseActionMsTotal += chooseElapsedMs;
   const matchedRequestedAction = findRequestedAction(legalActions, requestedAction);
   if (matchedRequestedAction === null) {
     botCoreInstrumentation.fallbackSelections += 1;
+    actorStats.fallbackSelections += 1;
   }
   const primaryAction = matchedRequestedAction ?? chooseFallbackAction(legalActions);
   if (!primaryAction) {
-    botCoreInstrumentation.runBotStepMsTotal += Date.now() - stepStartMs;
+    const elapsedMs = nowMs() - stepStartMs;
+    const overheadMs = Math.max(0, elapsedMs - chooseElapsedMs - applyElapsedMs);
+    botCoreInstrumentation.runBotStepMsTotal += elapsedMs;
+    actorStats.runBotStepMsTotal += elapsedMs;
+    botCoreInstrumentation.runBotStepOverheadMsTotal += overheadMs;
+    actorStats.runBotStepOverheadMsTotal += overheadMs;
     return {
       game,
       applied: false,
@@ -156,10 +254,22 @@ export function runBotStep(game: GameState, strategy: BotStrategy): RunBotStepRe
   }
 
   botCoreInstrumentation.applyBotActionAttempts += 1;
+  actorStats.applyBotActionAttempts += 1;
+  const applyStartMs = nowMs();
   const primaryAttempt = applyBotAction(normalizedGame, primaryAction);
+  const primaryApplyElapsedMs = nowMs() - applyStartMs;
+  applyElapsedMs += primaryApplyElapsedMs;
+  botCoreInstrumentation.applyBotActionMsTotal += primaryApplyElapsedMs;
+  actorStats.applyBotActionMsTotal += primaryApplyElapsedMs;
   if (primaryAttempt.applied) {
     botCoreInstrumentation.applyBotActionSuccesses += 1;
-    botCoreInstrumentation.runBotStepMsTotal += Date.now() - stepStartMs;
+    actorStats.applyBotActionSuccesses += 1;
+    const elapsedMs = nowMs() - stepStartMs;
+    const overheadMs = Math.max(0, elapsedMs - chooseElapsedMs - applyElapsedMs);
+    botCoreInstrumentation.runBotStepMsTotal += elapsedMs;
+    actorStats.runBotStepMsTotal += elapsedMs;
+    botCoreInstrumentation.runBotStepOverheadMsTotal += overheadMs;
+    actorStats.runBotStepOverheadMsTotal += overheadMs;
     return {
       game: primaryAttempt.game,
       applied: true,
@@ -179,11 +289,24 @@ export function runBotStep(game: GameState, strategy: BotStrategy): RunBotStepRe
       continue;
     }
     botCoreInstrumentation.fallbackApplyAttempts += 1;
+    actorStats.fallbackApplyAttempts += 1;
     botCoreInstrumentation.applyBotActionAttempts += 1;
+    actorStats.applyBotActionAttempts += 1;
+    const fallbackApplyStartMs = nowMs();
     const fallbackAttempt = applyBotAction(normalizedGame, action);
+    const fallbackApplyElapsedMs = nowMs() - fallbackApplyStartMs;
+    applyElapsedMs += fallbackApplyElapsedMs;
+    botCoreInstrumentation.applyBotActionMsTotal += fallbackApplyElapsedMs;
+    actorStats.applyBotActionMsTotal += fallbackApplyElapsedMs;
     if (fallbackAttempt.applied) {
       botCoreInstrumentation.applyBotActionSuccesses += 1;
-      botCoreInstrumentation.runBotStepMsTotal += Date.now() - stepStartMs;
+      actorStats.applyBotActionSuccesses += 1;
+      const elapsedMs = nowMs() - stepStartMs;
+      const overheadMs = Math.max(0, elapsedMs - chooseElapsedMs - applyElapsedMs);
+      botCoreInstrumentation.runBotStepMsTotal += elapsedMs;
+      actorStats.runBotStepMsTotal += elapsedMs;
+      botCoreInstrumentation.runBotStepOverheadMsTotal += overheadMs;
+      actorStats.runBotStepOverheadMsTotal += overheadMs;
       return {
         game: fallbackAttempt.game,
         applied: true,
@@ -199,7 +322,12 @@ export function runBotStep(game: GameState, strategy: BotStrategy): RunBotStepRe
     }
   }
 
-  botCoreInstrumentation.runBotStepMsTotal += Date.now() - stepStartMs;
+  const elapsedMs = nowMs() - stepStartMs;
+  const overheadMs = Math.max(0, elapsedMs - chooseElapsedMs - applyElapsedMs);
+  botCoreInstrumentation.runBotStepMsTotal += elapsedMs;
+  actorStats.runBotStepMsTotal += elapsedMs;
+  botCoreInstrumentation.runBotStepOverheadMsTotal += overheadMs;
+  actorStats.runBotStepOverheadMsTotal += overheadMs;
   return {
     game: normalizedGame,
     applied: false,
@@ -221,10 +349,15 @@ export function runBotTurn(
   options: RunBotTurnOptions = {},
 ): RunBotTurnResult {
   botCoreInstrumentation.runBotTurnCalls += 1;
-  const turnStartMs = Date.now();
+  const actorId = game.state.turn.activePlayerId;
+  const actorStats = getActorInstrumentation(actorId, strategy.id);
+  actorStats.runBotTurnCalls += 1;
+  const turnStartMs = nowMs();
   const maxSteps = options.maxSteps ?? 200;
   const trace: BotStepTrace[] = [];
   let current = game;
+  const chooseMsBeforeTurn = actorStats.strategyChooseActionMsTotal;
+  const applyMsBeforeTurn = actorStats.applyBotActionMsTotal;
   const startPlayerIndex = game.state.activePlayerIndex;
   const startPlayerId = game.state.turn.activePlayerId;
   const startRound = game.state.round;
@@ -252,9 +385,18 @@ export function runBotTurn(
     current.state.round !== startRound;
   if (completedTurn) {
     botCoreInstrumentation.runBotTurnCompletedTurns += 1;
+    actorStats.runBotTurnCompletedTurns += 1;
   }
   botCoreInstrumentation.runBotTurnStepsTotal += steps;
-  botCoreInstrumentation.runBotTurnMsTotal += Date.now() - turnStartMs;
+  actorStats.runBotTurnStepsTotal += steps;
+  const elapsedMs = nowMs() - turnStartMs;
+  botCoreInstrumentation.runBotTurnMsTotal += elapsedMs;
+  actorStats.runBotTurnMsTotal += elapsedMs;
+  const chooseMsInTurn = actorStats.strategyChooseActionMsTotal - chooseMsBeforeTurn;
+  const applyMsInTurn = actorStats.applyBotActionMsTotal - applyMsBeforeTurn;
+  const turnOverheadMs = Math.max(0, elapsedMs - chooseMsInTurn - applyMsInTurn);
+  botCoreInstrumentation.runBotTurnOverheadMsTotal += turnOverheadMs;
+  actorStats.runBotTurnOverheadMsTotal += turnOverheadMs;
 
   return {
     game: current,

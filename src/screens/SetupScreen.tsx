@@ -60,6 +60,15 @@ export function SetupScreen({
   onResetLookaheadDefaults,
   headlessSimulations,
 }: SetupScreenProps) {
+  const renderMetricRows = (metrics: Record<string, number>) =>
+    Object.entries(metrics)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([key, value]) => (
+        <p key={key} className="scoreboard-row">
+          {key}: {value}
+        </p>
+      ));
+
   const renderControllerOptions = (idPrefix: string) => (
     <div className="development-list">
       {Array.from({ length: playerCount }, (_, index) => {
@@ -660,6 +669,75 @@ export function SetupScreen({
                   value={simulation.actionLog.join('\n')}
                   aria-label={`Headless action log ${index + 1}`}
                 />
+                <p className="choice-label">Instrumentation</p>
+                <p className="scoreboard-row">
+                  Core: runBotTurnCalls={simulation.instrumentation.core.runBotTurnCalls}, steps=
+                  {simulation.instrumentation.core.runBotTurnStepsTotal}, chooseActionCalls=
+                  {simulation.instrumentation.core.strategyChooseActionCalls}
+                </p>
+                <p className="scoreboard-row">
+                  Core timing: runBotTurnMsTotal=
+                  {simulation.instrumentation.core.runBotTurnMsTotal}, runBotStepMsTotal=
+                  {simulation.instrumentation.core.runBotStepMsTotal}
+                </p>
+                <p className="scoreboard-row">
+                  Core apply: attempts={simulation.instrumentation.core.applyBotActionAttempts},
+                  successes={simulation.instrumentation.core.applyBotActionSuccesses}, fallbackSelections=
+                  {simulation.instrumentation.core.fallbackSelections}
+                </p>
+                <p className="scoreboard-row">
+                  Headless: runs={simulation.instrumentation.headless.runHeadlessBotGameCalls},
+                  completed={simulation.instrumentation.headless.completedGames}, stalled=
+                  {simulation.instrumentation.headless.stalledGames}, turnsTotal=
+                  {simulation.instrumentation.headless.turnsPlayedTotal}
+                </p>
+                <p className="scoreboard-row">
+                  Headless timing: runMsTotal=
+                  {simulation.instrumentation.headless.runHeadlessBotGameMsTotal}, actionLogEntries=
+                  {simulation.instrumentation.headless.actionLogEntriesTotal}
+                </p>
+                <p className="choice-label">Per Bot Metrics</p>
+                {Object.entries(simulation.instrumentation.core.byActorId)
+                  .sort(([a], [b]) => a.localeCompare(b))
+                  .map(([actorId, actorStats]) => {
+                    const playerName =
+                      simulation.scores.find((entry) => entry.playerId === actorId)
+                        ?.playerName ?? actorId;
+                    return (
+                      <article
+                        key={`instrumentation-${index + 1}-${actorId}`}
+                        className="development-card"
+                      >
+                        <p className="development-title">
+                          {playerName} ({actorStats.strategyId})
+                        </p>
+                        <p className="scoreboard-row">
+                          Turns={actorStats.runBotTurnCalls}, Completed=
+                          {actorStats.runBotTurnCompletedTurns}, Steps=
+                          {actorStats.runBotTurnStepsTotal}
+                        </p>
+                        <p className="scoreboard-row">
+                          Timing: runBotTurnMsTotal={actorStats.runBotTurnMsTotal},
+                          runBotStepMsTotal={actorStats.runBotStepMsTotal},
+                          chooseMsTotal={actorStats.strategyChooseActionMsTotal},
+                          applyMsTotal={actorStats.applyBotActionMsTotal},
+                          overheadMsTotal={actorStats.runBotTurnOverheadMsTotal}
+                        </p>
+                        <p className="scoreboard-row">
+                          Apply: attempts={actorStats.applyBotActionAttempts},
+                          successes={actorStats.applyBotActionSuccesses}, fallbackSelections=
+                          {actorStats.fallbackSelections}, fallbackApplyAttempts=
+                          {actorStats.fallbackApplyAttempts}
+                        </p>
+                        {Object.keys(actorStats.strategyExtensionMetrics).length > 0 ? (
+                          <>
+                            <p className="choice-label">Extension Metrics</p>
+                            {renderMetricRows(actorStats.strategyExtensionMetrics)}
+                          </>
+                        ) : null}
+                      </article>
+                    );
+                  })}
               </article>
             ))}
           </div>
