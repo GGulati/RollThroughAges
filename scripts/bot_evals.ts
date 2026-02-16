@@ -23,6 +23,7 @@ type CliOptions = {
 };
 
 type ConfigEntry = {
+  key: string;
   id: string;
   label: string;
   botType: BotType;
@@ -38,6 +39,7 @@ type ConfigStats = {
 };
 
 type Standing = {
+  key: string;
   id: string;
   label: string;
   source: string;
@@ -152,6 +154,7 @@ function buildConfigPool(paths: string[]): ConfigEntry[] {
   if (paths.length === 0) {
     return [
       {
+        key: 'builtin:heuristic:standard',
         id: 'standard',
         label: 'standard',
         botType: 'heuristic',
@@ -163,11 +166,13 @@ function buildConfigPool(paths: string[]): ConfigEntry[] {
 
   return paths.map((path, index) => {
     const loaded = loadConfigEntry(path);
+    const source = loaded.source ?? resolve(path);
     return {
+      key: source,
       id: loaded.id || `cfg${index + 1}`,
       label: loaded.name,
       botType: loaded.botType,
-      source: loaded.source ?? resolve(path),
+      source,
       config: loaded.config,
     };
   });
@@ -203,9 +208,9 @@ function main(): void {
   const options = parseArgs(process.argv.slice(2));
   const configPool = buildConfigPool(options.configPaths);
 
-  const statsByConfigId = new Map<string, ConfigStats>();
+  const statsByConfigKey = new Map<string, ConfigStats>();
   for (const config of configPool) {
-    statsByConfigId.set(config.id, {
+    statsByConfigKey.set(config.key, {
       appearances: 0,
       totalVp: 0,
       topFinishes: 0,
@@ -257,7 +262,7 @@ function main(): void {
 
       for (const entry of summary) {
         const config = configByPlayerId[entry.playerId];
-        const stats = statsByConfigId.get(config.id);
+        const stats = statsByConfigKey.get(config.key);
         if (!stats) {
           continue;
         }
@@ -272,12 +277,13 @@ function main(): void {
   }
 
   const standings: Standing[] = configPool.map((config) => {
-    const stats = statsByConfigId.get(config.id)!;
+    const stats = statsByConfigKey.get(config.key)!;
     const avgVp = stats.appearances > 0 ? stats.totalVp / stats.appearances : 0;
     const topFinishRate =
       stats.appearances > 0 ? stats.topFinishes / stats.appearances : 0;
     const winShareRate = stats.appearances > 0 ? stats.winShare / stats.appearances : 0;
     return {
+      key: config.key,
       id: config.id,
       label: config.label,
       source: config.source,
