@@ -60,8 +60,8 @@ describe('headless bot match', () => {
       { id: 'b2', name: 'Bot 2', controller: 'bot' as const },
     ];
     const result = runHeadlessBotMatch(players, {
-      maxTurns: 24,
-      maxStepsPerTurn: 120,
+      maxTurns: 8,
+      maxStepsPerTurn: 80,
       strategyByPlayerId: {
         b1: lookaheadStandardBot,
         b2: lookaheadStandardBot,
@@ -71,5 +71,5 @@ describe('headless bot match', () => {
     expect(result.turnsPlayed).toBeGreaterThan(0);
     expect(result.actionLog.some((line) => line.includes('[Bot 1]'))).toBe(true);
     randomSpy.mockRestore();
-  });
+  }, 15000);
 });

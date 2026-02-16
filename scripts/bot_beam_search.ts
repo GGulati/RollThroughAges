@@ -44,7 +44,6 @@ type HeuristicBooleanPath =
 type LookaheadNumericPath =
   | 'depth'
   | 'maxEnumeratedRollDice'
-  | 'maxChanceOutcomesPerAction'
   | 'maxActionsPerNode'
   | 'maxEvaluations'
   | 'utilityWeights.scoreTotal'
@@ -287,15 +286,6 @@ const DIMENSIONS: DimensionDef[] = [
     factor: 1.5,
     min: 200,
     max: 5000,
-    integer: true,
-  },
-  {
-    id: 'lookaheadMoreChanceOutcomes',
-    type: 'scale',
-    lookaheadPath: 'maxChanceOutcomesPerAction',
-    factor: 1.35,
-    min: 32,
-    max: 1296,
     integer: true,
   },
   {

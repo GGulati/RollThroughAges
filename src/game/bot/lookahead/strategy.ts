@@ -306,70 +306,6 @@ function enumerateFaceCombinations(count: number, faces: number): number[][] {
   return combinations;
 }
 
-function decodeFaceCombination(
-  encodedIndex: number,
-  count: number,
-  faces: number,
-): number[] {
-  const decoded = Array<number>(count).fill(0);
-  let value = encodedIndex;
-  for (let i = count - 1; i >= 0; i -= 1) {
-    decoded[i] = value % faces;
-    value = Math.floor(value / faces);
-  }
-  return decoded;
-}
-
-function hashString(value: string): number {
-  let hash = 2166136261;
-  for (let i = 0; i < value.length; i += 1) {
-    hash ^= value.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-function seededUnit(seed: number, index: number): number {
-  const mixed = (seed ^ Math.imul(index + 1, 374761393)) >>> 0;
-  const next = Math.imul(mixed ^ (mixed >>> 13), 1274126177) >>> 0;
-  return (next & 0x7fffffff) / 0x80000000;
-}
-
-type SampledOutcome = {
-  faces: number[];
-  probability: number;
-};
-
-function sampleFaceCombinationsStratified(
-  count: number,
-  faces: number,
-  limit: number,
-  seedKey: string,
-): SampledOutcome[] {
-  const totalOutcomes = Math.pow(faces, count);
-  if (limit <= 0 || totalOutcomes <= limit) {
-    return enumerateFaceCombinations(count, faces).map((combination) => ({
-      faces: combination,
-      probability: 1 / Math.max(1, totalOutcomes),
-    }));
-  }
-
-  const seeded = hashString(seedKey);
-  const samples: SampledOutcome[] = [];
-  for (let i = 0; i < limit; i += 1) {
-    const start = Math.floor((i * totalOutcomes) / limit);
-    const end = Math.floor(((i + 1) * totalOutcomes) / limit);
-    const width = Math.max(1, end - start);
-    const offset = Math.floor(seededUnit(seeded, i) * width);
-    const sampledIndex = start + Math.min(width - 1, offset);
-    samples.push({
-      faces: decodeFaceCombination(sampledIndex, count, faces),
-      probability: width / totalOutcomes,
-    });
-  }
-  return samples;
-}
-
 function getActionPreScore(
   game: GameState,
   action: BotAction,
@@ -495,18 +431,14 @@ function evaluateChanceAction(
   }
 
   const faceCount = game.settings.diceFaces.length;
-  const sampledOutcomes = sampleFaceCombinationsStratified(
-    rerolledDieIndices.length,
-    faceCount,
-    config.maxChanceOutcomesPerAction,
-    `${game.state.turn.activePlayerId}:${game.state.turn.rollsUsed}:${action.type}:${rerolledDieIndices.join(',')}`,
-  );
-  const chanceOutcomes: ChanceOutcome[] = sampledOutcomes.map((sample) => ({
-    probability: sample.probability,
+  const outcomes = enumerateFaceCombinations(rerolledDieIndices.length, faceCount);
+  const probability = 1 / Math.max(1, outcomes.length);
+  const chanceOutcomes: ChanceOutcome[] = outcomes.map((faces) => ({
+    probability,
     game: applyRollOutcome(
       game,
       rerolledDieIndices,
-      sample.faces,
+      faces,
       config,
       action.type,
     ),
