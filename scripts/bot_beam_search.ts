@@ -10,6 +10,7 @@ import { spawnSync } from 'node:child_process';
 import {
   HEURISTIC_STANDARD_CONFIG,
   HeuristicConfig,
+  LookaheadConfig,
   LOOKAHEAD_STANDARD_CONFIG,
 } from '../src/game/bot/index.ts';
 import {
@@ -18,7 +19,7 @@ import {
   parseNumber,
 } from './helpers.ts';
 
-type NumericPath =
+type HeuristicNumericPath =
   | 'productionWeights.food'
   | 'productionWeights.goods'
   | 'productionWeights.workers'
@@ -36,23 +37,45 @@ type NumericPath =
   | 'buildWeights.monumentDeferredCompletionValueScale'
   | 'buildWeights.monumentDeferredMaxTurnsToComplete';
 
-type BooleanPath =
+type HeuristicBooleanPath =
   | 'preferExchangeBeforeDevelopment'
   | 'foodPolicyWeights.forceRerollOnFoodShortage';
+
+type LookaheadNumericPath =
+  | 'depth'
+  | 'maxEnumeratedRollDice'
+  | 'maxChanceOutcomesPerAction'
+  | 'maxActionsPerNode'
+  | 'maxEvaluations'
+  | 'utilityWeights.scoreTotal'
+  | 'utilityWeights.completedCities'
+  | 'utilityWeights.cityProgress'
+  | 'utilityWeights.monumentProgress'
+  | 'utilityWeights.goodsValue'
+  | 'utilityWeights.food'
+  | 'utilityWeights.turnResourcePosition'
+  | 'utilityWeights.foodRiskPenalty'
+  | `heuristicFallbackConfig.${HeuristicNumericPath}`;
+
+type LookaheadBooleanPath =
+  | `heuristicFallbackConfig.${HeuristicBooleanPath}`;
 
 type DimensionDef =
   | {
       id: string;
       type: 'scale';
-      path: NumericPath;
+      heuristicPath?: HeuristicNumericPath;
+      lookaheadPath?: LookaheadNumericPath;
       factor: number;
       min: number;
       max: number;
+      integer?: boolean;
     }
   | {
       id: string;
       type: 'flip';
-      path: BooleanPath;
+      heuristicPath?: HeuristicBooleanPath;
+      lookaheadPath?: LookaheadBooleanPath;
     };
 
 type CliOptions = {
@@ -108,22 +131,196 @@ type TournamentJson = {
 };
 
 const DIMENSIONS: DimensionDef[] = [
-  { id: 'foodAggressive', type: 'scale', path: 'productionWeights.food', factor: 1.6, min: 0, max: 30 },
-  { id: 'goodsAggressive', type: 'scale', path: 'productionWeights.goods', factor: 1.4, min: 0, max: 40 },
-  { id: 'workerAggressive', type: 'scale', path: 'productionWeights.workers', factor: 1.5, min: 0, max: 30 },
-  { id: 'skullAverse', type: 'scale', path: 'productionWeights.skulls', factor: 1.35, min: -40, max: -0.1 },
-  { id: 'starvationAverse', type: 'scale', path: 'foodPolicyWeights.starvationPenaltyPerUnit', factor: 1.6, min: 0, max: 200 },
-  { id: 'monumentBias', type: 'scale', path: 'buildWeights.monumentPoints', factor: 1.5, min: 0, max: 30 },
-  { id: 'monumentProgressBias', type: 'scale', path: 'buildWeights.monumentProgress', factor: 1.6, min: 0, max: 10 },
-  { id: 'monumentWorkersBias', type: 'scale', path: 'buildWeights.monumentWorkersUsed', factor: 1.8, min: 0, max: 5 },
-  { id: 'monumentEffectBias', type: 'scale', path: 'buildWeights.monumentSpecialEffect', factor: 1.7, min: 0, max: 10 },
-  { id: 'cityDieBias', type: 'scale', path: 'buildWeights.cityExtraDieFutureValue', factor: 1.8, min: 0, max: 10 },
-  { id: 'cityDeferredBuildBias', type: 'scale', path: 'buildWeights.cityDeferredCompletionValueScale', factor: 1.6, min: 0, max: 3 },
-  { id: 'devPointsBias', type: 'scale', path: 'developmentWeights.points', factor: 1.7, min: 0, max: 20 },
-  { id: 'exchangeFirst', type: 'flip', path: 'preferExchangeBeforeDevelopment' },
-  { id: 'monumentDeferredBias', type: 'scale', path: 'buildWeights.monumentDeferredCompletionValueScale', factor: 1.5, min: 0, max: 3 },
-  { id: 'monumentLongHorizon', type: 'scale', path: 'buildWeights.monumentDeferredMaxTurnsToComplete', factor: 1.5, min: 0.5, max: 6 },
-  { id: 'forceFoodReroll', type: 'flip', path: 'foodPolicyWeights.forceRerollOnFoodShortage' },
+  {
+    id: 'foodAggressive',
+    type: 'scale',
+    heuristicPath: 'productionWeights.food',
+    lookaheadPath: 'heuristicFallbackConfig.productionWeights.food',
+    factor: 1.6,
+    min: 0,
+    max: 30,
+  },
+  {
+    id: 'goodsAggressive',
+    type: 'scale',
+    heuristicPath: 'productionWeights.goods',
+    lookaheadPath: 'heuristicFallbackConfig.productionWeights.goods',
+    factor: 1.4,
+    min: 0,
+    max: 40,
+  },
+  {
+    id: 'workerAggressive',
+    type: 'scale',
+    heuristicPath: 'productionWeights.workers',
+    lookaheadPath: 'heuristicFallbackConfig.productionWeights.workers',
+    factor: 1.5,
+    min: 0,
+    max: 30,
+  },
+  {
+    id: 'skullAverse',
+    type: 'scale',
+    heuristicPath: 'productionWeights.skulls',
+    lookaheadPath: 'heuristicFallbackConfig.productionWeights.skulls',
+    factor: 1.35,
+    min: -40,
+    max: -0.1,
+  },
+  {
+    id: 'starvationAverse',
+    type: 'scale',
+    heuristicPath: 'foodPolicyWeights.starvationPenaltyPerUnit',
+    lookaheadPath: 'heuristicFallbackConfig.foodPolicyWeights.starvationPenaltyPerUnit',
+    factor: 1.6,
+    min: 0,
+    max: 200,
+  },
+  {
+    id: 'monumentBias',
+    type: 'scale',
+    heuristicPath: 'buildWeights.monumentPoints',
+    lookaheadPath: 'heuristicFallbackConfig.buildWeights.monumentPoints',
+    factor: 1.5,
+    min: 0,
+    max: 30,
+  },
+  {
+    id: 'monumentProgressBias',
+    type: 'scale',
+    heuristicPath: 'buildWeights.monumentProgress',
+    lookaheadPath: 'heuristicFallbackConfig.buildWeights.monumentProgress',
+    factor: 1.6,
+    min: 0,
+    max: 10,
+  },
+  {
+    id: 'monumentWorkersBias',
+    type: 'scale',
+    heuristicPath: 'buildWeights.monumentWorkersUsed',
+    lookaheadPath: 'heuristicFallbackConfig.buildWeights.monumentWorkersUsed',
+    factor: 1.8,
+    min: 0,
+    max: 5,
+  },
+  {
+    id: 'monumentEffectBias',
+    type: 'scale',
+    heuristicPath: 'buildWeights.monumentSpecialEffect',
+    lookaheadPath: 'heuristicFallbackConfig.buildWeights.monumentSpecialEffect',
+    factor: 1.7,
+    min: 0,
+    max: 10,
+  },
+  {
+    id: 'cityDieBias',
+    type: 'scale',
+    heuristicPath: 'buildWeights.cityExtraDieFutureValue',
+    lookaheadPath: 'heuristicFallbackConfig.buildWeights.cityExtraDieFutureValue',
+    factor: 1.8,
+    min: 0,
+    max: 10,
+  },
+  {
+    id: 'cityDeferredBuildBias',
+    type: 'scale',
+    heuristicPath: 'buildWeights.cityDeferredCompletionValueScale',
+    lookaheadPath: 'heuristicFallbackConfig.buildWeights.cityDeferredCompletionValueScale',
+    factor: 1.6,
+    min: 0,
+    max: 3,
+  },
+  {
+    id: 'devPointsBias',
+    type: 'scale',
+    heuristicPath: 'developmentWeights.points',
+    lookaheadPath: 'heuristicFallbackConfig.developmentWeights.points',
+    factor: 1.7,
+    min: 0,
+    max: 20,
+  },
+  {
+    id: 'exchangeFirst',
+    type: 'flip',
+    heuristicPath: 'preferExchangeBeforeDevelopment',
+    lookaheadPath: 'heuristicFallbackConfig.preferExchangeBeforeDevelopment',
+  },
+  {
+    id: 'monumentDeferredBias',
+    type: 'scale',
+    heuristicPath: 'buildWeights.monumentDeferredCompletionValueScale',
+    lookaheadPath: 'heuristicFallbackConfig.buildWeights.monumentDeferredCompletionValueScale',
+    factor: 1.5,
+    min: 0,
+    max: 3,
+  },
+  {
+    id: 'monumentLongHorizon',
+    type: 'scale',
+    heuristicPath: 'buildWeights.monumentDeferredMaxTurnsToComplete',
+    lookaheadPath: 'heuristicFallbackConfig.buildWeights.monumentDeferredMaxTurnsToComplete',
+    factor: 1.5,
+    min: 0.5,
+    max: 6,
+  },
+  {
+    id: 'forceFoodReroll',
+    type: 'flip',
+    heuristicPath: 'foodPolicyWeights.forceRerollOnFoodShortage',
+    lookaheadPath: 'heuristicFallbackConfig.foodPolicyWeights.forceRerollOnFoodShortage',
+  },
+  { id: 'lookaheadDeeper', type: 'scale', lookaheadPath: 'depth', factor: 1.5, min: 1, max: 4, integer: true },
+  {
+    id: 'lookaheadWiderActions',
+    type: 'scale',
+    lookaheadPath: 'maxActionsPerNode',
+    factor: 1.4,
+    min: 4,
+    max: 20,
+    integer: true,
+  },
+  {
+    id: 'lookaheadMoreEvaluations',
+    type: 'scale',
+    lookaheadPath: 'maxEvaluations',
+    factor: 1.5,
+    min: 200,
+    max: 5000,
+    integer: true,
+  },
+  {
+    id: 'lookaheadMoreChanceOutcomes',
+    type: 'scale',
+    lookaheadPath: 'maxChanceOutcomesPerAction',
+    factor: 1.35,
+    min: 32,
+    max: 1296,
+    integer: true,
+  },
+  {
+    id: 'lookaheadUtilityVpHeavy',
+    type: 'scale',
+    lookaheadPath: 'utilityWeights.scoreTotal',
+    factor: 1.25,
+    min: 1,
+    max: 300,
+  },
+  {
+    id: 'lookaheadUtilityFoodSafety',
+    type: 'scale',
+    lookaheadPath: 'utilityWeights.foodRiskPenalty',
+    factor: 1.35,
+    min: 0,
+    max: 10,
+  },
+  {
+    id: 'lookaheadUtilityResourceNow',
+    type: 'scale',
+    lookaheadPath: 'utilityWeights.turnResourcePosition',
+    factor: 1.25,
+    min: 0,
+    max: 10,
+  },
 ];
 
 function printUsage(): void {
@@ -246,108 +443,124 @@ function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-function cloneConfig(config: HeuristicConfig): HeuristicConfig {
+function roundScaleValue(value: number, integer: boolean | undefined): number {
+  if (integer) {
+    return Math.max(1, Math.round(value));
+  }
+  return round2(value);
+}
+
+function cloneHeuristicConfig(config: HeuristicConfig): HeuristicConfig {
   return JSON.parse(JSON.stringify(config)) as HeuristicConfig;
 }
 
-function setNumeric(config: HeuristicConfig, path: NumericPath, value: number): void {
-  const rounded = round2(value);
-  switch (path) {
-    case 'productionWeights.food':
-      config.productionWeights.food = rounded; break;
-    case 'productionWeights.goods':
-      config.productionWeights.goods = rounded; break;
-    case 'productionWeights.workers':
-      config.productionWeights.workers = rounded; break;
-    case 'productionWeights.skulls':
-      config.productionWeights.skulls = rounded; break;
-    case 'developmentWeights.points':
-      config.developmentWeights.points = rounded; break;
-    case 'foodPolicyWeights.starvationPenaltyPerUnit':
-      config.foodPolicyWeights.starvationPenaltyPerUnit = rounded; break;
-    case 'foodPolicyWeights.foodDeficitPriorityPerUnit':
-      config.foodPolicyWeights.foodDeficitPriorityPerUnit = rounded; break;
-    case 'buildWeights.cityExtraDieFutureValue':
-      config.buildWeights.cityExtraDieFutureValue = rounded; break;
-    case 'buildWeights.cityDeferredCompletionValueScale':
-      config.buildWeights.cityDeferredCompletionValueScale = rounded; break;
-    case 'buildWeights.monumentPoints':
-      config.buildWeights.monumentPoints = rounded; break;
-    case 'buildWeights.monumentPointEfficiency':
-      config.buildWeights.monumentPointEfficiency = rounded; break;
-    case 'buildWeights.monumentProgress':
-      config.buildWeights.monumentProgress = rounded; break;
-    case 'buildWeights.monumentWorkersUsed':
-      config.buildWeights.monumentWorkersUsed = rounded; break;
-    case 'buildWeights.monumentSpecialEffect':
-      config.buildWeights.monumentSpecialEffect = rounded; break;
-    case 'buildWeights.monumentDeferredCompletionValueScale':
-      config.buildWeights.monumentDeferredCompletionValueScale = rounded; break;
-    case 'buildWeights.monumentDeferredMaxTurnsToComplete':
-      config.buildWeights.monumentDeferredMaxTurnsToComplete = rounded; break;
-  }
+function cloneLookaheadConfig(config: LookaheadConfig): LookaheadConfig {
+  return JSON.parse(JSON.stringify(config)) as LookaheadConfig;
 }
 
-function getNumeric(config: HeuristicConfig, path: NumericPath): number {
-  switch (path) {
-    case 'productionWeights.food': return config.productionWeights.food;
-    case 'productionWeights.goods': return config.productionWeights.goods;
-    case 'productionWeights.workers': return config.productionWeights.workers;
-    case 'productionWeights.skulls': return config.productionWeights.skulls;
-    case 'developmentWeights.points': return config.developmentWeights.points;
-    case 'foodPolicyWeights.starvationPenaltyPerUnit': return config.foodPolicyWeights.starvationPenaltyPerUnit;
-    case 'foodPolicyWeights.foodDeficitPriorityPerUnit': return config.foodPolicyWeights.foodDeficitPriorityPerUnit;
-    case 'buildWeights.cityExtraDieFutureValue': return config.buildWeights.cityExtraDieFutureValue;
-    case 'buildWeights.cityDeferredCompletionValueScale': return config.buildWeights.cityDeferredCompletionValueScale;
-    case 'buildWeights.monumentPoints': return config.buildWeights.monumentPoints;
-    case 'buildWeights.monumentPointEfficiency': return config.buildWeights.monumentPointEfficiency;
-    case 'buildWeights.monumentProgress': return config.buildWeights.monumentProgress;
-    case 'buildWeights.monumentWorkersUsed': return config.buildWeights.monumentWorkersUsed;
-    case 'buildWeights.monumentSpecialEffect': return config.buildWeights.monumentSpecialEffect;
-    case 'buildWeights.monumentDeferredCompletionValueScale': return config.buildWeights.monumentDeferredCompletionValueScale;
-    case 'buildWeights.monumentDeferredMaxTurnsToComplete': return config.buildWeights.monumentDeferredMaxTurnsToComplete;
+function getPathValue(config: unknown, path: string): unknown {
+  const segments = path.split('.');
+  let current: unknown = config;
+  for (const segment of segments) {
+    if (!current || typeof current !== 'object') {
+      throw new Error(`Invalid path: ${path}`);
+    }
+    current = (current as Record<string, unknown>)[segment];
   }
+  return current;
 }
 
-function flipBoolean(config: HeuristicConfig, path: BooleanPath): void {
-  switch (path) {
-    case 'preferExchangeBeforeDevelopment':
-      config.preferExchangeBeforeDevelopment = !config.preferExchangeBeforeDevelopment;
-      break;
-    case 'foodPolicyWeights.forceRerollOnFoodShortage':
-      config.foodPolicyWeights.forceRerollOnFoodShortage =
-        !config.foodPolicyWeights.forceRerollOnFoodShortage;
-      break;
+function setPathValue(config: unknown, path: string, value: unknown): void {
+  const segments = path.split('.');
+  let current: unknown = config;
+  for (let i = 0; i < segments.length - 1; i += 1) {
+    const segment = segments[i];
+    if (!current || typeof current !== 'object') {
+      throw new Error(`Invalid path: ${path}`);
+    }
+    current = (current as Record<string, unknown>)[segment];
   }
+  const leaf = segments[segments.length - 1];
+  if (!current || typeof current !== 'object') {
+    throw new Error(`Invalid path: ${path}`);
+  }
+  (current as Record<string, unknown>)[leaf] = value;
 }
 
-function applyDimension(config: HeuristicConfig, dimensionId: string): void {
+function getApplicablePath(
+  dimension: DimensionDef,
+  botType: BotConfigFile['botType'],
+): string | undefined {
+  return botType === 'lookahead'
+    ? dimension.lookaheadPath
+    : dimension.heuristicPath;
+}
+
+function applyScale(
+  config: unknown,
+  path: string,
+  factor: number,
+  min: number,
+  max: number,
+  integer: boolean | undefined,
+): void {
+  const current = getPathValue(config, path);
+  if (typeof current !== 'number') {
+    throw new Error(`Scale path is not numeric: ${path}`);
+  }
+  const next = clamp(current * factor, min, max);
+  setPathValue(config, path, roundScaleValue(next, integer));
+}
+
+function applyFlip(config: unknown, path: string): void {
+  const current = getPathValue(config, path);
+  if (typeof current !== 'boolean') {
+    throw new Error(`Flip path is not boolean: ${path}`);
+  }
+  setPathValue(config, path, !current);
+}
+
+function applyDimension(
+  config: HeuristicConfig | LookaheadConfig,
+  botType: BotConfigFile['botType'],
+  dimensionId: string,
+): void {
   const dimension = DIMENSIONS.find((entry) => entry.id === dimensionId);
   if (!dimension) {
     throw new Error(`Unknown dimension id: ${dimensionId}`);
   }
-  if (dimension.type === 'flip') {
-    flipBoolean(config, dimension.path);
+  const path = getApplicablePath(dimension, botType);
+  if (!path) {
     return;
   }
-  const current = getNumeric(config, dimension.path);
-  const next = clamp(current * dimension.factor, dimension.min, dimension.max);
-  setNumeric(config, dimension.path, next);
+  if (dimension.type === 'flip') {
+    applyFlip(config, path);
+    return;
+  }
+  applyScale(
+    config,
+    path,
+    dimension.factor,
+    dimension.min,
+    dimension.max,
+    dimension.integer,
+  );
 }
 
 function buildConfigFromDimensions(
   dimensionIds: string[],
   botType: BotConfigFile['botType'],
 ): BotConfigFile['config'] {
-  const heuristicConfig = cloneConfig(HEURISTIC_STANDARD_CONFIG);
-  for (const dimensionId of dimensionIds) {
-    applyDimension(heuristicConfig, dimensionId);
-  }
   if (botType === 'lookahead') {
-    return {
-      ...LOOKAHEAD_STANDARD_CONFIG,
-      heuristicFallbackConfig: heuristicConfig,
-    };
+    const lookaheadConfig = cloneLookaheadConfig(LOOKAHEAD_STANDARD_CONFIG);
+    for (const dimensionId of dimensionIds) {
+      applyDimension(lookaheadConfig, botType, dimensionId);
+    }
+    return lookaheadConfig;
+  }
+  const heuristicConfig = cloneHeuristicConfig(HEURISTIC_STANDARD_CONFIG);
+  for (const dimensionId of dimensionIds) {
+    applyDimension(heuristicConfig, botType, dimensionId);
   }
   return heuristicConfig;
 }
