@@ -187,12 +187,13 @@ function resolveProductionMutation(game: GameState): GameState {
       ...game.state,
       players: resolved.players,
       phase: nextPhase,
-      turn: {
-        ...game.state.turn,
-        pendingChoices: 0,
-        turnProduction: resolved.turnProduction,
+        turn: {
+          ...game.state.turn,
+          pendingChoices: 0,
+          foodShortage: resolved.foodShortage,
+          turnProduction: resolved.turnProduction,
+        },
       },
-    },
   };
 }
 

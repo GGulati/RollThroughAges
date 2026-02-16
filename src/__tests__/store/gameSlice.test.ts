@@ -17,6 +17,7 @@ import {
 import { GamePhase } from '@/game';
 import { GameSliceState } from '@/store/gameState';
 import { PlayerConfig } from '@/game';
+import { DieState } from '@/game/dice';
 
 const PLAYERS: PlayerConfig[] = [
   { id: 'p1', name: 'Player 1', controller: 'human' },
@@ -455,5 +456,43 @@ describe('gameSlice', () => {
     expect(state.lastError).toBeNull();
     expect(state.game!.state.phase).toBe('endTurn');
     expect(state.game!.state.players[0].goods.get(stone)).toBe(0);
+  });
+
+  it('persists food shortage from production into turn state', () => {
+    let state = reduce(undefined, startGame({ players: PLAYERS }));
+    const game = state.game!;
+    const activeIndex = game.state.activePlayerIndex;
+    const activePlayer = game.state.players[activeIndex];
+    const shortageDice: DieState[] = [
+      { diceFaceIndex: 2, productionIndex: 0, lockDecision: 'kept' }, // 2 food
+      { diceFaceIndex: 4, productionIndex: 0, lockDecision: 'kept' }, // 7 coins
+      { diceFaceIndex: 4, productionIndex: 0, lockDecision: 'kept' }, // 7 coins
+    ];
+
+    state = {
+      ...state,
+      game: {
+        ...game,
+        state: {
+          ...game.state,
+          phase: GamePhase.ResolveProduction,
+          players: game.state.players.map((player, index) =>
+            index === activeIndex ? { ...player, food: 0 } : player,
+          ),
+          turn: {
+            ...game.state.turn,
+            dice: shortageDice,
+            pendingChoices: 0,
+            foodShortage: 0,
+          },
+        },
+      },
+    };
+
+    state = reduce(state, resolveProduction());
+
+    expect(state.lastError).toBeNull();
+    expect(state.game!.state.turn.foodShortage).toBe(1);
+    expect(state.game!.state.players[activeIndex].disasterPenalties).toBeGreaterThan(0);
   });
 });

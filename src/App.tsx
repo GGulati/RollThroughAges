@@ -263,6 +263,7 @@ function App() {
             <p>Pending choices: {productionPanel.pendingProductionChoices}</p>
             <article className="outcome-card">
               <p className="development-title">Turn Outcome ({diceOutcome.summary ?? 'Projected'})</p>
+              <p className="scoreboard-row">🍖 Food: +{diceOutcome.food.produced}</p>
               <p className="scoreboard-row">🪙 Coins: +{diceOutcome.coinsProduced}</p>
               <p className="scoreboard-row">👷 Workers: +{diceOutcome.workersProduced}</p>
               <p className="scoreboard-row">📦 Goods: +{diceOutcome.goodsProduced}</p>

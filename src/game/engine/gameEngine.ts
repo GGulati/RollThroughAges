@@ -101,6 +101,7 @@ export function createInitialTurn(
     rollsUsed: 1,
     dice: createInitialDice(diceCount, settings),
     pendingChoices: 0,
+    foodShortage: 0,
     turnProduction: emptyProduction(),
   };
 }

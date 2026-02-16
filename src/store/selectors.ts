@@ -274,18 +274,21 @@ export const selectDiceOutcomeModel = createSelector(selectGame, (game) => {
     status: 'applied' as const,
     summary: 'Applied',
     food: {
-      produced: game.state.turn.turnProduction.food,
+      produced: produced.food,
       need: foodNeed,
-      shortage: 0,
+      shortage: game.state.turn.foodShortage,
       before: activePlayer.food,
       after: activePlayer.food,
     },
     workersProduced: game.state.turn.turnProduction.workers,
     coinsProduced: game.state.turn.turnProduction.coins,
-    goodsProduced: 0,
+    goodsProduced: produced.goods,
     skulls: game.state.turn.turnProduction.skulls,
     disaster,
-    penalties: { foodPenalty: 0, disasterPenalty: 0 },
+    penalties: {
+      foodPenalty: game.state.turn.foodShortage,
+      disasterPenalty: 0,
+    },
     points: { before: pointsBefore, after: pointsBefore },
   };
 });

@@ -233,6 +233,21 @@ describe('store selectors', () => {
     randomSpy.mockRestore();
   });
 
+  it('keeps goods production visible after production is applied', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.01); // 1 Good
+    const store = createTestStore();
+    store.dispatch(startGame({ players: PLAYERS }));
+    store.dispatch(keepDie({ dieIndex: 0 }));
+    store.dispatch(keepDie({ dieIndex: 1 }));
+    store.dispatch(keepDie({ dieIndex: 2 }));
+
+    const diceOutcome = selectDiceOutcomeModel(store.getState());
+    expect(diceOutcome.summary).toBe('Applied');
+    expect(diceOutcome.goodsProduced).toBeGreaterThan(0);
+
+    randomSpy.mockRestore();
+  });
+
   it('returns development targets and purchasing power in build phase', () => {
     const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.67); // 7 coins
     const store = createTestStore();
