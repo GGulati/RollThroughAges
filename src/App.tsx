@@ -70,6 +70,7 @@ function App() {
   const canRedo = useAppSelector(selectCanRedo);
   const [selectedGoodsToSpend, setSelectedGoodsToSpend] = useState<string[]>([]);
   const [playerCount, setPlayerCount] = useState<number>(MIN_PLAYERS);
+  const [isDiceReferenceExpanded, setIsDiceReferenceExpanded] = useState(false);
   const [goodsToKeepByType, setGoodsToKeepByType] = useState<Record<string, number>>(
     {},
   );
@@ -492,6 +493,23 @@ function App() {
                 </article>
               ))}
             </div>
+            <div className="collapsible-header">
+              <p className="choice-label">All Die Faces</p>
+              <button
+                type="button"
+                className="section-toggle"
+                onClick={() => setIsDiceReferenceExpanded((current) => !current)}
+              >
+                {isDiceReferenceExpanded ? 'Collapse' : 'Expand'}
+              </button>
+            </div>
+            {isDiceReferenceExpanded ? (
+              <ul className="inline-note">
+                {dicePanel.referenceFaces.map((face, index) => (
+                  <li key={`face-${index}`}>{face.label}</li>
+                ))}
+              </ul>
+            ) : null}
           </section>
 
           <section className="app-panel">

@@ -2,6 +2,17 @@ import { DieState, DiceLockDecision, ResourceProduction, DiceFaceDefinition } fr
 import { PlayerState, TurnState, GameSettings } from '../game';
 import { DevelopmentDefinition } from '../construction';
 
+type ResourceKey = keyof ResourceProduction;
+
+const RESOURCE_KEYS: ResourceKey[] = ['goods', 'food', 'workers', 'coins', 'skulls'];
+
+export type ProductionBreakdown = {
+  base: ResourceProduction;
+  bonus: ResourceProduction;
+  total: ResourceProduction;
+  bonusSources: Record<ResourceKey, string[]>;
+};
+
 /**
  * Get the number of dice a player rolls based on completed cities.
  */
@@ -208,64 +219,130 @@ export function calculateDiceProduction(
   player: PlayerState,
   settings: GameSettings
 ): ResourceProduction {
-  const total: ResourceProduction = {
-    goods: 0,
-    food: 0,
-    workers: 0,
-    coins: 0,
-    skulls: 0,
+  return calculateDiceProductionBreakdown(dice, player, settings).total;
+}
+
+/**
+ * Calculate per-resource base and bonus totals from dice production.
+ */
+export function calculateDiceProductionBreakdown(
+  dice: DieState[],
+  player: PlayerState,
+  settings: GameSettings
+): ProductionBreakdown {
+  const base: ResourceProduction = emptyProduction();
+  const bonus: ResourceProduction = emptyProduction();
+  const total: ResourceProduction = emptyProduction();
+  const bonusSourceSets: Record<ResourceKey, Set<string>> = {
+    goods: new Set<string>(),
+    food: new Set<string>(),
+    workers: new Set<string>(),
+    coins: new Set<string>(),
+    skulls: new Set<string>(),
   };
 
   for (const die of dice) {
     const face = settings.diceFaces[die.diceFaceIndex];
     const productionIndex = die.productionIndex >= 0 ? die.productionIndex : 0;
+    const baseProduction = { ...face.production[productionIndex] };
+    const { totalProduction, bonusProduction, bonusSources } = applyBonuses(
+      baseProduction,
+      player,
+      settings,
+    );
 
-    const baseProduction = {...face.production[productionIndex]};
-    const production = applyBonuses(baseProduction, player, settings);
-    
-    total.goods += production.goods;
-    total.food += production.food;
-    total.workers += production.workers;
-    total.coins += production.coins;
-    total.skulls += production.skulls;
-
+    for (const resource of RESOURCE_KEYS) {
+      base[resource] += baseProduction[resource];
+      bonus[resource] += bonusProduction[resource];
+      total[resource] += totalProduction[resource];
+      for (const source of bonusSources[resource]) {
+        bonusSourceSets[resource].add(source);
+      }
+    }
   }
 
-  return total;
+  return {
+    base,
+    bonus,
+    total,
+    bonusSources: {
+      goods: Array.from(bonusSourceSets.goods),
+      food: Array.from(bonusSourceSets.food),
+      workers: Array.from(bonusSourceSets.workers),
+      coins: Array.from(bonusSourceSets.coins),
+      skulls: Array.from(bonusSourceSets.skulls),
+    },
+  };
 }
 
 /**
  * Apply production bonuses
  */
-function applyBonuses(baseProduction: ResourceProduction, player: PlayerState, settings: GameSettings): ResourceProduction {
+function applyBonuses(
+  baseProduction: ResourceProduction,
+  player: PlayerState,
+  settings: GameSettings
+): {
+  totalProduction: ResourceProduction;
+  bonusProduction: ResourceProduction;
+  bonusSources: Record<ResourceKey, string[]>;
+} {
   const completedBonuses = settings.developmentDefinitions
     .filter((d, _) =>
       d.specialEffect.type == 'resourceProductionBonus' &&
       player.developments.find(playerDev => d.id == playerDev) !== undefined
   );
-  
-  const finalProduction = {...baseProduction}
+
+  const finalProduction = { ...baseProduction };
+  const bonusProduction = emptyProduction();
+  const bonusSourceSets: Record<ResourceKey, Set<string>> = {
+    goods: new Set<string>(),
+    food: new Set<string>(),
+    workers: new Set<string>(),
+    coins: new Set<string>(),
+    skulls: new Set<string>(),
+  };
   completedBonuses.forEach((bonus) => {
     if (bonus.specialEffect.type === 'resourceProductionBonus') {
       if (baseProduction.coins > 0 && bonus.specialEffect.resourceBonus.coins > 0) {
-        finalProduction.coins += bonus.specialEffect.resourceBonus.coins
+        finalProduction.coins += bonus.specialEffect.resourceBonus.coins;
+        bonusProduction.coins += bonus.specialEffect.resourceBonus.coins;
+        bonusSourceSets.coins.add(bonus.name);
       }
       if (baseProduction.food > 0 && bonus.specialEffect.resourceBonus.food > 0) {
-        finalProduction.food += bonus.specialEffect.resourceBonus.food
+        finalProduction.food += bonus.specialEffect.resourceBonus.food;
+        bonusProduction.food += bonus.specialEffect.resourceBonus.food;
+        bonusSourceSets.food.add(bonus.name);
       }
       if (baseProduction.goods > 0 && bonus.specialEffect.resourceBonus.goods > 0) {
-        finalProduction.goods += bonus.specialEffect.resourceBonus.goods
+        finalProduction.goods += bonus.specialEffect.resourceBonus.goods;
+        bonusProduction.goods += bonus.specialEffect.resourceBonus.goods;
+        bonusSourceSets.goods.add(bonus.name);
       }
       if (baseProduction.skulls > 0 && bonus.specialEffect.resourceBonus.skulls > 0) {
-        finalProduction.skulls += bonus.specialEffect.resourceBonus.skulls
+        finalProduction.skulls += bonus.specialEffect.resourceBonus.skulls;
+        bonusProduction.skulls += bonus.specialEffect.resourceBonus.skulls;
+        bonusSourceSets.skulls.add(bonus.name);
       }
       if (baseProduction.workers > 0 && bonus.specialEffect.resourceBonus.workers > 0) {
-        finalProduction.workers += bonus.specialEffect.resourceBonus.workers
+        finalProduction.workers += bonus.specialEffect.resourceBonus.workers;
+        bonusProduction.workers += bonus.specialEffect.resourceBonus.workers;
+        bonusSourceSets.workers.add(bonus.name);
       }
     }
-  })
+  });
 
-  return finalProduction;
+  return {
+    totalProduction: finalProduction,
+    bonusProduction,
+    bonusSources: {
+      goods: Array.from(bonusSourceSets.goods),
+      food: Array.from(bonusSourceSets.food),
+      workers: Array.from(bonusSourceSets.workers),
+      coins: Array.from(bonusSourceSets.coins),
+      skulls: Array.from(bonusSourceSets.skulls),
+    },
+  };
 }
 
 /**

@@ -261,7 +261,6 @@ const gameSlice = createSlice({
       state.game = createGame(action.payload.players);
       state.lastError = null;
       state.actionLog = [
-        ...state.actionLog,
         `Game started with ${action.payload.players.length} players: ${action.payload.players
           .map((player) => player.name)
           .join(', ')}.`,

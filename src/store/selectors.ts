@@ -9,6 +9,7 @@ import {
   getRemainingCityWorkers,
   getRemainingMonumentWorkers,
   calculateDiceProduction,
+  calculateDiceProductionBreakdown,
   canRoll,
   countPendingChoices,
   countSkulls,
@@ -137,6 +138,9 @@ export const selectDicePanelModel = createSelector(selectGame, (game) => {
       reason: 'Start a game before rolling dice.',
       dice: [],
       diceCards: [],
+      referenceFaces: [] as Array<{
+        label: string;
+      }>,
       rollsUsed: 0,
       maxRollsAllowed: 0,
       rerollsRemaining: 0,
@@ -179,12 +183,16 @@ export const selectDicePanelModel = createSelector(selectGame, (game) => {
       canChooseOption: canSelectProduction && optionCount > 1,
     };
   });
+  const referenceFaces = game.settings.diceFaces.map((face) => ({
+    label: face.label,
+  }));
 
   return {
     canRoll: canRollNow,
     reason: canRollNow ? null : 'No roll is available right now.',
     dice: game.state.turn.dice,
     diceCards,
+    referenceFaces,
     rollsUsed: game.state.turn.rollsUsed,
     maxRollsAllowed: getMaxRollsAllowed(activePlayer, game.settings),
     rerollsRemaining,
@@ -198,6 +206,12 @@ export const selectDiceOutcomeModel = createSelector(selectGame, (game) => {
     return {
       status: 'projected' as const,
       summary: null as string | null,
+      productionBreakdown: {
+        food: { base: 0, bonus: 0, bonusSources: [] as string[] },
+        workers: { base: 0, bonus: 0, bonusSources: [] as string[] },
+        coins: { base: 0, bonus: 0, bonusSources: [] as string[] },
+        goods: { base: 0, bonus: 0, bonusSources: [] as string[] },
+      },
       food: { produced: 0, need: 0, shortage: 0, before: 0, after: 0 },
       workersProduced: 0,
       coinsProduced: 0,
@@ -217,6 +231,11 @@ export const selectDiceOutcomeModel = createSelector(selectGame, (game) => {
   const activeIndex = game.state.activePlayerIndex;
   const activePlayer = game.state.players[activeIndex];
   const produced = calculateDiceProduction(
+    game.state.turn.dice,
+    activePlayer,
+    game.settings,
+  );
+  const productionBreakdown = calculateDiceProductionBreakdown(
     game.state.turn.dice,
     activePlayer,
     game.settings,
@@ -251,6 +270,28 @@ export const selectDiceOutcomeModel = createSelector(selectGame, (game) => {
     return {
       status: 'projected' as const,
       summary: 'Projected',
+      productionBreakdown: {
+        food: {
+          base: productionBreakdown.base.food,
+          bonus: productionBreakdown.bonus.food,
+          bonusSources: productionBreakdown.bonusSources.food,
+        },
+        workers: {
+          base: productionBreakdown.base.workers,
+          bonus: productionBreakdown.bonus.workers,
+          bonusSources: productionBreakdown.bonusSources.workers,
+        },
+        coins: {
+          base: productionBreakdown.base.coins,
+          bonus: productionBreakdown.bonus.coins,
+          bonusSources: productionBreakdown.bonusSources.coins,
+        },
+        goods: {
+          base: productionBreakdown.base.goods,
+          bonus: productionBreakdown.bonus.goods,
+          bonusSources: productionBreakdown.bonusSources.goods,
+        },
+      },
       food: {
         produced: produced.food,
         need: foodNeed,
@@ -274,6 +315,28 @@ export const selectDiceOutcomeModel = createSelector(selectGame, (game) => {
   return {
     status: 'applied' as const,
     summary: 'Applied',
+    productionBreakdown: {
+      food: {
+        base: productionBreakdown.base.food,
+        bonus: productionBreakdown.bonus.food,
+        bonusSources: productionBreakdown.bonusSources.food,
+      },
+      workers: {
+        base: productionBreakdown.base.workers,
+        bonus: productionBreakdown.bonus.workers,
+        bonusSources: productionBreakdown.bonusSources.workers,
+      },
+      coins: {
+        base: productionBreakdown.base.coins,
+        bonus: productionBreakdown.bonus.coins,
+        bonusSources: productionBreakdown.bonusSources.coins,
+      },
+      goods: {
+        base: productionBreakdown.base.goods,
+        bonus: productionBreakdown.bonus.goods,
+        bonusSources: productionBreakdown.bonusSources.goods,
+      },
+    },
     food: {
       produced: produced.food,
       need: foodNeed,
