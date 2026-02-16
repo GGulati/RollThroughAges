@@ -48,9 +48,9 @@ type ConstructionSection = 'cities' | 'monuments' | 'developments';
 type SectionPreferences = Record<ConstructionSection, boolean>;
 
 const DEFAULT_SECTION_PREFERENCES: SectionPreferences = {
-  cities: true,
-  monuments: true,
-  developments: true,
+  cities: false,
+  monuments: false,
+  developments: false,
 };
 
 function App() {
@@ -711,59 +711,58 @@ function App() {
             </section>
           </section>
 
-          <section className="app-panel">
-            <h2>Discard Panel</h2>
-            <p>{discardPanel.reason ?? 'Choose goods to keep and apply discard.'}</p>
-            <p>
-              Goods limit:{' '}
-              {discardPanel.goodsLimit === Infinity ? 'No limit' : discardPanel.goodsLimit}
-            </p>
-            <p>Total goods: {discardPanel.totalGoods}</p>
-            <p>Overflow: {discardPanel.overflow}</p>
-            {discardPanel.isActionAllowed ? (
-              <div className="development-list">
-                {discardPanel.goodsOptions.map((option) => (
-                  <article key={`discard-${option.goodsType}`} className="development-card">
-                    <p className="development-title">
-                      {option.goodsType} (owned: {option.quantity})
-                    </p>
-                    <label className="choice-label" htmlFor={`keep-${option.goodsType}`}>
-                      Keep quantity
-                    </label>
-                    <input
-                      id={`keep-${option.goodsType}`}
-                      type="number"
-                      min={0}
-                      max={option.quantity}
-                      value={goodsToKeepByType[option.goodsType] ?? option.quantity}
-                      onChange={(event) =>
-                        updateGoodsToKeep(option.goodsType, event.target.value)
-                      }
-                    />
-                  </article>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => dispatch(discardGoods({ goodsToKeepByType }))}
-                  disabled={!discardPanel.isActionAllowed}
-                >
-                  Apply Discard
-                </button>
-              </div>
-            ) : null}
+          <section className="panel-pair">
+            <section className="app-panel">
+              <h2>Discard Panel</h2>
+              <p>{discardPanel.reason ?? 'Choose goods to keep and apply discard.'}</p>
+              <p>
+                Goods limit:{' '}
+                {discardPanel.goodsLimit === Infinity ? 'No limit' : discardPanel.goodsLimit}
+              </p>
+              <p>Total goods: {discardPanel.totalGoods}</p>
+              <p>Overflow: {discardPanel.overflow}</p>
+              {discardPanel.isActionAllowed ? (
+                <div className="development-list">
+                  {discardPanel.goodsOptions.map((option) => (
+                    <article key={`discard-${option.goodsType}`} className="development-card">
+                      <p className="development-title">
+                        {option.goodsType} (owned: {option.quantity})
+                      </p>
+                      <label className="choice-label" htmlFor={`keep-${option.goodsType}`}>
+                        Keep quantity
+                      </label>
+                      <input
+                        id={`keep-${option.goodsType}`}
+                        type="number"
+                        min={0}
+                        max={option.quantity}
+                        value={goodsToKeepByType[option.goodsType] ?? option.quantity}
+                        onChange={(event) =>
+                          updateGoodsToKeep(option.goodsType, event.target.value)
+                        }
+                      />
+                    </article>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => dispatch(discardGoods({ goodsToKeepByType }))}
+                    disabled={!discardPanel.isActionAllowed}
+                  >
+                    Apply Discard
+                  </button>
+                </div>
+              ) : null}
+            </section>
+            <section className="app-panel">
+              <h2>Action Log</h2>
+              <textarea
+                className="log-textbox"
+                readOnly
+                value={actionLog.join('\n')}
+                aria-label="Action log history"
+              />
+            </section>
           </section>
-            </div>
-
-            <div className="actions-log-grid">
-              <section className="app-panel">
-                <h2>Action Log</h2>
-                <textarea
-                  className="log-textbox"
-                  readOnly
-                  value={actionLog.join('\n')}
-                  aria-label="Action log history"
-                />
-              </section>
             </div>
           </>
         ) : null}
