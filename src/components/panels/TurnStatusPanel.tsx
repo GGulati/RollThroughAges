@@ -10,6 +10,22 @@ export type TurnStatusPlayerPoints = {
     penalties: number;
     total: number;
   };
+  progress: {
+    citiesBuilt: number;
+    citiesTotal: number;
+    developmentsBuilt: number;
+    developmentsGoal: number | null;
+    monumentsBuilt: number;
+    monumentsTotal: number;
+    monumentStatuses: Array<{
+      monumentId: string;
+      monumentName: string;
+      workersCommitted: number;
+      workerCost: number;
+      completed: boolean;
+      completedOrder: number | null;
+    }>;
+  };
 };
 
 export type TurnStatusData = {
@@ -51,7 +67,7 @@ export function TurnStatusPanel({
 }: TurnStatusPanelProps) {
   return (
     <section className={className} aria-live="polite">
-      <h2>Turn Status</h2>
+      <h2>Game Status</h2>
       <p>
         <strong>Round:</strong> {turnStatus.isGameActive ? turnStatus.round : '-'}
       </p>
@@ -83,14 +99,38 @@ export function TurnStatusPanel({
       {!canEndTurn && endTurnReason ? <p className="hint-text">{endTurnReason}</p> : null}
       {turnStatus.playerPoints.length > 0 ? (
         <div className="scoreboard-list">
-          {turnStatus.playerPoints.map((entry) => (
+          {turnStatus.playerPoints.map((entry) => {
+            return (
             <PlayerScoreCard
               key={entry.playerId}
               playerName={entry.playerName}
               breakdown={entry.breakdown}
               isActive={entry.playerId === turnStatus.activePlayerId}
-            />
-          ))}
+              showBreakdown
+            >
+              <p className="scoreboard-row">Monuments:</p>
+              <div className="monument-status-list">
+                {entry.progress.monumentStatuses.map((monument) => {
+                  const statusText = monument.completed
+                    ? monument.completedOrder === 1
+                      ? 'Built (First)'
+                      : 'Built'
+                    : monument.workersCommitted > 0
+                      ? `${monument.workersCommitted}/${monument.workerCost}`
+                      : `0/${monument.workerCost}`;
+                  return (
+                    <span
+                      key={`${entry.playerId}-${monument.monumentId}`}
+                      className="monument-status-chip"
+                    >
+                      {monument.monumentName}: {statusText}
+                    </span>
+                  );
+                })}
+              </div>
+            </PlayerScoreCard>
+            );
+          })}
         </div>
       ) : null}
     </section>

@@ -283,6 +283,22 @@ body,
   font-size: 0.92rem;
 }
 
+.monument-status-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.monument-status-chip {
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 0.8rem;
+  padding: 0.2rem 0.45rem;
+}
+
 .die-row {
   display: flex;
   flex-wrap: wrap;

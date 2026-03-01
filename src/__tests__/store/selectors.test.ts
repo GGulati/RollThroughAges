@@ -114,6 +114,10 @@ describe('store selectors', () => {
     expect(typeof turnStatus.playerPoints[0].breakdown.bonuses).toBe('number');
     expect(typeof turnStatus.playerPoints[0].breakdown.penalties).toBe('number');
     expect(typeof turnStatus.playerPoints[0].breakdown.total).toBe('number');
+    expect(typeof turnStatus.playerPoints[0].progress.citiesBuilt).toBe('number');
+    expect(typeof turnStatus.playerPoints[0].progress.monumentsBuilt).toBe('number');
+    expect(typeof turnStatus.playerPoints[0].progress.developmentsBuilt).toBe('number');
+    expect(turnStatus.playerPoints[0].progress.monumentStatuses.length).toBeGreaterThan(0);
     expect(dicePanel.canRoll).toBe(true);
     expect(dicePanel.reason).toBeNull();
     expect(dicePanel.maxRollsAllowed).toBe(3);

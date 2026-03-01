@@ -45,6 +45,22 @@ type TurnPlayerPointsEntry = {
   playerName: string;
   points: number;
   breakdown: ScoreBreakdownSummary;
+  progress: {
+    citiesBuilt: number;
+    citiesTotal: number;
+    developmentsBuilt: number;
+    developmentsGoal: number | null;
+    monumentsBuilt: number;
+    monumentsTotal: number;
+    monumentStatuses: Array<{
+      monumentId: string;
+      monumentName: string;
+      workersCommitted: number;
+      workerCost: number;
+      completed: boolean;
+      completedOrder: number | null;
+    }>;
+  };
 };
 
 function getPotentialExchangeCoinGain(
@@ -167,6 +183,10 @@ export const selectTurnStatus = createSelector(
     }
 
     const activePlayer = game.state.players[game.state.activePlayerIndex];
+    const availableMonuments = getAvailableMonuments(
+      game.settings.players.length,
+      game.settings,
+    );
     const playerConfig = game.settings.players.find(
       (player) => player.id === activePlayer.id,
     );
@@ -175,11 +195,34 @@ export const selectTurnStatus = createSelector(
       const config = game.settings.players.find((entry) => entry.id === player.id);
       const breakdown = getScoreBreakdown(player, game.state.players, game.settings);
       const points = breakdown.total;
+      const monumentStatuses = availableMonuments.map((monument) => {
+        const progress = player.monuments[monument.id];
+        return {
+          monumentId: monument.id,
+          monumentName: monument.requirements.name,
+          workersCommitted: progress?.completed
+            ? monument.requirements.workerCost
+            : Math.max(0, progress?.workersCommitted ?? 0),
+          workerCost: monument.requirements.workerCost,
+          completed: Boolean(progress?.completed),
+          completedOrder: progress?.completedOrder ?? null,
+        };
+      });
+      const monumentsBuilt = monumentStatuses.filter((entry) => entry.completed).length;
       return {
         playerId: player.id,
         playerName: config?.name ?? player.id,
         points,
         breakdown,
+        progress: {
+          citiesBuilt: player.cities.filter((city) => city.completed).length,
+          citiesTotal: player.cities.length,
+          developmentsBuilt: player.developments.length,
+          developmentsGoal: game.settings.endCondition.numDevelopments ?? null,
+          monumentsBuilt,
+          monumentsTotal: availableMonuments.length,
+          monumentStatuses,
+        },
       };
     });
     const activePlayerPoints =
