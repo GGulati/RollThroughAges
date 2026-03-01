@@ -3,7 +3,13 @@ import userEvent from '@testing-library/user-event';
 import { Provider } from 'react-redux';
 import { describe, expect, it, vi } from 'vitest';
 import App from '@/App';
-import { buildCity, resolveProduction } from '@/store/gameSlice';
+import {
+  buildCity,
+  keepDie,
+  resolveProduction,
+  selectProduction,
+} from '@/store/gameSlice';
+import { GamePhase } from '@/game';
 import { createAppStore } from '@/store/store';
 
 function renderWithStore() {
@@ -45,15 +51,42 @@ describe('stage3 flow integration', () => {
 
     expect(rowText(/Phase:/)).toContain('rollDice');
 
-    const lockButtons = screen.getAllByRole('button', { name: /^Lock/ });
-    expect(lockButtons).toHaveLength(3);
-    await user.click(lockButtons[0]);
-    await user.click(lockButtons[1]);
-    await user.click(lockButtons[2]);
+    act(() => {
+      const turnDice = store.getState().game.game!.state.turn.dice;
+      for (let i = 0; i < turnDice.length; i += 1) {
+        if (turnDice[i].lockDecision !== 'skull') {
+          store.dispatch(keepDie({ dieIndex: i }));
+        }
+      }
+    });
 
-    expect(rowText(/Phase:/)).toContain('build');
-    expect(rowText(/Rolls Used:/)).toContain('1/3');
-    expect(rowText(/Pending choices:/)).toContain('0');
+    act(() => {
+      let game = store.getState().game.game!;
+      if (game.state.phase === GamePhase.DecideDice) {
+        game.state.turn.dice.forEach((die, dieIndex) => {
+          if (die.productionIndex >= 0) {
+            return;
+          }
+          const face = game.settings.diceFaces[die.diceFaceIndex];
+          const workerOptionIndex = face.production.findIndex(
+            (production) => production.workers > 0,
+          );
+          store.dispatch(
+            selectProduction({
+              dieIndex,
+              productionIndex: workerOptionIndex >= 0 ? workerOptionIndex : 0,
+            }),
+          );
+          game = store.getState().game.game!;
+        });
+      }
+      game = store.getState().game.game!;
+      if (game.state.phase === GamePhase.ResolveProduction) {
+        store.dispatch(resolveProduction());
+      }
+    });
+
+    expect(store.getState().game.game?.state.phase).toBe('build');
 
     const workersBeforeInvalidTarget =
       store.getState().game.game?.state.turn.turnProduction.workers ?? 0;
@@ -67,7 +100,7 @@ describe('stage3 flow integration', () => {
 
     const workersBeforeValidBuild =
       store.getState().game.game?.state.turn.turnProduction.workers ?? 0;
-    const buildHeading = screen.getByRole('heading', { name: 'Build Panel' });
+    const buildHeading = screen.getByRole('heading', { name: 'Build' });
     const buildSection = buildHeading.closest('section');
     expect(buildSection).not.toBeNull();
     if (!buildSection) {

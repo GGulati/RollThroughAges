@@ -36,7 +36,7 @@ import {
   isGameOver,
   resolveProduction,
 } from '@/game/engine';
-import { TutorialStepDefinition, TUTORIAL_STEPS } from './gameState';
+import { DomainEvent, TutorialStepDefinition, TUTORIAL_STEPS } from './gameState';
 import { RootState } from './store';
 
 const selectGameSlice = (state: RootState) => state.game;
@@ -162,6 +162,31 @@ export const selectCanRedo = createSelector(
 export const selectActionLog = createSelector(
   selectGameSlice,
   (slice) => slice.actionLog,
+);
+
+export const selectEventBatches = createSelector(
+  selectGameSlice,
+  (slice) => slice.events.commandBatches,
+);
+
+export const selectLatestEvent = createSelector(selectEventBatches, (batches) => {
+  const latestBatch = batches[batches.length - 1];
+  if (!latestBatch) {
+    return null;
+  }
+  return latestBatch.appliedEvents[latestBatch.appliedEvents.length - 1] ?? null;
+});
+
+export const selectTurnEvents = createSelector(
+  selectGameSlice,
+  (slice) => slice.events.turnEvents,
+);
+
+export const selectPhaseEvents = createSelector(
+  selectTurnEvents,
+  (_: RootState, phase: GamePhase | null) => phase,
+  (events, phase): DomainEvent[] =>
+    events.filter((event) => (phase == null ? true : event.phase === phase)),
 );
 
 export const selectTutorialModel = createSelector(selectGameSlice, (slice) => {

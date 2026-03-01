@@ -76,6 +76,25 @@ describe('gameSlice', () => {
     expect(state.actionLog).toEqual([]);
   });
 
+  it('persists typed event batches with bounded command history', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.4);
+    let state = reduce(undefined, startGame({ players: PLAYERS }));
+    expect(state.events.commandBatches.length).toBe(1);
+    expect(state.events.commandBatches[0].commandType).toBe('startGame');
+    expect(state.events.commandBatches[0].appliedEvents[0]?.type).toBe(
+      'phase_transition',
+    );
+
+    for (let i = 0; i < 150; i += 1) {
+      state = reduce(state, rollDice());
+    }
+
+    expect(state.events.commandBatches.length).toBeLessThanOrEqual(120);
+    expect(state.events.turnEvents.length).toBeGreaterThan(0);
+    expect(state.events.phaseEvents.length).toBeGreaterThan(0);
+    randomSpy.mockRestore();
+  });
+
   it('gates tutorial actions and advances on allowed completion actions', () => {
     let state = reduce(undefined, startTutorialGame());
 

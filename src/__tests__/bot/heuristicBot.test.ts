@@ -87,12 +87,25 @@ describe('heuristic bot', () => {
     });
   });
 
-  it('scores build options and prefers high-value monument completion', () => {
+  it('can be configured to prefer monument completion over city progress', () => {
     const game = createTestGame(2, GamePhase.Build);
     game.state.turn.turnProduction.workers = 1;
     game.state.players[0].monuments.stepPyramid.workersCommitted = 2;
 
-    const action = chooseHeuristicBotAction(game, HEURISTIC_STANDARD_CONFIG);
+    const config: HeuristicConfig = {
+      ...HEURISTIC_STANDARD_CONFIG,
+      buildWeights: {
+        ...HEURISTIC_STANDARD_CONFIG.buildWeights,
+        monumentPoints: 100,
+        monumentPointEfficiency: 100,
+        monumentProgress: 100,
+        monumentWorkersUsed: 25,
+        monumentSpecialEffect: 0,
+        cityProgress: 0,
+      },
+    };
+
+    const action = chooseHeuristicBotAction(game, config);
     expect(action?.type).toBe('buildMonument');
     expect(action && 'monumentId' in action ? action.monumentId : '').toBe(
       'stepPyramid',

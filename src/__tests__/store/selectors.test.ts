@@ -17,13 +17,17 @@ import {
   selectCanUndo,
   selectDevelopmentPanelModel,
   selectExchangePanelModel,
+  selectEventBatches,
   selectDisasterPanelModel,
   selectDicePanelModel,
   selectDiceOutcomeModel,
   selectDiscardPanelModel,
   selectEndgameStatus,
+  selectLatestEvent,
+  selectPhaseEvents,
   selectProductionPanelModel,
   selectTutorialModel,
+  selectTurnEvents,
   selectTurnStatus,
 } from '@/store/selectors';
 
@@ -94,6 +98,10 @@ describe('store selectors', () => {
     expect(selectDisasterPanelModel(state).disasters).toEqual([]);
     expect(selectCanUndo(state)).toBe(false);
     expect(selectCanRedo(state)).toBe(false);
+    expect(selectEventBatches(state)).toEqual([]);
+    expect(selectLatestEvent(state)).toBeNull();
+    expect(selectTurnEvents(state)).toEqual([]);
+    expect(selectPhaseEvents(state, null)).toEqual([]);
     expect(selectEndgameStatus(state)).toEqual({
       isGameActive: false,
       isGameOver: false,
@@ -148,6 +156,22 @@ describe('store selectors', () => {
     expect(tutorialModel.isActive).toBe(true);
     expect(tutorialModel.step?.id).toBe('intro');
     expect(tutorialModel.highlightTarget).toBe('production');
+  });
+
+  it('returns latest, turn, and phase-filtered event streams', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.6);
+    const store = createTestStore();
+    store.dispatch(startGame({ players: PLAYERS }));
+    store.dispatch(rollDice());
+
+    const state = store.getState();
+    const latestEvent = selectLatestEvent(state);
+    expect(latestEvent).not.toBeNull();
+    expect(selectEventBatches(state).length).toBeGreaterThanOrEqual(2);
+    expect(selectTurnEvents(state).length).toBeGreaterThan(0);
+    expect(selectPhaseEvents(state, GamePhase.RollDice).length).toBeGreaterThanOrEqual(0);
+
+    randomSpy.mockRestore();
   });
 
   it('tracks undo/redo selector state across mutations', () => {

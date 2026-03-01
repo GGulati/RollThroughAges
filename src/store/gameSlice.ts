@@ -39,6 +39,10 @@ import {
 } from '@/game/engine';
 import { GameSettings, GameState, GameStateSnapshot, PlayerState } from '@/game';
 import {
+  CommandEventBatch,
+  DomainEvent,
+  DomainEventType,
+  GameCommandType,
   GameActionErrorCode,
   GameSliceState,
   TUTORIAL_STEPS,
@@ -46,6 +50,9 @@ import {
 } from './gameState';
 
 const MAX_HISTORY_ENTRIES = 20;
+const MAX_EVENT_BATCHES = 120;
+const MAX_TURN_EVENTS = 240;
+const MAX_PHASE_EVENTS = 120;
 const TUTORIAL_PLAYERS: PlayerConfig[] = [
   { id: 'tutorial-p1', name: 'Player 1', controller: 'human' },
   { id: 'tutorial-p2', name: 'Guide Bot', controller: 'bot' },
@@ -56,11 +63,121 @@ const initialState: GameSliceState = {
   game: null,
   lastError: null,
   actionLog: [],
+  events: {
+    commandBatches: [],
+    turnEvents: [],
+    phaseEvents: [],
+    currentTurnKey: null,
+    currentPhaseKey: null,
+    nextEventId: 1,
+    nextCommandId: 1,
+  },
   tutorial: {
     active: false,
     currentStepIndex: 0,
   },
 };
+
+function trimToMax<T>(entries: T[], max: number): T[] {
+  if (entries.length <= max) {
+    return entries;
+  }
+  return entries.slice(entries.length - max);
+}
+
+function toTurnKey(
+  actorPlayerId: string | null,
+  round: number | null,
+): string {
+  return `${round ?? 'none'}:${actorPlayerId ?? 'none'}`;
+}
+
+function toPhaseKey(turnKey: string, phase: GamePhase | null): string {
+  return `${turnKey}:${phase ?? 'none'}`;
+}
+
+function createDomainEvent(
+  state: GameSliceState,
+  game: GameState | null,
+  type: DomainEventType,
+  payload: Record<string, unknown> = {},
+  overrides: Partial<Pick<DomainEvent, 'actorPlayerId' | 'round' | 'phase'>> = {},
+): DomainEvent {
+  const actorPlayerId = overrides.actorPlayerId ?? game?.state.turn.activePlayerId ?? null;
+  const round = overrides.round ?? game?.state.round ?? null;
+  const phase = overrides.phase ?? game?.state.phase ?? null;
+  const event: DomainEvent = {
+    id: `evt-${state.events.nextEventId}`,
+    type,
+    actorPlayerId,
+    round,
+    phase,
+    payload,
+  };
+  state.events.nextEventId += 1;
+  return event;
+}
+
+function recordCommandBatch(
+  state: GameSliceState,
+  commandType: GameCommandType,
+  resolutionEvents: DomainEvent[],
+  appliedEvents: DomainEvent[],
+): void {
+  const contextEvent = appliedEvents[appliedEvents.length - 1] ??
+    resolutionEvents[resolutionEvents.length - 1];
+  const actorPlayerId = contextEvent?.actorPlayerId ?? state.game?.state.turn.activePlayerId ?? null;
+  const round = contextEvent?.round ?? state.game?.state.round ?? null;
+  const phase = contextEvent?.phase ?? state.game?.state.phase ?? null;
+  const turnKey = toTurnKey(actorPlayerId, round);
+  const phaseKey = toPhaseKey(turnKey, phase);
+
+  if (state.events.currentTurnKey !== turnKey) {
+    state.events.turnEvents = [];
+    state.events.currentTurnKey = turnKey;
+  }
+  if (state.events.currentPhaseKey !== phaseKey) {
+    state.events.phaseEvents = [];
+    state.events.currentPhaseKey = phaseKey;
+  }
+
+  state.events.turnEvents = trimToMax(
+    [...state.events.turnEvents, ...appliedEvents],
+    MAX_TURN_EVENTS,
+  );
+  state.events.phaseEvents = trimToMax(
+    [...state.events.phaseEvents, ...appliedEvents],
+    MAX_PHASE_EVENTS,
+  );
+
+  const batch: CommandEventBatch = {
+    commandId: `cmd-${state.events.nextCommandId}`,
+    commandType,
+    actorPlayerId,
+    round,
+    phase,
+    resolutionEvents,
+    appliedEvents,
+    createdAtTurnKey: turnKey,
+  };
+  state.events.nextCommandId += 1;
+  state.events.commandBatches = trimToMax(
+    [...state.events.commandBatches, batch],
+    MAX_EVENT_BATCHES,
+  );
+}
+
+function resetEventState(state: GameSliceState): void {
+  state.events = {
+    commandBatches: [],
+    turnEvents: [],
+    phaseEvents: [],
+    currentTurnKey: null,
+    currentPhaseKey: null,
+    nextEventId: 1,
+    nextCommandId: 1,
+  };
+}
 
 function setError(state: GameSliceState, code: GameActionErrorCode, message: string): void {
   state.lastError = { code, message };
@@ -352,6 +469,7 @@ const gameSlice = createSlice({
       state.game = null;
       state.lastError = null;
       state.actionLog = [];
+      resetEventState(state);
       state.tutorial = {
         active: false,
         currentStepIndex: 0,
@@ -369,6 +487,11 @@ const gameSlice = createSlice({
           .map((player) => player.name)
           .join(', ')}.`,
       ];
+      resetEventState(state);
+      const phaseEvent = createDomainEvent(state, state.game, 'phase_transition', {
+        toPhase: state.game?.state.phase ?? null,
+      });
+      recordCommandBatch(state, 'startGame', [phaseEvent], [phaseEvent]);
     },
     startTutorialGame: (state) => {
       const seededGame = autoAdvanceForcedPhases(createGame(TUTORIAL_PLAYERS));
@@ -398,6 +521,11 @@ const gameSlice = createSlice({
       state.actionLog = [
         '[System] Tutorial game started.',
       ];
+      resetEventState(state);
+      const phaseEvent = createDomainEvent(state, state.game, 'phase_transition', {
+        toPhase: state.game?.state.phase ?? null,
+      });
+      recordCommandBatch(state, 'startTutorialGame', [phaseEvent], [phaseEvent]);
     },
     advanceTutorialStep: (state) => {
       if (!state.tutorial.active) {
@@ -410,15 +538,24 @@ const gameSlice = createSlice({
         state.tutorial.active = false;
         state.lastError = null;
         appendLog(state, 'Tutorial completed.');
+        const event = createDomainEvent(state, state.game, 'turn_completed', {
+          tutorialCompleted: true,
+        });
+        recordCommandBatch(state, 'advanceTutorialStep', [event], [event]);
         return;
       }
       advanceTutorialIfCompleted(state, 'continue');
       state.lastError = null;
+      const event = createDomainEvent(state, state.game, 'turn_completed', {
+        tutorialStepIndex: state.tutorial.currentStepIndex,
+      });
+      recordCommandBatch(state, 'advanceTutorialStep', [event], [event]);
     },
     exitTutorial: (state) => {
       state.game = null;
       state.lastError = null;
       state.actionLog = [];
+      resetEventState(state);
       state.tutorial = {
         active: false,
         currentStepIndex: 0,
@@ -478,6 +615,27 @@ const gameSlice = createSlice({
           deterministicGame.settings,
         )}) -> phase ${afterSnapshot.phase}.`,
       );
+      const rollStarted = createDomainEvent(state, deterministicGame, 'dice_roll_started', {
+        rollsUsed: beforeSnapshot.turn.rollsUsed,
+      }, {
+        phase: beforeSnapshot.phase,
+      });
+      const rollResolved = createDomainEvent(state, deterministicGame, 'dice_roll_resolved', {
+        rollsUsed: afterSnapshot.turn.rollsUsed,
+        pendingChoices: afterSnapshot.turn.pendingChoices,
+      });
+      const resolutionEvents = [rollStarted, rollResolved];
+      const appliedEvents =
+        beforeSnapshot.phase !== afterSnapshot.phase
+          ? [
+              ...resolutionEvents,
+              createDomainEvent(state, deterministicGame, 'phase_transition', {
+                fromPhase: beforeSnapshot.phase,
+                toPhase: afterSnapshot.phase,
+              }),
+            ]
+          : resolutionEvents;
+      recordCommandBatch(state, 'rollDice', resolutionEvents, appliedEvents);
       advanceTutorialIfCompleted(state, 'rollDice');
     },
     rerollSingleDie: (state, action: PayloadAction<{ dieIndex: number }>) => {
@@ -567,6 +725,17 @@ const gameSlice = createSlice({
         state,
         `Single-die reroll on die ${action.payload.dieIndex + 1} applied; ${remaining} remaining.`,
       );
+      const rerollEvent = createDomainEvent(
+        state,
+        deterministicGame,
+        'dice_roll_resolved',
+        {
+          dieIndex: action.payload.dieIndex,
+          singleDieRerollsUsed: deterministicGame.state.turn.singleDieRerollsUsed,
+          remainingSingleDieRerolls: remaining,
+        },
+      );
+      recordCommandBatch(state, 'rerollSingleDie', [rerollEvent], [rerollEvent]);
       advanceTutorialIfCompleted(state, 'rerollSingleDie');
     },
     endTurn: (state) => {
@@ -617,6 +786,18 @@ const gameSlice = createSlice({
           beforeSnapshot.turn.activePlayerId,
         );
       }
+      const turnCompleted = createDomainEvent(state, state.game, 'turn_completed', {
+        previousPlayerId: beforeSnapshot.turn.activePlayerId,
+        nextPlayerId: state.game?.state.turn.activePlayerId ?? null,
+      });
+      const phaseTransition = createDomainEvent(state, state.game, 'phase_transition', {
+        fromPhase: beforeSnapshot.phase,
+        toPhase: state.game?.state.phase ?? null,
+      });
+      recordCommandBatch(state, 'endTurn', [turnCompleted, phaseTransition], [
+        turnCompleted,
+        phaseTransition,
+      ]);
       advanceTutorialIfCompleted(state, 'endTurn');
     },
     discardGoods: (
@@ -695,6 +876,21 @@ const gameSlice = createSlice({
         state,
         `Applied discard: kept ${totalAfter}/${totalBefore} goods (discarded ${discarded}), phase ${nextGame.state.phase}.`,
       );
+      const discardEvent = createDomainEvent(state, nextGame, 'discard_resolved', {
+        kept: totalAfter,
+        discarded,
+      });
+      const appliedEvents =
+        beforeSnapshot.phase !== nextGame.state.phase
+          ? [
+              discardEvent,
+              createDomainEvent(state, nextGame, 'phase_transition', {
+                fromPhase: beforeSnapshot.phase,
+                toPhase: nextGame.state.phase,
+              }),
+            ]
+          : [discardEvent];
+      recordCommandBatch(state, 'discardGoods', [discardEvent], appliedEvents);
       advanceTutorialIfCompleted(state, 'discardGoods');
     },
     keepDie: (state, action: PayloadAction<{ dieIndex: number }>) => {
@@ -716,6 +912,7 @@ const gameSlice = createSlice({
       }
 
       const { dieIndex } = action.payload;
+      const phaseBefore = state.game.state.phase;
       const die = state.game.state.turn.dice[dieIndex];
       const previousLockState = die?.lockDecision;
       if (!die) {
@@ -764,6 +961,22 @@ const gameSlice = createSlice({
           nextGame.state,
         )}/${nextGame.state.turn.dice.length}).`,
       );
+      const lockEvent = createDomainEvent(state, nextGame, 'die_lock_changed', {
+        dieIndex,
+        from: previousLockState ?? null,
+        to: currentLockState ?? null,
+      });
+      const appliedEvents =
+        phaseBefore !== nextGame.state.phase
+          ? [
+              lockEvent,
+              createDomainEvent(state, nextGame, 'phase_transition', {
+                fromPhase: phaseBefore,
+                toPhase: nextGame.state.phase,
+              }),
+            ]
+          : [lockEvent];
+      recordCommandBatch(state, 'keepDie', [lockEvent], appliedEvents);
       advanceTutorialIfCompleted(state, 'keepDie');
     },
     selectProduction: (
@@ -791,6 +1004,7 @@ const gameSlice = createSlice({
       }
 
       const { dieIndex, productionIndex } = action.payload;
+      const phaseBefore = state.game.state.phase;
       const die = state.game.state.turn.dice[dieIndex];
       if (!die) {
         setError(state, 'INVALID_DIE_INDEX', 'That die does not exist.');
@@ -878,6 +1092,22 @@ const gameSlice = createSlice({
           skulls: selectedResult.skulls,
         })}; pending choices ${nextGame.state.turn.pendingChoices}.`,
       );
+      const selectionEvent = createDomainEvent(state, nextGame, 'dice_roll_resolved', {
+        dieIndex,
+        productionIndex,
+        pendingChoices: nextGame.state.turn.pendingChoices,
+      });
+      const appliedEvents =
+        phaseBefore !== nextGame.state.phase
+          ? [
+              selectionEvent,
+              createDomainEvent(state, nextGame, 'phase_transition', {
+                fromPhase: phaseBefore,
+                toPhase: nextGame.state.phase,
+              }),
+            ]
+          : [selectionEvent];
+      recordCommandBatch(state, 'selectProduction', [selectionEvent], appliedEvents);
       advanceTutorialIfCompleted(state, 'selectProduction');
     },
     resolveProduction: (state) => {
@@ -935,6 +1165,28 @@ const gameSlice = createSlice({
         `Resolved production (${formatProductionSummary(
           nextGame.state.turn.turnProduction,
         )}, food shortage ${nextGame.state.turn.foodShortage}) -> phase ${nextGame.state.phase}.`,
+      );
+      const productionEvent = createDomainEvent(state, nextGame, 'production_resolved', {
+        foodShortage: nextGame.state.turn.foodShortage,
+        skulls: nextGame.state.turn.turnProduction.skulls,
+        workers: nextGame.state.turn.turnProduction.workers,
+        coins: nextGame.state.turn.turnProduction.coins,
+      });
+      const productionAppliedEvents =
+        beforeSnapshot.phase !== nextGame.state.phase
+          ? [
+              productionEvent,
+              createDomainEvent(state, nextGame, 'phase_transition', {
+                fromPhase: beforeSnapshot.phase,
+                toPhase: nextGame.state.phase,
+              }),
+            ]
+          : [productionEvent];
+      recordCommandBatch(
+        state,
+        'resolveProduction',
+        [productionEvent],
+        productionAppliedEvents,
       );
 
       if (nextGame.state.turn.foodShortage > 0) {
@@ -1130,6 +1382,19 @@ const gameSlice = createSlice({
           workersUsed === 1 ? '' : 's'
         }, now ${progressText}.`,
       );
+      const buildEvent = createDomainEvent(
+        state,
+        nextGame,
+        cityProgress.completed ? 'construction_completed' : 'construction_progressed',
+        {
+          target: 'city',
+          cityIndex,
+          workersUsed,
+          workersCommitted: cityProgress.workersCommitted,
+          workerCost,
+        },
+      );
+      recordCommandBatch(state, 'buildCity', [buildEvent], [buildEvent]);
       advanceTutorialIfCompleted(state, 'buildCity');
     },
     buildMonument: (state, action: PayloadAction<{ monumentId: string }>) => {
@@ -1233,6 +1498,19 @@ const gameSlice = createSlice({
           workersUsed === 1 ? '' : 's'
         }, now ${progressText}.`,
       );
+      const buildEvent = createDomainEvent(
+        state,
+        nextGame,
+        progress.completed ? 'construction_completed' : 'construction_progressed',
+        {
+          target: 'monument',
+          monumentId,
+          workersUsed,
+          workersCommitted: progress.workersCommitted,
+          workerCost,
+        },
+      );
+      recordCommandBatch(state, 'buildMonument', [buildEvent], [buildEvent]);
       advanceTutorialIfCompleted(state, 'buildMonument');
     },
     buyDevelopment: (
@@ -1346,6 +1624,17 @@ const gameSlice = createSlice({
           coinsBefore - coinsAfter,
         )} coins, goods spent ${spentGoodsText}; total developments ${activePlayer.developments.length}.`,
       );
+      const developmentEvent = createDomainEvent(
+        state,
+        nextGame,
+        'development_purchased',
+        {
+          developmentId: action.payload.developmentId,
+          coinsSpent: Math.max(0, coinsBefore - coinsAfter),
+          goodsSpent: action.payload.goodsTypeNames,
+        },
+      );
+      recordCommandBatch(state, 'buyDevelopment', [developmentEvent], [developmentEvent]);
       advanceTutorialIfCompleted(state, 'buyDevelopment');
     },
     skipDevelopment: (state) => {
@@ -1393,6 +1682,10 @@ const gameSlice = createSlice({
       state.game = nextGame;
       state.lastError = null;
       appendLog(state, `Skipped development purchases -> phase ${nextGame.state.phase}.`);
+      const phaseEvent = createDomainEvent(state, nextGame, 'phase_transition', {
+        toPhase: nextGame.state.phase,
+      });
+      recordCommandBatch(state, 'skipDevelopment', [phaseEvent], [phaseEvent]);
       advanceTutorialIfCompleted(state, 'skipDevelopment');
     },
     applyExchange: (
@@ -1492,6 +1785,15 @@ const gameSlice = createSlice({
         state,
         `Exchanged ${exchangeAmount} ${action.payload.from} -> ${action.payload.to} (source ${sourceBefore}->${sourceAfter}, target ${targetBefore}->${targetAfter}).`,
       );
+      const exchangeEvent = createDomainEvent(state, nextGame, 'production_resolved', {
+        exchange: `${action.payload.from}->${action.payload.to}`,
+        amount: exchangeAmount,
+        sourceBefore,
+        sourceAfter,
+        targetBefore,
+        targetAfter,
+      });
+      recordCommandBatch(state, 'applyExchange', [exchangeEvent], [exchangeEvent]);
       advanceTutorialIfCompleted(state, 'applyExchange');
     },
     addTestingResources: (
@@ -1538,6 +1840,11 @@ const gameSlice = createSlice({
         state,
         `Testing resources added: +${workersToAdd} workers, +${coinsToAdd} coins.`,
       );
+      const event = createDomainEvent(state, nextGame, 'production_resolved', {
+        workersAdded: workersToAdd,
+        coinsAdded: coinsToAdd,
+      });
+      recordCommandBatch(state, 'addTestingResources', [event], [event]);
     },
     undo: (state) => {
       if (!state.game) {
@@ -1561,6 +1868,12 @@ const gameSlice = createSlice({
           state.game,
         )}.`,
       );
+      const event = createDomainEvent(state, state.game, 'phase_transition', {
+        fromPhase: beforeSnapshot.phase,
+        toPhase: state.game.state.phase,
+        source: 'undo',
+      });
+      recordCommandBatch(state, 'undo', [event], [event]);
     },
     redo: (state) => {
       if (!state.game) {
@@ -1584,6 +1897,12 @@ const gameSlice = createSlice({
           state.game,
         )}.`,
       );
+      const event = createDomainEvent(state, state.game, 'phase_transition', {
+        fromPhase: beforeSnapshot.phase,
+        toPhase: state.game.state.phase,
+        source: 'redo',
+      });
+      recordCommandBatch(state, 'redo', [event], [event]);
     },
   },
 });
