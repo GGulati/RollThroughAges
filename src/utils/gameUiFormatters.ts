@@ -72,7 +72,7 @@ export function getLockBadge(lockDecision: string): string {
     return '🔒 Locked (Kept)';
   }
   if (lockDecision === 'skull') {
-    return '☠️ Locked (Skull)';
+    return '☠️ Locked';
   }
   return '🔓 Unlocked';
 }

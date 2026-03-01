@@ -181,7 +181,6 @@ export function ProductionPanel({
               <span className="die-cube-face die-cube-top">{die.index + 1}</span>
               <span className="die-cube-face die-cube-bottom">🎲</span>
             </div>
-            <p className="die-face">{die.label}</p>
             {die.hasChoice ? (
               <div className="choice-block">
                 <p className="choice-label">Production choice:</p>
