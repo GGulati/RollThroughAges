@@ -558,6 +558,9 @@ const gameSlice = createSlice({
               },
             });
       const afterSnapshot = deterministicGame.state;
+      const rerolledDieIndices = beforeSnapshot.turn.dice
+        .map((die, index) => (die.lockDecision === 'unlocked' ? index : -1))
+        .filter((index) => index >= 0);
       state.game = deterministicGame;
       state.lastError = null;
       appendLog(
@@ -575,6 +578,7 @@ const gameSlice = createSlice({
       const rollResolved = createDomainEvent(state, deterministicGame, 'dice_roll_resolved', {
         rollsUsed: afterSnapshot.turn.rollsUsed,
         pendingChoices: afterSnapshot.turn.pendingChoices,
+        rerolledDieIndices,
       });
       const resolutionEvents = [rollStarted, rollResolved];
       const appliedEvents =
@@ -685,6 +689,7 @@ const gameSlice = createSlice({
           dieIndex: action.payload.dieIndex,
           singleDieRerollsUsed: deterministicGame.state.turn.singleDieRerollsUsed,
           remainingSingleDieRerolls: remaining,
+          rerolledDieIndices: [action.payload.dieIndex],
         },
       );
       recordCommandBatch(state, 'rerollSingleDie', [rerollEvent], [rerollEvent]);

@@ -3,6 +3,8 @@
   color: #111827;
   background-color: #f3f4f6;
   line-height: 1.5;
+  --event-motion-ms: 420ms;
+  --event-motion-ease: cubic-bezier(0.2, 0.85, 0.3, 1);
 }
 
 body,
@@ -114,6 +116,18 @@ body,
     0 10px 16px -6px rgb(14 165 233 / 0.3);
 }
 
+.app-panel.is-event-pulse {
+  animation: panelPulse var(--event-motion-ms) var(--event-motion-ease);
+}
+
+.app-panel.is-event-pulse.is-penalty-pulse {
+  animation: panelPenaltyPulse var(--event-motion-ms) var(--event-motion-ease);
+}
+
+.app-panel.is-event-pulse.is-milestone-pulse {
+  animation: panelMilestonePulse var(--event-motion-ms) var(--event-motion-ease);
+}
+
 .app-panel h1 {
   margin-top: 0;
 }
@@ -163,6 +177,14 @@ body,
   background: #f9fafb;
 }
 
+.die-card.is-reroll-shift {
+  animation: diceShift var(--event-motion-ms) var(--event-motion-ease);
+}
+
+.die-card.is-lock-shift {
+  animation: lockShift var(--event-motion-ms) var(--event-motion-ease);
+}
+
 .die-title {
   font-weight: 700;
   margin-bottom: 0.25rem !important;
@@ -188,6 +210,10 @@ body,
   padding: 0.6rem;
   background: #f6fbff;
   margin: 0.5rem 0;
+}
+
+.outcome-card.is-outcome-shift {
+  animation: outcomeShift var(--event-motion-ms) var(--event-motion-ease);
 }
 
 .outcome-penalty {
@@ -385,6 +411,92 @@ body,
   border: 0;
 }
 
+@keyframes panelPulse {
+  0% {
+    transform: translateY(0);
+    box-shadow: 0 8px 12px -4px rgb(0 0 0 / 0.12);
+  }
+  40% {
+    transform: translateY(-2px);
+    box-shadow:
+      0 0 0 2px rgb(56 189 248 / 0.45),
+      0 14px 22px -8px rgb(14 165 233 / 0.35);
+  }
+  100% {
+    transform: translateY(0);
+    box-shadow: 0 8px 12px -4px rgb(0 0 0 / 0.12);
+  }
+}
+
+@keyframes panelPenaltyPulse {
+  0% {
+    transform: translateY(0);
+  }
+  35% {
+    transform: translateY(-1px);
+    box-shadow:
+      0 0 0 2px rgb(248 113 113 / 0.5),
+      0 14px 22px -8px rgb(220 38 38 / 0.35);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+@keyframes panelMilestonePulse {
+  0% {
+    transform: translateY(0);
+  }
+  35% {
+    transform: translateY(-3px);
+    box-shadow:
+      0 0 0 2px rgb(74 222 128 / 0.5),
+      0 14px 22px -8px rgb(22 163 74 / 0.35);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+@keyframes diceShift {
+  0% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-3px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+@keyframes outcomeShift {
+  0% {
+    transform: scale(1);
+    border-color: #d1e7f3;
+  }
+  40% {
+    transform: scale(1.01);
+    border-color: #38bdf8;
+  }
+  100% {
+    transform: scale(1);
+    border-color: #d1e7f3;
+  }
+}
+
+@keyframes lockShift {
+  0% {
+    transform: translateX(0);
+  }
+  35% {
+    transform: translateX(2px);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
 @media (min-width: 768px) {
   .app-shell {
     padding: 2rem;
@@ -409,6 +521,16 @@ body,
     right: 0.75rem;
     bottom: 0.75rem;
     width: min(420px, calc(100vw - 1.5rem));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-panel,
+  .outcome-card,
+  .dice-grid,
+  .die-card {
+    animation: none !important;
+    transition: none !important;
   }
 }
 

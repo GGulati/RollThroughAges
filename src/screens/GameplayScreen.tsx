@@ -1,5 +1,6 @@
 import { ActionLogPanel } from '@/components/ActionLogPanel';
 import { ProductionPanel } from '@/components/panels/ProductionPanel';
+import { useEventPulse } from '@/hooks/useEventPulse';
 import { TurnStatusData, TurnStatusPanel } from '@/components/panels/TurnStatusPanel';
 import { PhasePanel } from '@/viewModels/gameViewModel';
 import {
@@ -10,6 +11,7 @@ import {
   selectDisasterPanelModel,
   selectDiscardPanelModel,
   selectExchangePanelModel,
+  selectLatestEvent,
   selectProductionPanelModel,
   selectTutorialViewModel,
 } from '@/store/selectors';
@@ -25,6 +27,7 @@ type GameplayScreenProps = {
   canUndo: boolean;
   canRedo: boolean;
   latestAnnouncement: string | null;
+  latestEvent: ReturnType<typeof selectLatestEvent>;
   dicePanel: ReturnType<typeof selectDicePanelModel>;
   diceOutcome: ReturnType<typeof selectDiceOutcomeModel>;
   productionPanel: ReturnType<typeof selectProductionPanelModel>;
@@ -81,6 +84,7 @@ export function GameplayScreen({
   canUndo,
   canRedo,
   latestAnnouncement,
+  latestEvent,
   dicePanel,
   diceOutcome,
   productionPanel,
@@ -131,12 +135,57 @@ export function GameplayScreen({
   const developmentExchanges = exchangePanel.exchanges.filter(
     (exchange) => exchange.relevantInDevelopment,
   );
+  const eventPulseMs = Math.max(220, Math.min(900, Math.round(botStepDelayMs * 0.7)));
+  const isEventPulsing = useEventPulse(latestEvent?.id ?? null, eventPulseMs);
+  const rerolledDieIndices =
+    latestEvent &&
+    isEventPulsing &&
+    latestEvent.type === 'dice_roll_resolved' &&
+    Array.isArray(latestEvent.payload.rerolledDieIndices)
+      ? latestEvent.payload.rerolledDieIndices
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value >= 0)
+      : [];
+  const selectedDieIndices =
+    latestEvent &&
+    isEventPulsing &&
+    latestEvent.type === 'dice_roll_resolved' &&
+    Number.isInteger(Number(latestEvent.payload.dieIndex))
+      ? [Number(latestEvent.payload.dieIndex)]
+      : [];
+  const pulsedDieIndices =
+    rerolledDieIndices.length > 0 ? rerolledDieIndices : selectedDieIndices;
+  const lockChangedDieIndices =
+    latestEvent &&
+    isEventPulsing &&
+    latestEvent.type === 'die_lock_changed' &&
+    Number.isInteger(Number(latestEvent.payload.dieIndex))
+      ? [Number(latestEvent.payload.dieIndex)]
+      : [];
+  const pulsePanels =
+    latestEvent &&
+    isEventPulsing &&
+    latestEvent.type === 'phase_transition' &&
+    activePhasePanel
+      ? new Set<PhasePanel>([activePhasePanel])
+      : null;
+  const getMotionPanelClassName = (panel: PhasePanel): string => {
+    const classNames = [getPanelClassName(activePhasePanel, panel)];
+    if (pulsePanels?.has(panel)) {
+      classNames.push('is-event-pulse');
+    }
+    return classNames.join(' ');
+  };
 
   return (
-    <fieldset className="gameplay-shell" disabled={controlsLockedByBot}>
+    <fieldset
+      className="gameplay-shell"
+      disabled={controlsLockedByBot}
+      style={{ ['--event-motion-ms' as string]: `${eventPulseMs}ms` }}
+    >
       <div className="board-grid">
         <TurnStatusPanel
-          className={getPanelClassName(activePhasePanel, 'turnStatus')}
+          className={getMotionPanelClassName('turnStatus')}
           turnStatus={turnStatus}
           controlsLockedByBot={controlsLockedByBot}
           botStepDelayMs={botStepDelayMs}
@@ -151,8 +200,11 @@ export function GameplayScreen({
         />
 
         <ProductionPanel
-          className={getPanelClassName(activePhasePanel, 'production')}
+          className={getMotionPanelClassName('production')}
           rerollEmoji={rerollEmoji}
+          motionEventType={isEventPulsing ? latestEvent?.type ?? null : null}
+          rerolledDieIndices={pulsedDieIndices}
+          lockChangedDieIndices={lockChangedDieIndices}
           dicePanel={dicePanel}
           diceOutcome={diceOutcome}
           productionPanel={productionPanel}
@@ -165,7 +217,7 @@ export function GameplayScreen({
           onKeepDie={onKeepDie}
         />
 
-        <section className={getPanelClassName(activePhasePanel, 'disaster')}>
+        <section className={getMotionPanelClassName('disaster')}>
           <h2>Disaster Reference</h2>
           <p>Disasters trigger by total skulls rolled this turn.</p>
           <div className="disaster-list">
@@ -187,7 +239,7 @@ export function GameplayScreen({
         </section>
 
         <section className="panel-pair">
-          <section className={getPanelClassName(activePhasePanel, 'build')}>
+          <section className={getMotionPanelClassName('build')}>
             <h2>Build</h2>
             <p>
               {buildPanel.canBuild
@@ -346,7 +398,7 @@ export function GameplayScreen({
             </div>
           </section>
 
-          <section className={getPanelClassName(activePhasePanel, 'development')}>
+          <section className={getMotionPanelClassName('development')}>
             <div className="title-row">
               <h2>Development</h2>
               <button type="button" onClick={onSkipDevelopment} disabled={!developmentPanel.canSkip}>
@@ -457,7 +509,7 @@ export function GameplayScreen({
         </section>
 
         <section className="panel-pair">
-          <section className={getPanelClassName(activePhasePanel, 'discard')}>
+          <section className={getMotionPanelClassName('discard')}>
             <h2>Discard</h2>
             <p>{discardPanel.reason ?? 'Choose goods to keep and apply discard.'}</p>
             <p>

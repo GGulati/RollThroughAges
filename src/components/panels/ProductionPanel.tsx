@@ -44,6 +44,9 @@ type ProductionPanelData = {
 type ProductionPanelProps = {
   className: string;
   rerollEmoji: string;
+  motionEventType: string | null;
+  rerolledDieIndices: number[];
+  lockChangedDieIndices: number[];
   dicePanel: DicePanelData;
   diceOutcome: DiceOutcomeData;
   productionPanel: ProductionPanelData;
@@ -59,6 +62,9 @@ type ProductionPanelProps = {
 export function ProductionPanel({
   className,
   rerollEmoji,
+  motionEventType,
+  rerolledDieIndices,
+  lockChangedDieIndices,
   dicePanel,
   diceOutcome,
   productionPanel,
@@ -70,6 +76,10 @@ export function ProductionPanel({
   onRerollSingleDie,
   onKeepDie,
 }: ProductionPanelProps) {
+  const shouldPulseOutcome =
+    motionEventType === 'production_resolved' || motionEventType === 'penalty_applied';
+  const shouldPulseDice =
+    motionEventType === 'dice_roll_resolved' && rerolledDieIndices.length > 0;
   return (
     <section className={className}>
       <h2>Production</h2>
@@ -84,7 +94,9 @@ export function ProductionPanel({
           Reroll Dice
         </button>
       </div>
-      <article className="outcome-card">
+      <article
+        className={shouldPulseOutcome ? 'outcome-card is-outcome-shift' : 'outcome-card'}
+      >
         <p className="development-title">Total ({diceOutcome.summary ?? 'Projected'})</p>
         <p className="scoreboard-row">🍖 Food: +{diceOutcome.food.produced}</p>
         <p className="scoreboard-row">🪙 Coins: +{diceOutcome.coinsProduced}</p>
@@ -109,7 +121,21 @@ export function ProductionPanel({
       ) : null}
       <div className="dice-grid">
         {dicePanel.diceCards.map((die) => (
-          <article key={die.index} className="die-card">
+          <article
+            key={die.index}
+            className={[
+              'die-card',
+              motionEventType === 'die_lock_changed' &&
+              lockChangedDieIndices.includes(die.index)
+                ? 'is-lock-shift'
+                : '',
+              shouldPulseDice && rerolledDieIndices.includes(die.index)
+                ? 'is-reroll-shift'
+                : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+          >
             <p className="die-title">Die {die.index + 1}</p>
             <p className="die-face">{die.label}</p>
             {die.hasChoice ? (
