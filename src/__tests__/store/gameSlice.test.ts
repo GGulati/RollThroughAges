@@ -752,7 +752,7 @@ describe('gameSlice', () => {
     expect(state.game!.state.turn.foodShortage).toBe(1);
     expect(state.game!.state.players[activeIndex].disasterPenalties).toBeGreaterThan(0);
     expect(
-      state.actionLog.some((line) => line.includes('Food shortage: -1 VP (1 unfed cities).')),
+      state.actionLog.some((line) => line.includes('Food shortage: -1 VP.')),
     ).toBe(true);
   });
 
@@ -788,7 +788,7 @@ describe('gameSlice', () => {
 
     expect(state.lastError).toBeNull();
     expect(
-      state.actionLog.some((line) => line.includes('Drought affected Player 1: -2 VP.')),
+      state.actionLog.some((line) => line.includes('Drought applied to Player 1.')),
     ).toBe(true);
   });
 
@@ -831,7 +831,7 @@ describe('gameSlice', () => {
     expect(state.lastError).toBeNull();
     expect(
       state.actionLog.some((line) =>
-        line.includes('Drought ignored for Player 1 (Irrigation).'),
+        line.includes('Disaster penalty prevented for Player 1 via Irrigation.'),
       ),
     ).toBe(true);
   });

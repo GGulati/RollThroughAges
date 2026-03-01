@@ -24,6 +24,7 @@ type GameplayScreenProps = {
   tutorial: ReturnType<typeof selectTutorialViewModel>;
   canUndo: boolean;
   canRedo: boolean;
+  latestAnnouncement: string | null;
   dicePanel: ReturnType<typeof selectDicePanelModel>;
   diceOutcome: ReturnType<typeof selectDiceOutcomeModel>;
   productionPanel: ReturnType<typeof selectProductionPanelModel>;
@@ -79,6 +80,7 @@ export function GameplayScreen({
   tutorial,
   canUndo,
   canRedo,
+  latestAnnouncement,
   dicePanel,
   diceOutcome,
   productionPanel,
@@ -142,6 +144,7 @@ export function GameplayScreen({
           endTurnReason={discardPanel.endTurnReason}
           canUndo={canUndo}
           canRedo={canRedo}
+          latestAnnouncement={latestAnnouncement}
           onEndTurn={onEndTurn}
           onUndo={onUndo}
           onRedo={onRedo}

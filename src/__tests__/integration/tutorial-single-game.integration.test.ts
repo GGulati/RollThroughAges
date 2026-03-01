@@ -3,6 +3,7 @@ import {
   advanceTutorialStep,
   buildCity,
   endTurn,
+  exitTutorial,
   keepDie,
   rollDice,
   selectProduction,
@@ -113,6 +114,13 @@ describe('tutorial single-game integration', () => {
     store.dispatch(startTutorialGame());
     store.dispatch(advanceTutorialStep());
     expect(store.getState().game.tutorial.active).toBe(true);
+    expect(store.getState().game.tutorial.currentStepIndex).toBe(1);
+
+    store.dispatch(exitTutorial());
+    const exited = store.getState().game;
+    expect(exited.tutorial.active).toBe(false);
+    expect(exited.tutorial.currentStepIndex).toBe(0);
+    expect(exited.game).toBeNull();
 
     store.dispatch(
       startGame({

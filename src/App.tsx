@@ -74,6 +74,7 @@ import {
   selectDiceOutcomeModel,
   selectEndgameStatus,
   selectGame,
+  selectLatestAnnouncement,
   selectProductionPanelModel,
   selectPlayerEndStateSummaries,
   selectTutorialViewModel,
@@ -157,6 +158,7 @@ function App() {
   const tutorial = useAppSelector(selectTutorialViewModel);
   const playerEndStateSummaries = useAppSelector(selectPlayerEndStateSummaries);
   const actionLog = useAppSelector(selectActionLog);
+  const latestAnnouncement = useAppSelector(selectLatestAnnouncement);
   const dicePanel = useAppSelector(selectDicePanelModel);
   const diceOutcome = useAppSelector(selectDiceOutcomeModel);
   const productionPanel = useAppSelector(selectProductionPanelModel);
@@ -844,6 +846,7 @@ function App() {
             tutorial={tutorial}
             canUndo={canUndo}
             canRedo={canRedo}
+            latestAnnouncement={latestAnnouncement}
             dicePanel={dicePanel}
             diceOutcome={diceOutcome}
             productionPanel={productionPanel}

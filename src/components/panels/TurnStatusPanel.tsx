@@ -47,6 +47,7 @@ type TurnStatusPanelProps = {
   endTurnReason: string | null;
   canUndo: boolean;
   canRedo: boolean;
+  latestAnnouncement: string | null;
   onEndTurn: () => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -61,6 +62,7 @@ export function TurnStatusPanel({
   endTurnReason,
   canUndo,
   canRedo,
+  latestAnnouncement,
   onEndTurn,
   onUndo,
   onRedo,
@@ -85,6 +87,11 @@ export function TurnStatusPanel({
       <p>
         <strong>Phase:</strong> {turnStatus.phase ?? '-'}
       </p>
+      {latestAnnouncement ? (
+        <p className="sr-only" aria-live="polite" role="status">
+          {latestAnnouncement}
+        </p>
+      ) : null}
       <div className="actions">
         <button type="button" onClick={onEndTurn} disabled={!canEndTurn}>
           End Turn

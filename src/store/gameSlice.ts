@@ -6,7 +6,6 @@ import {
   allocateWorkersToCity,
   allocateWorkersToMonument,
   calculateGoodsOverflow,
-  calculateGoodsValue,
   exchangeResources as exchangeResourcesEngine,
   getCityWorkerCost,
   getBuildOptions,
@@ -20,13 +19,9 @@ import {
   endTurn as endTurnEngine,
   findGoodsTypeByName,
   getExchangeResourceAmount,
-  getAffectedPlayerIndices,
   getMaxRollsAllowed,
-  getRewrittenDisasterTargeting,
   getSingleDieRerollsAllowed,
-  getTriggeredDisaster,
   getAvailableDevelopments,
-  hasDisasterImmunity,
   keepDie as keepDieEngine,
   performRoll,
   purchaseDevelopment,
@@ -37,12 +32,13 @@ import {
   selectProduction as selectProductionEngine,
   undo as undoEngine,
 } from '@/game/engine';
-import { GameSettings, GameState, GameStateSnapshot, PlayerState } from '@/game';
+import { GameSettings, GameState, GameStateSnapshot } from '@/game';
 import {
   advanceTutorialFromEvents,
   getCurrentTutorialStep,
   isTutorialActionAllowed,
 } from '@/tutorial/engine';
+import { formatEventForLog } from '@/ui/eventFormatters';
 import {
   CommandEventBatch,
   DomainEvent,
@@ -207,6 +203,20 @@ function appendLog(
   state.actionLog = [...state.actionLog, `[${actorName}] ${message}`];
 }
 
+function appendEventLogs(
+  state: GameSliceState,
+  events: DomainEvent[],
+  game: GameState,
+): void {
+  events.forEach((event) => {
+    const message = formatEventForLog(event, game);
+    if (!message) {
+      return;
+    }
+    appendLog(state, message, game, event.actorPlayerId ?? undefined);
+  });
+}
+
 function countUnlockedDice(snapshot: GameStateSnapshot): number {
   return snapshot.turn.dice.filter((die) => die.lockDecision === 'unlocked').length;
 }
@@ -227,44 +237,6 @@ function getTotalGoods(player: GameStateSnapshot['players'][number]): number {
     total += quantity;
   }
   return total;
-}
-
-function getDisasterImmunitySource(
-  player: PlayerState,
-  disasterId: string,
-  settings: GameSettings,
-): string | null {
-  const immunityDevelopment = settings.developmentDefinitions.find(
-    (development) =>
-      player.developments.includes(development.id) &&
-      development.specialEffect.type === 'disasterImmunity' &&
-      development.specialEffect.disasterId === disasterId,
-  );
-  if (immunityDevelopment) {
-    return immunityDevelopment.name;
-  }
-
-  const immunityMonument = settings.monumentDefinitions.find(
-    (monument) =>
-      monument.specialEffect?.type === 'disasterImmunity' &&
-      monument.specialEffect.disasterId === disasterId &&
-      Boolean(player.monuments[monument.id]?.completed),
-  );
-  return immunityMonument?.requirements.name ?? null;
-}
-
-function getDisasterRewriteSource(
-  player: PlayerState,
-  disasterId: string,
-  settings: GameSettings,
-): string | null {
-  const rewriteDevelopment = settings.developmentDefinitions.find(
-    (development) =>
-      player.developments.includes(development.id) &&
-      development.specialEffect.type === 'rewriteDisasterTargeting' &&
-      development.specialEffect.disasterId === disasterId,
-  );
-  return rewriteDevelopment?.name ?? null;
 }
 
 const TUTORIAL_ROLL_FACE_SEQUENCE: number[][] = [
@@ -1121,10 +1093,7 @@ const gameSlice = createSlice({
         return;
       }
 
-      const beforeGame = state.game;
-      const beforeSnapshot = beforeGame.state;
-      const beforePlayers = beforeSnapshot.players;
-      const activePlayerIndex = beforeSnapshot.activePlayerIndex;
+      const beforeSnapshot = state.game.state;
       const commandResult = resolveProductionWithEvents(state.game);
       const historyState = pushHistory(state.game);
       const nextGame: GameState = {
@@ -1135,12 +1104,6 @@ const gameSlice = createSlice({
 
       state.game = nextGame;
       state.lastError = null;
-      appendLog(
-        state,
-        `Resolved production (${formatProductionSummary(
-          nextGame.state.turn.turnProduction,
-        )}, food shortage ${nextGame.state.turn.foodShortage}) -> phase ${nextGame.state.phase}.`,
-      );
       const mappedResolutionEvents = commandResult.resolutionEvents.map((event) =>
         createDomainEvent(state, nextGame, event.type, event.payload, {
           actorPlayerId: event.actorPlayerId,
@@ -1164,104 +1127,8 @@ const gameSlice = createSlice({
         );
       }
       recordCommandBatch(state, 'resolveProduction', mappedResolutionEvents, mappedAppliedEvents);
-
-      if (nextGame.state.turn.foodShortage > 0) {
-        appendLog(
-          state,
-          `Food shortage: -${nextGame.state.turn.foodShortage} VP (${nextGame.state.turn.foodShortage} unfed cities).`,
-        );
-      }
-
-      const skullCount = nextGame.state.turn.turnProduction.skulls;
-      const triggeredDisaster = getTriggeredDisaster(skullCount, nextGame.settings);
-      if (!triggeredDisaster) {
-        return;
-      }
-
-      const activePlayerBefore = beforePlayers[activePlayerIndex];
-      const rewrittenTargeting = getRewrittenDisasterTargeting(
-        activePlayerBefore,
-        triggeredDisaster.id,
-        nextGame.settings,
-      );
-      const rewriteSource = rewrittenTargeting
-        ? getDisasterRewriteSource(
-            activePlayerBefore,
-            triggeredDisaster.id,
-            nextGame.settings,
-          )
-        : null;
-      if (rewrittenTargeting && rewrittenTargeting !== triggeredDisaster.affectedPlayers) {
-        appendLog(
-          state,
-          `${triggeredDisaster.name} targeting changed to ${rewrittenTargeting}${
-            rewriteSource ? ` (${rewriteSource})` : ''
-          }.`,
-        );
-      }
-
-      const affectedIndices = getAffectedPlayerIndices(
-        triggeredDisaster,
-        activePlayerIndex,
-        beforePlayers.length,
-        activePlayerBefore,
-        nextGame.settings,
-      );
-      if (affectedIndices.length === 0) {
-        appendLog(state, `${triggeredDisaster.name}: no affected players.`);
-        return;
-      }
-
-      for (const playerIndex of affectedIndices) {
-        const beforePlayer = beforePlayers[playerIndex];
-        const afterPlayer = nextGame.state.players[playerIndex];
-        const playerName = getPlayerName(nextGame, beforePlayer.id);
-        const penaltyDelta = Math.max(
-          0,
-          afterPlayer.disasterPenalties - beforePlayer.disasterPenalties,
-        );
-        const goodsLost = Math.max(0, getTotalGoods(beforePlayer) - getTotalGoods(afterPlayer));
-        const goodsValueLost = Math.max(
-          0,
-          calculateGoodsValue(beforePlayer.goods) - calculateGoodsValue(afterPlayer.goods),
-        );
-
-        if (penaltyDelta === 0 && goodsLost === 0) {
-          const hasImmunity = hasDisasterImmunity(
-            beforePlayer,
-            triggeredDisaster.id,
-            nextGame.settings,
-          );
-          if (hasImmunity) {
-            const immunitySource = getDisasterImmunitySource(
-              beforePlayer,
-              triggeredDisaster.id,
-              nextGame.settings,
-            );
-            appendLog(
-              state,
-              `${triggeredDisaster.name} ignored for ${playerName}${
-                immunitySource ? ` (${immunitySource})` : ''
-              }.`,
-            );
-          } else {
-            appendLog(state, `${triggeredDisaster.name} had no effect on ${playerName}.`);
-          }
-          continue;
-        }
-
-        const effectParts: string[] = [];
-        if (penaltyDelta > 0) {
-          effectParts.push(`-${penaltyDelta} VP`);
-        }
-        if (goodsLost > 0) {
-          effectParts.push(`goods cleared (${goodsLost} lost, ${goodsValueLost} coin value)`);
-        }
-        appendLog(
-          state,
-          `${triggeredDisaster.name} affected ${playerName}: ${effectParts.join(', ')}.`,
-        );
-      }
+      appendEventLogs(state, mappedResolutionEvents, nextGame);
+      appendEventLogs(state, mappedAppliedEvents, nextGame);
     },
     buildCity: (state, action: PayloadAction<{ cityIndex: number }>) => {
       if (!state.game) {

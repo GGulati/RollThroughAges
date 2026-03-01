@@ -37,6 +37,7 @@ import {
   resolveProduction,
 } from '@/game/engine';
 import { resolveTutorialInstruction } from '@/tutorial/engine';
+import { formatEventForAnnouncement } from '@/ui/eventFormatters';
 import { DomainEvent, TutorialStepDefinition, TUTORIAL_STEPS } from './gameState';
 import { RootState } from './store';
 
@@ -177,6 +178,17 @@ export const selectLatestEvent = createSelector(selectEventBatches, (batches) =>
   }
   return latestBatch.appliedEvents[latestBatch.appliedEvents.length - 1] ?? null;
 });
+
+export const selectLatestAnnouncement = createSelector(
+  selectLatestEvent,
+  selectGame,
+  (latestEvent, game) => {
+    if (!latestEvent || !game) {
+      return null;
+    }
+    return formatEventForAnnouncement(latestEvent, game);
+  },
+);
 
 export const selectTurnEvents = createSelector(
   selectGameSlice,

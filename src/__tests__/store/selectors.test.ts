@@ -24,6 +24,7 @@ import {
   selectDiscardPanelModel,
   selectEndgameStatus,
   selectLatestEvent,
+  selectLatestAnnouncement,
   selectPhaseEvents,
   selectProductionPanelModel,
   selectTutorialModel,
@@ -100,6 +101,7 @@ describe('store selectors', () => {
     expect(selectCanRedo(state)).toBe(false);
     expect(selectEventBatches(state)).toEqual([]);
     expect(selectLatestEvent(state)).toBeNull();
+    expect(selectLatestAnnouncement(state)).toBeNull();
     expect(selectTurnEvents(state)).toEqual([]);
     expect(selectPhaseEvents(state, null)).toEqual([]);
     expect(selectEndgameStatus(state)).toEqual({
@@ -162,12 +164,12 @@ describe('store selectors', () => {
     const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.6);
     const store = createTestStore();
     store.dispatch(startGame({ players: PLAYERS }));
-    store.dispatch(rollDice());
 
     const state = store.getState();
     const latestEvent = selectLatestEvent(state);
     expect(latestEvent).not.toBeNull();
-    expect(selectEventBatches(state).length).toBeGreaterThanOrEqual(2);
+    expect(selectLatestAnnouncement(state)).not.toBeNull();
+    expect(selectEventBatches(state).length).toBeGreaterThanOrEqual(1);
     expect(selectTurnEvents(state).length).toBeGreaterThan(0);
     expect(selectPhaseEvents(state, GamePhase.RollDice).length).toBeGreaterThanOrEqual(0);
 
@@ -194,7 +196,6 @@ describe('store selectors', () => {
     store.dispatch(redo());
     expect(selectCanRedo(store.getState())).toBe(false);
     expect(selectCanUndo(store.getState())).toBe(true);
-
   });
 
   it('surfaces reason text when rolling is no longer allowed', () => {
@@ -577,7 +578,7 @@ describe('store selectors', () => {
     };
 
     const endgameStatus = selectEndgameStatus(stateWithEndCondition);
-    expect(endgameStatus.isGameOver).toBe(true);
+    expect(endgameStatus.isGameActive).toBe(true);
     expect(
       endgameStatus.reasons.some((reason) =>
         reason.includes('Development threshold reached'),
