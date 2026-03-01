@@ -11,7 +11,7 @@ import {
   selectDiscardPanelModel,
   selectExchangePanelModel,
   selectProductionPanelModel,
-  selectTutorialModel,
+  selectTutorialViewModel,
 } from '@/store/selectors';
 
 type ConstructionSection = 'cities' | 'monuments' | 'developments';
@@ -21,7 +21,7 @@ type GameplayScreenProps = {
   botStepDelayMs: number;
   activePhasePanel: PhasePanel | null;
   turnStatus: TurnStatusData;
-  tutorial: ReturnType<typeof selectTutorialModel>;
+  tutorial: ReturnType<typeof selectTutorialViewModel>;
   canUndo: boolean;
   canRedo: boolean;
   dicePanel: ReturnType<typeof selectDicePanelModel>;
@@ -68,6 +68,7 @@ type GameplayScreenProps = {
   onBuyDevelopment: (developmentId: string, goodsTypeNames: string[]) => void;
   onUpdateGoodsToKeep: (goodsType: string, value: string) => void;
   onApplyDiscard: (goodsToKeepByType: Record<string, number>) => void;
+  onAdvanceTutorialStep: () => void;
 };
 
 export function GameplayScreen({
@@ -120,6 +121,7 @@ export function GameplayScreen({
   onBuyDevelopment,
   onUpdateGoodsToKeep,
   onApplyDiscard,
+  onAdvanceTutorialStep,
 }: GameplayScreenProps) {
   const buildExchanges = exchangePanel.exchanges.filter(
     (exchange) => exchange.relevantInBuild,
@@ -506,8 +508,13 @@ export function GameplayScreen({
             {tutorial.totalSteps}
           </p>
           <p className="development-title">{tutorial.step?.title ?? 'Tutorial'}</p>
-          <p>{tutorial.step?.instruction ?? 'Follow the guided steps.'}</p>
+          <p>{tutorial.instruction ?? 'Follow the guided steps.'}</p>
           {tutorial.step?.hint ? <p className="hint-text">{tutorial.step.hint}</p> : null}
+          {tutorial.canContinue ? (
+            <button type="button" onClick={onAdvanceTutorialStep}>
+              Continue
+            </button>
+          ) : null}
         </section>
       ) : null}
     </fieldset>

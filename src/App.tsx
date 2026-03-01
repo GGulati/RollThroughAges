@@ -57,6 +57,7 @@ import {
   returnToSetup,
   startGame,
   startTutorialGame,
+  advanceTutorialStep,
   undo,
 } from '@/store/gameSlice';
 import {
@@ -74,7 +75,7 @@ import {
   selectGame,
   selectProductionPanelModel,
   selectPlayerEndStateSummaries,
-  selectTutorialModel,
+  selectTutorialViewModel,
   selectTurnStatus,
 } from '@/store/selectors';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -152,7 +153,7 @@ const DEFAULT_SECTION_PREFERENCES: SectionPreferences = {
 function App() {
   const dispatch = useAppDispatch();
   const turnStatus = useAppSelector(selectTurnStatus);
-  const tutorial = useAppSelector(selectTutorialModel);
+  const tutorial = useAppSelector(selectTutorialViewModel);
   const playerEndStateSummaries = useAppSelector(selectPlayerEndStateSummaries);
   const actionLog = useAppSelector(selectActionLog);
   const dicePanel = useAppSelector(selectDicePanelModel);
@@ -903,6 +904,7 @@ function App() {
             onApplyDiscard={(nextGoodsToKeepByType) =>
               dispatch(discardGoods({ goodsToKeepByType: nextGoodsToKeepByType }))
             }
+            onAdvanceTutorialStep={() => dispatch(advanceTutorialStep())}
           />
         ) : null}
 

@@ -57,6 +57,8 @@ describe('store selectors', () => {
       currentStepIndex: 0,
       totalSteps: 20,
       step: null,
+      canContinue: false,
+      allowedActions: [],
     });
     expect(selectDicePanelModel(state)).toMatchObject({
       canRoll: false,

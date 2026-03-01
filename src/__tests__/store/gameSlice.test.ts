@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   applyExchange,
   addTestingResources,
+  advanceTutorialStep,
   buyDevelopment,
   buildCity,
   buildMonument,
@@ -14,6 +15,7 @@ import {
   resolveProduction,
   rerollSingleDie,
   rollDice,
+  selectProduction,
   skipDevelopment,
   startGame,
   startTutorialGame,
@@ -62,6 +64,7 @@ describe('gameSlice', () => {
       'bot',
     ]);
     expect(state.game!.settings.players[1].name).toBe('Guide Bot');
+    expect(state.game!.state.turn.dice.map((die) => die.diceFaceIndex)).toEqual([1, 2, 3]);
     expect(state.tutorial.active).toBe(true);
     expect(state.tutorial.currentStepIndex).toBe(0);
     expect(state.actionLog[0]).toContain('Tutorial game started');
@@ -71,6 +74,111 @@ describe('gameSlice', () => {
     expect(state.tutorial.active).toBe(false);
     expect(state.tutorial.currentStepIndex).toBe(0);
     expect(state.actionLog).toEqual([]);
+  });
+
+  it('gates tutorial actions and advances on allowed completion actions', () => {
+    let state = reduce(undefined, startTutorialGame());
+
+    state = reduce(state, keepDie({ dieIndex: 0 }));
+    expect(state.lastError?.message).toContain('does not allow that action yet');
+    expect(state.tutorial.currentStepIndex).toBe(0);
+
+    state = reduce(state, advanceTutorialStep());
+    expect(state.tutorial.currentStepIndex).toBe(1);
+
+    state = reduce(state, rollDice());
+    expect(state.lastError).toBeNull();
+    expect(state.tutorial.currentStepIndex).toBe(2);
+  });
+
+  it('uses deterministic dice outcomes in tutorial rolls and single-die rerolls', () => {
+    let state = reduce(undefined, startTutorialGame());
+    const game = state.game!;
+    const activeIndex = game.state.activePlayerIndex;
+
+    state = {
+      ...state,
+      tutorial: {
+        ...state.tutorial,
+        currentStepIndex: 1, // roll
+      },
+      game: {
+        ...game,
+        state: {
+          ...game.state,
+          phase: GamePhase.RollDice,
+          turn: {
+            ...game.state.turn,
+            dice: [
+              { diceFaceIndex: 0, productionIndex: 0, lockDecision: 'unlocked' },
+              { diceFaceIndex: 0, productionIndex: 0, lockDecision: 'unlocked' },
+              { diceFaceIndex: 0, productionIndex: 0, lockDecision: 'unlocked' },
+            ],
+            rollsUsed: 0,
+          },
+          players: game.state.players.map((player, index) =>
+            index === activeIndex
+              ? { ...player, developments: ['leadership'] }
+              : player,
+          ),
+        },
+      },
+    };
+
+    state = reduce(state, rollDice());
+    expect(state.lastError).toBeNull();
+    expect(state.game!.state.turn.dice.map((die) => die.diceFaceIndex)).toEqual([1, 2, 3]);
+    expect(state.game!.state.turn.dice[0].lockDecision).toBe('skull');
+
+    state = {
+      ...state,
+      tutorial: {
+        ...state.tutorial,
+        currentStepIndex: 3, // reroll
+      },
+    };
+    state = reduce(state, rollDice());
+    expect(state.lastError).toBeNull();
+    expect(state.game!.state.turn.dice[0].diceFaceIndex).toBe(1); // skull die stays unchanged
+    expect(state.game!.state.turn.dice[0].lockDecision).toBe('skull');
+    expect(state.game!.state.turn.dice[2].diceFaceIndex).toBe(4);
+  });
+
+  it('requires worker-producing choice during tutorial choice step', () => {
+    let state = reduce(undefined, startTutorialGame());
+    const game = state.game!;
+
+    state = {
+      ...state,
+      tutorial: {
+        ...state.tutorial,
+        currentStepIndex: 4, // choice
+      },
+      game: {
+        ...game,
+        state: {
+          ...game.state,
+          phase: GamePhase.DecideDice,
+          turn: {
+            ...game.state.turn,
+            dice: [
+              { diceFaceIndex: 1, productionIndex: 0, lockDecision: 'skull' },
+              { diceFaceIndex: 2, productionIndex: -1, lockDecision: 'unlocked' },
+              { diceFaceIndex: 3, productionIndex: 0, lockDecision: 'unlocked' },
+            ] as DieState[],
+            pendingChoices: 1,
+          },
+        },
+      },
+    };
+
+    state = reduce(state, selectProduction({ dieIndex: 1, productionIndex: 0 }));
+    expect(state.lastError?.code).toBe('INVALID_PRODUCTION_CHOICE');
+    expect(state.tutorial.currentStepIndex).toBe(4);
+
+    state = reduce(state, selectProduction({ dieIndex: 1, productionIndex: 1 }));
+    expect(state.lastError).toBeNull();
+    expect(state.tutorial.currentStepIndex).toBe(5);
   });
 
   it('caps history at 20 entries', () => {

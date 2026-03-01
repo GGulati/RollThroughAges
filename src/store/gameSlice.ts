@@ -38,7 +38,12 @@ import {
   undo as undoEngine,
 } from '@/game/engine';
 import { GameSettings, GameState, GameStateSnapshot, PlayerState } from '@/game';
-import { GameActionErrorCode, GameSliceState } from './gameState';
+import {
+  GameActionErrorCode,
+  GameSliceState,
+  TUTORIAL_STEPS,
+  TutorialActionKey,
+} from './gameState';
 
 const MAX_HISTORY_ENTRIES = 20;
 const TUTORIAL_PLAYERS: PlayerConfig[] = [
@@ -141,6 +146,62 @@ function getDisasterRewriteSource(
   return rewriteDevelopment?.name ?? null;
 }
 
+const TUTORIAL_ROLL_FACE_SEQUENCE: number[][] = [
+  [1, 2, 3],
+  [2, 4, 0],
+  [5, 3, 4],
+];
+
+const TUTORIAL_SINGLE_REROLL_FACE_SEQUENCE: number[] = [2, 4, 5];
+
+function createScriptedDieState(faceIndex: number, settings: GameSettings) {
+  const normalizedFaceIndex =
+    ((faceIndex % settings.diceFaces.length) + settings.diceFaces.length) %
+    settings.diceFaces.length;
+  const face = settings.diceFaces[normalizedFaceIndex];
+  const hasSkull = face.production.some((production) => production.skulls > 0);
+  const needsChoice = face.production.length > 1;
+  return {
+    diceFaceIndex: normalizedFaceIndex,
+    productionIndex: needsChoice ? -1 : 0,
+    lockDecision: hasSkull ? ('skull' as const) : ('unlocked' as const),
+  };
+}
+
+function applyTutorialDeterministicRoll(
+  beforeDice: GameStateSnapshot['turn']['dice'],
+  afterDice: GameStateSnapshot['turn']['dice'],
+  rollNumber: number,
+  settings: GameSettings,
+): GameStateSnapshot['turn']['dice'] {
+  const rollIndex = Math.max(0, rollNumber - 1) % TUTORIAL_ROLL_FACE_SEQUENCE.length;
+  const scriptedFaces = TUTORIAL_ROLL_FACE_SEQUENCE[rollIndex];
+  let scriptedCursor = 0;
+
+  return afterDice.map((die, index) => {
+    if (beforeDice[index]?.lockDecision !== 'unlocked') {
+      return die;
+    }
+    const scriptedFace = scriptedFaces[scriptedCursor % scriptedFaces.length];
+    scriptedCursor += 1;
+    return createScriptedDieState(scriptedFace, settings);
+  });
+}
+
+function applyTutorialDeterministicSingleReroll(
+  dice: GameStateSnapshot['turn']['dice'],
+  dieIndex: number,
+  rerollsUsed: number,
+  settings: GameSettings,
+): GameStateSnapshot['turn']['dice'] {
+  const sequenceIndex =
+    Math.max(0, rerollsUsed - 1) % TUTORIAL_SINGLE_REROLL_FACE_SEQUENCE.length;
+  const scriptedFace = TUTORIAL_SINGLE_REROLL_FACE_SEQUENCE[sequenceIndex];
+  return dice.map((die, index) =>
+    index === dieIndex ? createScriptedDieState(scriptedFace, settings) : die,
+  );
+}
+
 function cloneSnapshot(snapshot: GameStateSnapshot): GameStateSnapshot {
   return {
     players: snapshot.players.map((player) => ({
@@ -218,6 +279,71 @@ function applyMutationWithoutHistory(
   };
 }
 
+function getCurrentTutorialStep(state: GameSliceState) {
+  if (!state.tutorial.active || TUTORIAL_STEPS.length === 0) {
+    return null;
+  }
+  const index = Math.max(
+    0,
+    Math.min(state.tutorial.currentStepIndex, TUTORIAL_STEPS.length - 1),
+  );
+  return TUTORIAL_STEPS[index];
+}
+
+function isTutorialHumanTurn(state: GameSliceState): boolean {
+  if (!state.tutorial.active || !state.game) {
+    return false;
+  }
+  return state.game.state.turn.activePlayerId === 'tutorial-p1';
+}
+
+function isTutorialActionAllowed(
+  state: GameSliceState,
+  actionKey: TutorialActionKey,
+): boolean {
+  const step = getCurrentTutorialStep(state);
+  if (!step) {
+    return true;
+  }
+  return step.allowedActions.includes(actionKey);
+}
+
+function blockIfTutorialActionDisallowed(
+  state: GameSliceState,
+  actionKey: TutorialActionKey,
+): boolean {
+  if (!isTutorialHumanTurn(state)) {
+    return false;
+  }
+  if (isTutorialActionAllowed(state, actionKey)) {
+    return false;
+  }
+  const step = getCurrentTutorialStep(state);
+  setError(
+    state,
+    'INVALID_PHASE',
+    `Tutorial step "${step?.title ?? 'Current Step'}" does not allow that action yet.`,
+  );
+  return true;
+}
+
+function advanceTutorialIfCompleted(
+  state: GameSliceState,
+  completedAction: TutorialActionKey,
+): void {
+  if (!state.tutorial.active) {
+    return;
+  }
+  const step = getCurrentTutorialStep(state);
+  if (!step || !step.completionActions?.includes(completedAction)) {
+    return;
+  }
+  if (state.tutorial.currentStepIndex >= TUTORIAL_STEPS.length - 1) {
+    return;
+  }
+  state.tutorial.currentStepIndex += 1;
+}
+
 const gameSlice = createSlice({
   name: 'game',
   initialState,
@@ -245,7 +371,25 @@ const gameSlice = createSlice({
       ];
     },
     startTutorialGame: (state) => {
-      state.game = autoAdvanceForcedPhases(createGame(TUTORIAL_PLAYERS));
+      const seededGame = autoAdvanceForcedPhases(createGame(TUTORIAL_PLAYERS));
+      const scriptedFirstFaces = TUTORIAL_ROLL_FACE_SEQUENCE[0];
+      const tutorialDice = seededGame.state.turn.dice.map((_, index) =>
+        createScriptedDieState(
+          scriptedFirstFaces[index % scriptedFirstFaces.length],
+          seededGame.settings,
+        ),
+      );
+      state.game = autoAdvanceForcedPhases({
+        ...seededGame,
+        state: {
+          ...seededGame.state,
+          turn: {
+            ...seededGame.state.turn,
+            dice: tutorialDice,
+            pendingChoices: countPendingChoices(tutorialDice, seededGame.settings),
+          },
+        },
+      });
       state.lastError = null;
       state.tutorial = {
         active: true,
@@ -254,6 +398,16 @@ const gameSlice = createSlice({
       state.actionLog = [
         '[System] Tutorial game started.',
       ];
+    },
+    advanceTutorialStep: (state) => {
+      if (!state.tutorial.active) {
+        return;
+      }
+      if (blockIfTutorialActionDisallowed(state, 'continue')) {
+        return;
+      }
+      advanceTutorialIfCompleted(state, 'continue');
+      state.lastError = null;
     },
     exitTutorial: (state) => {
       state.game = null;
@@ -269,6 +423,9 @@ const gameSlice = createSlice({
         setError(state, 'NO_GAME', 'Start a game before rolling dice.');
         return;
       }
+      if (blockIfTutorialActionDisallowed(state, 'rollDice')) {
+        return;
+      }
 
       // Random outcomes are intentionally non-undoable.
       const nextGame = applyMutationWithoutHistory(state.game, performRoll);
@@ -279,20 +436,50 @@ const gameSlice = createSlice({
 
       const resolvedGame = autoAdvanceForcedPhases(nextGame);
       const beforeSnapshot = state.game.state;
-      const afterSnapshot = resolvedGame.state;
-      state.game = resolvedGame;
+      const deterministicDice =
+        state.tutorial.active
+          ? applyTutorialDeterministicRoll(
+              beforeSnapshot.turn.dice,
+              resolvedGame.state.turn.dice,
+              resolvedGame.state.turn.rollsUsed,
+              resolvedGame.settings,
+            )
+          : resolvedGame.state.turn.dice;
+      const deterministicGame =
+        deterministicDice === resolvedGame.state.turn.dice
+          ? resolvedGame
+          : autoAdvanceForcedPhases({
+              ...resolvedGame,
+              state: {
+                ...resolvedGame.state,
+                turn: {
+                  ...resolvedGame.state.turn,
+                  dice: deterministicDice,
+                  pendingChoices: countPendingChoices(
+                    deterministicDice,
+                    resolvedGame.settings,
+                  ),
+                },
+              },
+            });
+      const afterSnapshot = deterministicGame.state;
+      state.game = deterministicGame;
       state.lastError = null;
       appendLog(
         state,
         `Rolled ${countUnlockedDice(beforeSnapshot)} unlocked dice (roll ${afterSnapshot.turn.rollsUsed}/${getMaxRollsAllowed(
           afterSnapshot.players[afterSnapshot.activePlayerIndex],
-          resolvedGame.settings,
+          deterministicGame.settings,
         )}) -> phase ${afterSnapshot.phase}.`,
       );
+      advanceTutorialIfCompleted(state, 'rollDice');
     },
     rerollSingleDie: (state, action: PayloadAction<{ dieIndex: number }>) => {
       if (!state.game) {
         setError(state, 'NO_GAME', 'Start a game before rerolling a die.');
+        return;
+      }
+      if (blockIfTutorialActionDisallowed(state, 'rerollSingleDie')) {
         return;
       }
       if (state.game.state.phase !== GamePhase.RollDice) {
@@ -337,20 +524,51 @@ const gameSlice = createSlice({
         return;
       }
 
-      state.game = nextGame;
+      const deterministicDice =
+        state.tutorial.active
+          ? applyTutorialDeterministicSingleReroll(
+              nextGame.state.turn.dice,
+              action.payload.dieIndex,
+              nextGame.state.turn.singleDieRerollsUsed,
+              nextGame.settings,
+            )
+          : nextGame.state.turn.dice;
+      const deterministicGame =
+        deterministicDice === nextGame.state.turn.dice
+          ? nextGame
+          : {
+              ...nextGame,
+              state: {
+                ...nextGame.state,
+                turn: {
+                  ...nextGame.state.turn,
+                  dice: deterministicDice,
+                  pendingChoices: countPendingChoices(
+                    deterministicDice,
+                    nextGame.settings,
+                  ),
+                },
+              },
+            };
+
+      state.game = deterministicGame;
       state.lastError = null;
       const remaining = Math.max(
         0,
-        rerollsAllowed - nextGame.state.turn.singleDieRerollsUsed,
+        rerollsAllowed - deterministicGame.state.turn.singleDieRerollsUsed,
       );
       appendLog(
         state,
         `Single-die reroll on die ${action.payload.dieIndex + 1} applied; ${remaining} remaining.`,
       );
+      advanceTutorialIfCompleted(state, 'rerollSingleDie');
     },
     endTurn: (state) => {
       if (!state.game) {
         setError(state, 'NO_GAME', 'Start a game before ending a turn.');
+        return;
+      }
+      if (blockIfTutorialActionDisallowed(state, 'endTurn')) {
         return;
       }
 
@@ -393,6 +611,7 @@ const gameSlice = createSlice({
           beforeSnapshot.turn.activePlayerId,
         );
       }
+      advanceTutorialIfCompleted(state, 'endTurn');
     },
     discardGoods: (
       state,
@@ -400,6 +619,9 @@ const gameSlice = createSlice({
     ) => {
       if (!state.game) {
         setError(state, 'NO_GAME', 'Start a game before discarding goods.');
+        return;
+      }
+      if (blockIfTutorialActionDisallowed(state, 'discardGoods')) {
         return;
       }
       if (state.game.state.phase !== GamePhase.DiscardGoods) {
@@ -467,10 +689,14 @@ const gameSlice = createSlice({
         state,
         `Applied discard: kept ${totalAfter}/${totalBefore} goods (discarded ${discarded}), phase ${nextGame.state.phase}.`,
       );
+      advanceTutorialIfCompleted(state, 'discardGoods');
     },
     keepDie: (state, action: PayloadAction<{ dieIndex: number }>) => {
       if (!state.game) {
         setError(state, 'NO_GAME', 'Start a game before keeping dice.');
+        return;
+      }
+      if (blockIfTutorialActionDisallowed(state, 'keepDie')) {
         return;
       }
 
@@ -532,6 +758,7 @@ const gameSlice = createSlice({
           nextGame.state,
         )}/${nextGame.state.turn.dice.length}).`,
       );
+      advanceTutorialIfCompleted(state, 'keepDie');
     },
     selectProduction: (
       state,
@@ -539,6 +766,9 @@ const gameSlice = createSlice({
     ) => {
       if (!state.game) {
         setError(state, 'NO_GAME', 'Start a game before choosing production.');
+        return;
+      }
+      if (blockIfTutorialActionDisallowed(state, 'selectProduction')) {
         return;
       }
 
@@ -570,6 +800,21 @@ const gameSlice = createSlice({
           state,
           'INVALID_PRODUCTION_CHOICE',
           'That production choice is not valid for this die.',
+        );
+        return;
+      }
+      const selectedProduction = dieFace.production[productionIndex];
+      const currentTutorialStep = getCurrentTutorialStep(state);
+      if (
+        state.tutorial.active &&
+        isTutorialHumanTurn(state) &&
+        currentTutorialStep?.id === 'choice' &&
+        selectedProduction.workers <= 0
+      ) {
+        setError(
+          state,
+          'INVALID_PRODUCTION_CHOICE',
+          'Tutorial: choose the production option that provides workers.',
         );
         return;
       }
@@ -616,17 +861,18 @@ const gameSlice = createSlice({
       state.lastError = null;
       const selectedFace =
         nextGame.settings.diceFaces[nextGame.state.turn.dice[dieIndex].diceFaceIndex];
-      const selectedProduction = selectedFace.production[productionIndex];
+      const selectedResult = selectedFace.production[productionIndex];
       appendLog(
         state,
         `Selected die ${dieIndex + 1} option ${productionIndex + 1}: ${formatProductionSummary({
-          goods: selectedProduction.goods,
-          food: selectedProduction.food,
-          workers: selectedProduction.workers,
-          coins: selectedProduction.coins,
-          skulls: selectedProduction.skulls,
+          goods: selectedResult.goods,
+          food: selectedResult.food,
+          workers: selectedResult.workers,
+          coins: selectedResult.coins,
+          skulls: selectedResult.skulls,
         })}; pending choices ${nextGame.state.turn.pendingChoices}.`,
       );
+      advanceTutorialIfCompleted(state, 'selectProduction');
     },
     resolveProduction: (state) => {
       if (!state.game) {
@@ -788,6 +1034,9 @@ const gameSlice = createSlice({
         setError(state, 'NO_GAME', 'Start a game before building cities.');
         return;
       }
+      if (blockIfTutorialActionDisallowed(state, 'buildCity')) {
+        return;
+      }
       if (state.game.state.phase !== GamePhase.Build) {
         setError(
           state,
@@ -875,10 +1124,14 @@ const gameSlice = createSlice({
           workersUsed === 1 ? '' : 's'
         }, now ${progressText}.`,
       );
+      advanceTutorialIfCompleted(state, 'buildCity');
     },
     buildMonument: (state, action: PayloadAction<{ monumentId: string }>) => {
       if (!state.game) {
         setError(state, 'NO_GAME', 'Start a game before building monuments.');
+        return;
+      }
+      if (blockIfTutorialActionDisallowed(state, 'buildMonument')) {
         return;
       }
       if (state.game.state.phase !== GamePhase.Build) {
@@ -974,6 +1227,7 @@ const gameSlice = createSlice({
           workersUsed === 1 ? '' : 's'
         }, now ${progressText}.`,
       );
+      advanceTutorialIfCompleted(state, 'buildMonument');
     },
     buyDevelopment: (
       state,
@@ -981,6 +1235,9 @@ const gameSlice = createSlice({
     ) => {
       if (!state.game) {
         setError(state, 'NO_GAME', 'Start a game before buying developments.');
+        return;
+      }
+      if (blockIfTutorialActionDisallowed(state, 'buyDevelopment')) {
         return;
       }
       if (
@@ -1083,10 +1340,14 @@ const gameSlice = createSlice({
           coinsBefore - coinsAfter,
         )} coins, goods spent ${spentGoodsText}; total developments ${activePlayer.developments.length}.`,
       );
+      advanceTutorialIfCompleted(state, 'buyDevelopment');
     },
     skipDevelopment: (state) => {
       if (!state.game) {
         setError(state, 'NO_GAME', 'Start a game before skipping development.');
+        return;
+      }
+      if (blockIfTutorialActionDisallowed(state, 'skipDevelopment')) {
         return;
       }
       if (state.game.state.phase !== GamePhase.Development) {
@@ -1126,6 +1387,7 @@ const gameSlice = createSlice({
       state.game = nextGame;
       state.lastError = null;
       appendLog(state, `Skipped development purchases -> phase ${nextGame.state.phase}.`);
+      advanceTutorialIfCompleted(state, 'skipDevelopment');
     },
     applyExchange: (
       state,
@@ -1133,6 +1395,9 @@ const gameSlice = createSlice({
     ) => {
       if (!state.game) {
         setError(state, 'NO_GAME', 'Start a game before applying exchanges.');
+        return;
+      }
+      if (blockIfTutorialActionDisallowed(state, 'applyExchange')) {
         return;
       }
       if (
@@ -1221,6 +1486,7 @@ const gameSlice = createSlice({
         state,
         `Exchanged ${exchangeAmount} ${action.payload.from} -> ${action.payload.to} (source ${sourceBefore}->${sourceAfter}, target ${targetBefore}->${targetAfter}).`,
       );
+      advanceTutorialIfCompleted(state, 'applyExchange');
     },
     addTestingResources: (
       state,
@@ -1320,6 +1586,7 @@ export const {
   returnToSetup,
   startGame,
   startTutorialGame,
+  advanceTutorialStep,
   exitTutorial,
   rollDice,
   rerollSingleDie,

@@ -179,8 +179,22 @@ export const selectTutorialModel = createSelector(selectGameSlice, (slice) => {
     currentStepIndex: slice.tutorial.currentStepIndex,
     totalSteps: TUTORIAL_STEPS.length,
     step,
+    canContinue: Boolean(step?.allowedActions.includes('continue')),
+    allowedActions: step?.allowedActions ?? [],
   };
 });
+
+export const selectTutorialViewModel = createSelector(
+  selectTutorialModel,
+  selectGame,
+  (tutorial, game) => ({
+    ...tutorial,
+    instruction:
+      tutorial.step?.instructionResolver?.(game) ??
+      tutorial.step?.instruction ??
+      'Follow the guided steps.',
+  }),
+);
 
 export const selectTurnStatus = createSelector(
   selectGame,
