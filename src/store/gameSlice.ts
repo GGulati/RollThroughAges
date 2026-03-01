@@ -41,12 +41,20 @@ import { GameSettings, GameState, GameStateSnapshot, PlayerState } from '@/game'
 import { GameActionErrorCode, GameSliceState } from './gameState';
 
 const MAX_HISTORY_ENTRIES = 20;
+const TUTORIAL_PLAYERS: PlayerConfig[] = [
+  { id: 'tutorial-p1', name: 'Player 1', controller: 'human' },
+  { id: 'tutorial-p2', name: 'Guide Bot', controller: 'bot' },
+];
 enableMapSet();
 
 const initialState: GameSliceState = {
   game: null,
   lastError: null,
   actionLog: [],
+  tutorial: {
+    active: false,
+    currentStepIndex: 0,
+  },
 };
 
 function setError(state: GameSliceState, code: GameActionErrorCode, message: string): void {
@@ -218,15 +226,43 @@ const gameSlice = createSlice({
       state.game = null;
       state.lastError = null;
       state.actionLog = [];
+      state.tutorial = {
+        active: false,
+        currentStepIndex: 0,
+      };
     },
     startGame: (state, action: PayloadAction<{ players: PlayerConfig[] }>) => {
       state.game = autoAdvanceForcedPhases(createGame(action.payload.players));
       state.lastError = null;
+      state.tutorial = {
+        active: false,
+        currentStepIndex: 0,
+      };
       state.actionLog = [
         `[System] Game started with ${action.payload.players.length} players: ${action.payload.players
           .map((player) => player.name)
           .join(', ')}.`,
       ];
+    },
+    startTutorialGame: (state) => {
+      state.game = autoAdvanceForcedPhases(createGame(TUTORIAL_PLAYERS));
+      state.lastError = null;
+      state.tutorial = {
+        active: true,
+        currentStepIndex: 0,
+      };
+      state.actionLog = [
+        '[System] Tutorial game started.',
+      ];
+    },
+    exitTutorial: (state) => {
+      state.game = null;
+      state.lastError = null;
+      state.actionLog = [];
+      state.tutorial = {
+        active: false,
+        currentStepIndex: 0,
+      };
     },
     rollDice: (state) => {
       if (!state.game) {
@@ -1283,6 +1319,8 @@ const gameSlice = createSlice({
 export const {
   returnToSetup,
   startGame,
+  startTutorialGame,
+  exitTutorial,
   rollDice,
   rerollSingleDie,
   endTurn,

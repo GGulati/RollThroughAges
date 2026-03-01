@@ -11,6 +11,7 @@ import {
   selectDiscardPanelModel,
   selectExchangePanelModel,
   selectProductionPanelModel,
+  selectTutorialModel,
 } from '@/store/selectors';
 
 type ConstructionSection = 'cities' | 'monuments' | 'developments';
@@ -20,6 +21,7 @@ type GameplayScreenProps = {
   botStepDelayMs: number;
   activePhasePanel: PhasePanel | null;
   turnStatus: TurnStatusData;
+  tutorial: ReturnType<typeof selectTutorialModel>;
   canUndo: boolean;
   canRedo: boolean;
   dicePanel: ReturnType<typeof selectDicePanelModel>;
@@ -73,6 +75,7 @@ export function GameplayScreen({
   botStepDelayMs,
   activePhasePanel,
   turnStatus,
+  tutorial,
   canUndo,
   canRedo,
   dicePanel,
@@ -493,6 +496,20 @@ export function GameplayScreen({
           <ActionLogPanel entries={actionLog} ariaLabel="Action log history" />
         </section>
       </div>
+      {tutorial.isActive ? (
+        <section className="app-panel tutorial-panel tutorial-overlay">
+          <div className="collapsible-header">
+            <h2>Tutorial</h2>
+          </div>
+          <p className="scoreboard-row">
+            Step {Math.min(tutorial.currentStepIndex + 1, tutorial.totalSteps)}/
+            {tutorial.totalSteps}
+          </p>
+          <p className="development-title">{tutorial.step?.title ?? 'Tutorial'}</p>
+          <p>{tutorial.step?.instruction ?? 'Follow the guided steps.'}</p>
+          {tutorial.step?.hint ? <p className="hint-text">{tutorial.step.hint}</p> : null}
+        </section>
+      ) : null}
     </fieldset>
   );
 }

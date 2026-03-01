@@ -7,6 +7,7 @@ import {
   buildMonument,
   discardGoods,
   endTurn,
+  exitTutorial,
   gameReducer,
   keepDie,
   redo,
@@ -15,6 +16,7 @@ import {
   rollDice,
   skipDevelopment,
   startGame,
+  startTutorialGame,
   undo,
 } from '@/store/gameSlice';
 import { GamePhase } from '@/game';
@@ -49,6 +51,26 @@ describe('gameSlice', () => {
       'bot',
       'bot',
     ]);
+  });
+
+  it('starts and exits tutorial mode', () => {
+    let state = reduce(undefined, startTutorialGame());
+
+    expect(state.game).not.toBeNull();
+    expect(state.game!.settings.players.map((player) => player.controller)).toEqual([
+      'human',
+      'bot',
+    ]);
+    expect(state.game!.settings.players[1].name).toBe('Guide Bot');
+    expect(state.tutorial.active).toBe(true);
+    expect(state.tutorial.currentStepIndex).toBe(0);
+    expect(state.actionLog[0]).toContain('Tutorial game started');
+
+    state = reduce(state, exitTutorial());
+    expect(state.game).toBeNull();
+    expect(state.tutorial.active).toBe(false);
+    expect(state.tutorial.currentStepIndex).toBe(0);
+    expect(state.actionLog).toEqual([]);
   });
 
   it('caps history at 20 entries', () => {

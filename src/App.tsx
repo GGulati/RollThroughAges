@@ -56,6 +56,7 @@ import {
   selectProduction,
   returnToSetup,
   startGame,
+  startTutorialGame,
   undo,
 } from '@/store/gameSlice';
 import {
@@ -73,6 +74,7 @@ import {
   selectGame,
   selectProductionPanelModel,
   selectPlayerEndStateSummaries,
+  selectTutorialModel,
   selectTurnStatus,
 } from '@/store/selectors';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -150,6 +152,7 @@ const DEFAULT_SECTION_PREFERENCES: SectionPreferences = {
 function App() {
   const dispatch = useAppDispatch();
   const turnStatus = useAppSelector(selectTurnStatus);
+  const tutorial = useAppSelector(selectTutorialModel);
   const playerEndStateSummaries = useAppSelector(selectPlayerEndStateSummaries);
   const actionLog = useAppSelector(selectActionLog);
   const dicePanel = useAppSelector(selectDicePanelModel);
@@ -732,6 +735,13 @@ function App() {
     dispatch(returnToSetup());
   };
 
+  const startTutorialMode = () => {
+    setActiveGameBotProfilesByPlayerId({
+      'tutorial-p2': 'heuristicStandard',
+    });
+    dispatch(startTutorialGame());
+  };
+
   const toggleConstructionSection = (section: ConstructionSection) => {
     setSectionPreferencesByPlayer((current) => {
       const existing =
@@ -761,6 +771,7 @@ function App() {
             onPlayerCountChange={setPlayerCount}
             onPlayerControllerChange={updatePlayerController}
             onStartGame={startConfiguredGame}
+            onStartTutorialGame={startTutorialMode}
             botSpeed={botSpeed}
             onBotSpeedChange={setBotSpeed}
             isHeuristicSettingsExpanded={isHeuristicSettingsExpanded}
@@ -826,6 +837,7 @@ function App() {
             botStepDelayMs={botStepDelayMs}
             activePhasePanel={activePhasePanel}
             turnStatus={{ ...turnStatus, phase: displayedPhase }}
+            tutorial={tutorial}
             canUndo={canUndo}
             canRedo={canRedo}
             dicePanel={dicePanel}

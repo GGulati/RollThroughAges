@@ -22,6 +22,7 @@ import {
   selectDiscardPanelModel,
   selectEndgameStatus,
   selectProductionPanelModel,
+  selectTutorialModel,
   selectTurnStatus,
 } from '@/store/selectors';
 
@@ -50,6 +51,12 @@ describe('store selectors', () => {
       activePlayerPoints: 0,
       playerPoints: [],
       errorMessage: null,
+    });
+    expect(selectTutorialModel(state)).toEqual({
+      isActive: false,
+      currentStepIndex: 0,
+      totalSteps: 20,
+      step: null,
     });
     expect(selectDicePanelModel(state)).toMatchObject({
       canRoll: false,

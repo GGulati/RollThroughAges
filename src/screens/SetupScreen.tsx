@@ -20,6 +20,7 @@ type SetupScreenProps = {
     controller: ControllerOption,
   ) => void;
   onStartGame: () => void;
+  onStartTutorialGame: () => void;
   botSpeed: BotSpeedOption;
   onBotSpeedChange: (speed: BotSpeedOption) => void;
   isHeuristicSettingsExpanded: boolean;
@@ -58,6 +59,7 @@ export function SetupScreen({
   onPlayerCountChange,
   onPlayerControllerChange,
   onStartGame,
+  onStartTutorialGame,
   botSpeed,
   onBotSpeedChange,
   isHeuristicSettingsExpanded,
@@ -179,6 +181,13 @@ export function SetupScreen({
         ) : null}
         <button className="start-game-button" type="button" onClick={onStartGame}>
           Start Game
+        </button>
+      </section>
+      <section className="app-panel setup-panel">
+        <h2>Tutorial</h2>
+        <p>Start a guided game to learn the rules.</p>
+        <button className="start-game-button" type="button" onClick={onStartTutorialGame}>
+          Start Tutorial
         </button>
       </section>
       <section className="app-panel setup-panel">

@@ -36,6 +36,7 @@ import {
   isGameOver,
   resolveProduction,
 } from '@/game/engine';
+import { TutorialStepDefinition, TUTORIAL_STEPS } from './gameState';
 import { RootState } from './store';
 
 const selectGameSlice = (state: RootState) => state.game;
@@ -162,6 +163,24 @@ export const selectActionLog = createSelector(
   selectGameSlice,
   (slice) => slice.actionLog,
 );
+
+export const selectTutorialModel = createSelector(selectGameSlice, (slice) => {
+  const stepIndex = Math.max(
+    0,
+    Math.min(slice.tutorial.currentStepIndex, TUTORIAL_STEPS.length - 1),
+  );
+  const step: TutorialStepDefinition | null =
+    slice.tutorial.active && TUTORIAL_STEPS.length > 0
+      ? TUTORIAL_STEPS[stepIndex]
+      : null;
+
+  return {
+    isActive: slice.tutorial.active,
+    currentStepIndex: slice.tutorial.currentStepIndex,
+    totalSteps: TUTORIAL_STEPS.length,
+    step,
+  };
+});
 
 export const selectTurnStatus = createSelector(
   selectGame,
