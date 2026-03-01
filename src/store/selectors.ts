@@ -39,6 +39,7 @@ import {
 import { resolveTutorialInstruction } from '@/tutorial/engine';
 import { formatEventForAnnouncement } from '@/ui/eventFormatters';
 import {
+  getResourceEmoji,
   formatResourceLabel,
   formatResourceTextWithEmojis,
 } from '@/utils/gameUiFormatters';
@@ -133,11 +134,11 @@ function formatProductionEntry(entry: {
   skulls: number;
 }): string {
   const parts: string[] = [];
-  if (entry.goods > 0) parts.push(`${entry.goods} ${formatResourceLabel('Goods')}`);
-  if (entry.food > 0) parts.push(`${entry.food} ${formatResourceLabel('Food')}`);
-  if (entry.workers > 0) parts.push(`${entry.workers} ${formatResourceLabel('Workers')}`);
-  if (entry.coins > 0) parts.push(`${entry.coins} ${formatResourceLabel('Coins')}`);
-  if (entry.skulls > 0) parts.push(`${entry.skulls} ${formatResourceLabel('Skulls')}`);
+  if (entry.goods > 0) parts.push(`${entry.goods}${getResourceEmoji('Goods')}`);
+  if (entry.food > 0) parts.push(`${entry.food}${getResourceEmoji('Food')}`);
+  if (entry.workers > 0) parts.push(`${entry.workers}${getResourceEmoji('Workers')}`);
+  if (entry.coins > 0) parts.push(`${entry.coins}${getResourceEmoji('Coins')}`);
+  if (entry.skulls > 0) parts.push(`${entry.skulls}${getResourceEmoji('Skulls')}`);
   return parts.join(' + ');
 }
 
@@ -379,6 +380,18 @@ export const selectDicePanelModel = createSelector(selectGame, (game) => {
       optionSummaries: face.production.map((entry) =>
         formatProductionEntry(entry),
       ),
+      rolledSummary:
+        face.production.length > 1
+          ? face.production.map((entry) => formatProductionEntry(entry)).join(' OR ')
+          : formatProductionEntry(
+              face.production[selectedOption ?? 0] ?? {
+                goods: 0,
+                food: 0,
+                workers: 0,
+                coins: 0,
+                skulls: 0,
+              },
+            ),
       hasChoice: optionCount > 1,
       canKeep: canKeepDie && die.lockDecision !== 'skull',
       canChooseOption: canSelectProduction && optionCount > 1,

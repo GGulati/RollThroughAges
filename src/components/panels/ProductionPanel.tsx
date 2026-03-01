@@ -3,6 +3,7 @@ import { formatResourceLabel } from '@/utils/gameUiFormatters';
 type DiceCard = {
   index: number;
   label: string;
+  rolledSummary: string;
   lockDecision: string;
   canKeep: boolean;
   hasChoice: boolean;
@@ -91,6 +92,7 @@ export function ProductionPanel({
     motionEventType === 'production_resolved' || motionEventType === 'penalty_applied';
   const shouldPulseDice =
     motionEventType === 'dice_roll_resolved' && rerolledDieIndices.length > 0;
+
   return (
     <section className={className}>
       <h2>Production</h2>
@@ -111,14 +113,15 @@ export function ProductionPanel({
         <p className="development-title">Total ({diceOutcome.summary ?? 'Projected'})</p>
         <p className="scoreboard-row">{formatResourceLabel('Food')}: +{diceOutcome.food.produced}</p>
         <p className="scoreboard-row">{formatResourceLabel('Coins')}: +{diceOutcome.coinsProduced}</p>
-        <p className="scoreboard-row">{formatResourceLabel('Workers')}: +{diceOutcome.workersProduced}</p>
+        <p className="scoreboard-row">
+          {formatResourceLabel('Workers')}: +{diceOutcome.workersProduced}
+        </p>
         <p className="scoreboard-row">{formatResourceLabel('Goods')}: +{diceOutcome.goodsProduced}</p>
         <p className="scoreboard-row">{formatResourceLabel('Skulls')}: {diceOutcome.skulls}</p>
         {diceOutcome.penalties.foodPenalty > 0 ? (
           <p className="outcome-penalty">
             ⚠️ {formatResourceLabel('Food')} shortage: -{diceOutcome.penalties.foodPenalty}{' '}
-            {formatResourceLabel('VP')} (
-            {diceOutcome.food.shortage} unfed
+            {formatResourceLabel('VP')} ({diceOutcome.food.shortage} unfed
             {diceOutcome.food.shortage === 1 ? ' city' : ' cities'})
           </p>
         ) : null}
@@ -151,24 +154,33 @@ export function ProductionPanel({
       {!productionPanel.canResolveProduction && productionPanel.reason ? (
         <p className="hint-text">{productionPanel.reason}</p>
       ) : null}
-      <div className="dice-grid">
+      <div className="dice-grid dice-grid-3d">
         {dicePanel.diceCards.map((die) => (
           <article
             key={die.index}
             className={[
               'die-card',
+              'die-card-3d',
               motionEventType === 'die_lock_changed' &&
               lockChangedDieIndices.includes(die.index)
                 ? 'is-lock-shift'
                 : '',
               shouldPulseDice && rerolledDieIndices.includes(die.index)
-                ? 'is-reroll-shift'
+                ? 'is-reroll-settle-3d'
                 : '',
             ]
               .filter(Boolean)
               .join(' ')}
           >
             <p className="die-title">Die {die.index + 1}</p>
+            <div className="die-cube" aria-hidden="true">
+              <span className="die-cube-face die-cube-front">{die.rolledSummary}</span>
+              <span className="die-cube-face die-cube-back">🎲</span>
+              <span className="die-cube-face die-cube-right">🎲</span>
+              <span className="die-cube-face die-cube-left">🎲</span>
+              <span className="die-cube-face die-cube-top">{die.index + 1}</span>
+              <span className="die-cube-face die-cube-bottom">🎲</span>
+            </div>
             <p className="die-face">{die.label}</p>
             {die.hasChoice ? (
               <div className="choice-block">

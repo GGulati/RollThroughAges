@@ -177,6 +177,94 @@ body,
   background: #f9fafb;
 }
 
+.dice-grid-3d {
+  perspective: 900px;
+}
+
+.die-card-3d {
+  position: relative;
+  transform-style: preserve-3d;
+  border-color: #cbd5e1;
+  background:
+    linear-gradient(140deg, #ffffff 0%, #f3f4f6 55%, #e5e7eb 100%);
+  box-shadow:
+    0 8px 14px -8px rgb(15 23 42 / 0.45),
+    inset 0 1px 0 rgb(255 255 255 / 0.9);
+}
+
+.die-card-3d .die-face {
+  display: inline-block;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.35rem;
+  background: rgb(255 255 255 / 0.7);
+}
+
+.die-cube {
+  --die-cube-size: 56px;
+  --die-cube-depth: calc(var(--die-cube-size) / 2);
+  width: var(--die-cube-size);
+  height: var(--die-cube-size);
+  margin: 0.1rem 0 0.45rem;
+  position: relative;
+  transform-style: preserve-3d;
+  transform: rotateX(-18deg) rotateY(24deg);
+  transition: transform 260ms var(--event-motion-ease);
+}
+
+.die-cube-face {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 0.6rem;
+  font-weight: 700;
+  border: 1px solid #cbd5e1;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.8);
+  background: linear-gradient(150deg, #ffffff 0%, #e5e7eb 100%);
+  font-size: 0.78rem;
+  line-height: 1.1;
+  text-align: center;
+  padding: 0.2rem;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.die-cube-front {
+  transform: translateZ(var(--die-cube-depth));
+}
+
+.die-cube-back {
+  transform: rotateY(180deg) translateZ(var(--die-cube-depth));
+}
+
+.die-cube-top {
+  transform: rotateX(90deg) translateZ(var(--die-cube-depth));
+  background: linear-gradient(150deg, #f8fafc 0%, #e2e8f0 100%);
+}
+
+.die-cube-right {
+  transform: rotateY(90deg) translateZ(var(--die-cube-depth));
+  background: linear-gradient(150deg, #f1f5f9 0%, #dbeafe 100%);
+}
+
+.die-cube-left {
+  transform: rotateY(-90deg) translateZ(var(--die-cube-depth));
+  background: linear-gradient(150deg, #f1f5f9 0%, #e2e8f0 100%);
+}
+
+.die-cube-bottom {
+  transform: rotateX(-90deg) translateZ(var(--die-cube-depth));
+  background: linear-gradient(150deg, #e5e7eb 0%, #cbd5e1 100%);
+}
+
+.die-card-3d.is-reroll-settle-3d {
+  animation: diceSettle3d var(--event-motion-ms) var(--event-motion-ease);
+}
+
+.die-card-3d.is-reroll-settle-3d .die-cube {
+  animation: cubeSpinSettle var(--event-motion-ms) var(--event-motion-ease);
+}
+
 .die-card.is-reroll-shift {
   animation: diceShift var(--event-motion-ms) var(--event-motion-ease);
 }
@@ -517,6 +605,45 @@ body,
   }
   100% {
     transform: translateX(0);
+  }
+}
+
+@keyframes diceSettle3d {
+  0% {
+    transform: rotateX(0deg) rotateY(0deg) translateZ(0);
+  }
+  45% {
+    transform: rotateX(18deg) rotateY(-24deg) translateZ(8px);
+  }
+  100% {
+    transform: rotateX(0deg) rotateY(0deg) translateZ(0);
+  }
+}
+
+@keyframes cubeSpinSettle {
+  0% {
+    transform: rotateX(-18deg) rotateY(24deg);
+  }
+  50% {
+    transform: rotateX(330deg) rotateY(330deg);
+  }
+  100% {
+    transform: rotateX(-18deg) rotateY(24deg);
+  }
+}
+
+@supports not (transform-style: preserve-3d) {
+  .die-card-3d {
+    box-shadow: 0 8px 12px -6px rgb(15 23 42 / 0.2);
+  }
+
+  .die-cube,
+  .die-cube-face {
+    transform: none !important;
+  }
+
+  .die-card-3d.is-reroll-settle-3d {
+    animation: diceShift var(--event-motion-ms) var(--event-motion-ease);
   }
 }
 
