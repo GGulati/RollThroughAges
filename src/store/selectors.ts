@@ -36,6 +36,7 @@ import {
   isGameOver,
   resolveProduction,
 } from '@/game/engine';
+import { resolveTutorialInstruction } from '@/tutorial/engine';
 import { DomainEvent, TutorialStepDefinition, TUTORIAL_STEPS } from './gameState';
 import { RootState } from './store';
 
@@ -215,10 +216,13 @@ export const selectTutorialViewModel = createSelector(
   selectGame,
   (tutorial, game) => ({
     ...tutorial,
-    instruction:
-      tutorial.step?.instructionResolver?.(game) ??
-      tutorial.step?.instruction ??
-      'Follow the guided steps.',
+    instruction: resolveTutorialInstruction(
+      {
+        active: tutorial.isActive,
+        currentStepIndex: tutorial.currentStepIndex,
+      },
+      game,
+    ),
   }),
 );
 

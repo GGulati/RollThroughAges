@@ -39,13 +39,17 @@ import {
 } from '@/game/engine';
 import { GameSettings, GameState, GameStateSnapshot, PlayerState } from '@/game';
 import {
+  advanceTutorialFromEvents,
+  getCurrentTutorialStep,
+  isTutorialActionAllowed,
+} from '@/tutorial/engine';
+import {
   CommandEventBatch,
   DomainEvent,
   DomainEventType,
   GameCommandType,
   GameActionErrorCode,
   GameSliceState,
-  TUTORIAL_STEPS,
   TutorialActionKey,
 } from './gameState';
 
@@ -396,33 +400,11 @@ function applyMutationWithoutHistory(
   };
 }
 
-function getCurrentTutorialStep(state: GameSliceState) {
-  if (!state.tutorial.active || TUTORIAL_STEPS.length === 0) {
-    return null;
-  }
-  const index = Math.max(
-    0,
-    Math.min(state.tutorial.currentStepIndex, TUTORIAL_STEPS.length - 1),
-  );
-  return TUTORIAL_STEPS[index];
-}
-
 function isTutorialHumanTurn(state: GameSliceState): boolean {
   if (!state.tutorial.active || !state.game) {
     return false;
   }
   return state.game.state.turn.activePlayerId === 'tutorial-p1';
-}
-
-function isTutorialActionAllowed(
-  state: GameSliceState,
-  actionKey: TutorialActionKey,
-): boolean {
-  const step = getCurrentTutorialStep(state);
-  if (!step) {
-    return true;
-  }
-  return step.allowedActions.includes(actionKey);
 }
 
 function blockIfTutorialActionDisallowed(
@@ -432,10 +414,10 @@ function blockIfTutorialActionDisallowed(
   if (!isTutorialHumanTurn(state)) {
     return false;
   }
-  if (isTutorialActionAllowed(state, actionKey)) {
+  if (isTutorialActionAllowed(state.tutorial, actionKey)) {
     return false;
   }
-  const step = getCurrentTutorialStep(state);
+  const step = getCurrentTutorialStep(state.tutorial);
   setError(
     state,
     'INVALID_PHASE',
@@ -444,21 +426,29 @@ function blockIfTutorialActionDisallowed(
   return true;
 }
 
-function advanceTutorialIfCompleted(
+function syncTutorialFromLatestBatch(
   state: GameSliceState,
-  completedAction: TutorialActionKey,
+  commandType: GameCommandType,
 ): void {
   if (!state.tutorial.active) {
     return;
   }
-  const step = getCurrentTutorialStep(state);
-  if (!step || !step.completionActions?.includes(completedAction)) {
+  const latestBatch = state.events.commandBatches[state.events.commandBatches.length - 1];
+  if (!latestBatch) {
     return;
   }
-  if (state.tutorial.currentStepIndex >= TUTORIAL_STEPS.length - 1) {
-    return;
+  const wasActive = state.tutorial.active;
+  state.tutorial = advanceTutorialFromEvents(
+    state.tutorial,
+    latestBatch.appliedEvents,
+    latestBatch.resolutionEvents,
+    state.game,
+    commandType,
+  );
+  if (wasActive && !state.tutorial.active) {
+    state.lastError = null;
+    appendLog(state, 'Tutorial completed.');
   }
-  state.tutorial.currentStepIndex += 1;
 }
 
 const gameSlice = createSlice({
@@ -534,22 +524,12 @@ const gameSlice = createSlice({
       if (blockIfTutorialActionDisallowed(state, 'continue')) {
         return;
       }
-      if (state.tutorial.currentStepIndex >= TUTORIAL_STEPS.length - 1) {
-        state.tutorial.active = false;
-        state.lastError = null;
-        appendLog(state, 'Tutorial completed.');
-        const event = createDomainEvent(state, state.game, 'turn_completed', {
-          tutorialCompleted: true,
-        });
-        recordCommandBatch(state, 'advanceTutorialStep', [event], [event]);
-        return;
-      }
-      advanceTutorialIfCompleted(state, 'continue');
       state.lastError = null;
       const event = createDomainEvent(state, state.game, 'turn_completed', {
         tutorialStepIndex: state.tutorial.currentStepIndex,
       });
       recordCommandBatch(state, 'advanceTutorialStep', [event], [event]);
+      syncTutorialFromLatestBatch(state, 'advanceTutorialStep');
     },
     exitTutorial: (state) => {
       state.game = null;
@@ -636,7 +616,7 @@ const gameSlice = createSlice({
             ]
           : resolutionEvents;
       recordCommandBatch(state, 'rollDice', resolutionEvents, appliedEvents);
-      advanceTutorialIfCompleted(state, 'rollDice');
+      syncTutorialFromLatestBatch(state, 'rollDice');
     },
     rerollSingleDie: (state, action: PayloadAction<{ dieIndex: number }>) => {
       if (!state.game) {
@@ -736,7 +716,7 @@ const gameSlice = createSlice({
         },
       );
       recordCommandBatch(state, 'rerollSingleDie', [rerollEvent], [rerollEvent]);
-      advanceTutorialIfCompleted(state, 'rerollSingleDie');
+      syncTutorialFromLatestBatch(state, 'rerollSingleDie');
     },
     endTurn: (state) => {
       if (!state.game) {
@@ -798,7 +778,7 @@ const gameSlice = createSlice({
         turnCompleted,
         phaseTransition,
       ]);
-      advanceTutorialIfCompleted(state, 'endTurn');
+      syncTutorialFromLatestBatch(state, 'endTurn');
     },
     discardGoods: (
       state,
@@ -891,7 +871,7 @@ const gameSlice = createSlice({
             ]
           : [discardEvent];
       recordCommandBatch(state, 'discardGoods', [discardEvent], appliedEvents);
-      advanceTutorialIfCompleted(state, 'discardGoods');
+      syncTutorialFromLatestBatch(state, 'discardGoods');
     },
     keepDie: (state, action: PayloadAction<{ dieIndex: number }>) => {
       if (!state.game) {
@@ -977,7 +957,7 @@ const gameSlice = createSlice({
             ]
           : [lockEvent];
       recordCommandBatch(state, 'keepDie', [lockEvent], appliedEvents);
-      advanceTutorialIfCompleted(state, 'keepDie');
+      syncTutorialFromLatestBatch(state, 'keepDie');
     },
     selectProduction: (
       state,
@@ -1024,7 +1004,7 @@ const gameSlice = createSlice({
         return;
       }
       const selectedProduction = dieFace.production[productionIndex];
-      const currentTutorialStep = getCurrentTutorialStep(state);
+      const currentTutorialStep = getCurrentTutorialStep(state.tutorial);
       if (
         state.tutorial.active &&
         isTutorialHumanTurn(state) &&
@@ -1108,7 +1088,7 @@ const gameSlice = createSlice({
             ]
           : [selectionEvent];
       recordCommandBatch(state, 'selectProduction', [selectionEvent], appliedEvents);
-      advanceTutorialIfCompleted(state, 'selectProduction');
+      syncTutorialFromLatestBatch(state, 'selectProduction');
     },
     resolveProduction: (state) => {
       if (!state.game) {
@@ -1395,7 +1375,7 @@ const gameSlice = createSlice({
         },
       );
       recordCommandBatch(state, 'buildCity', [buildEvent], [buildEvent]);
-      advanceTutorialIfCompleted(state, 'buildCity');
+      syncTutorialFromLatestBatch(state, 'buildCity');
     },
     buildMonument: (state, action: PayloadAction<{ monumentId: string }>) => {
       if (!state.game) {
@@ -1511,7 +1491,7 @@ const gameSlice = createSlice({
         },
       );
       recordCommandBatch(state, 'buildMonument', [buildEvent], [buildEvent]);
-      advanceTutorialIfCompleted(state, 'buildMonument');
+      syncTutorialFromLatestBatch(state, 'buildMonument');
     },
     buyDevelopment: (
       state,
@@ -1635,7 +1615,7 @@ const gameSlice = createSlice({
         },
       );
       recordCommandBatch(state, 'buyDevelopment', [developmentEvent], [developmentEvent]);
-      advanceTutorialIfCompleted(state, 'buyDevelopment');
+      syncTutorialFromLatestBatch(state, 'buyDevelopment');
     },
     skipDevelopment: (state) => {
       if (!state.game) {
@@ -1686,7 +1666,7 @@ const gameSlice = createSlice({
         toPhase: nextGame.state.phase,
       });
       recordCommandBatch(state, 'skipDevelopment', [phaseEvent], [phaseEvent]);
-      advanceTutorialIfCompleted(state, 'skipDevelopment');
+      syncTutorialFromLatestBatch(state, 'skipDevelopment');
     },
     applyExchange: (
       state,
@@ -1794,7 +1774,7 @@ const gameSlice = createSlice({
         targetAfter,
       });
       recordCommandBatch(state, 'applyExchange', [exchangeEvent], [exchangeEvent]);
-      advanceTutorialIfCompleted(state, 'applyExchange');
+      syncTutorialFromLatestBatch(state, 'applyExchange');
     },
     addTestingResources: (
       state,
