@@ -118,6 +118,13 @@ export function GameplayScreen({
   onUpdateGoodsToKeep,
   onApplyDiscard,
 }: GameplayScreenProps) {
+  const buildExchanges = exchangePanel.exchanges.filter(
+    (exchange) => exchange.relevantInBuild,
+  );
+  const developmentExchanges = exchangePanel.exchanges.filter(
+    (exchange) => exchange.relevantInDevelopment,
+  );
+
   return (
     <fieldset className="gameplay-shell" disabled={controlsLockedByBot}>
       <div className="board-grid">
@@ -189,6 +196,34 @@ export function GameplayScreen({
                 </p>
               ))}
             </div>
+            {buildExchanges.length > 0 ? (
+              <>
+                <p className="choice-label">Exchange Effects</p>
+                <p>{exchangePanel.reason ?? 'Apply conversions as needed.'}</p>
+                <div className="development-list">
+                  {buildExchanges.map((exchange) => (
+                    <article key={`build-${exchange.key}`} className="development-card">
+                      <p className="development-title">
+                        {exchange.developmentName}: {exchange.from}
+                        {' -> '}
+                        {exchange.to}
+                      </p>
+                      <p className="development-effect">
+                        Rate: 1 {exchange.from} = {exchange.rate} {exchange.to}
+                      </p>
+                      <p className="inline-note">Available: {exchange.sourceAmount}</p>
+                      <button
+                        type="button"
+                        onClick={() => onApplyExchange(exchange.from, exchange.to, 1)}
+                        disabled={!exchange.canApply}
+                      >
+                        Exchange 1 {exchange.from}
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              </>
+            ) : null}
             <div className="build-targets">
               <div className="collapsible-header">
                 <p className="choice-label">Cities</p>
@@ -332,12 +367,12 @@ export function GameplayScreen({
                 </button>
               ))}
             </div>
-            {exchangePanel.exchanges.length > 0 ? (
+            {developmentExchanges.length > 0 ? (
               <>
                 <p className="choice-label">Exchange Effects</p>
                 <p>{exchangePanel.reason ?? 'Apply exchanges as needed.'}</p>
                 <div className="development-list">
-                  {exchangePanel.exchanges.map((exchange) => (
+                  {developmentExchanges.map((exchange) => (
                     <article key={exchange.key} className="development-card">
                       <p className="development-title">
                         {exchange.developmentName}: {exchange.from}

@@ -738,6 +738,8 @@ export const selectExchangePanelModel = createSelector(selectGame, (game) => {
         developmentName: string;
         sourceAmount: number;
         canApply: boolean;
+        relevantInBuild: boolean;
+        relevantInDevelopment: boolean;
       }>,
     };
   }
@@ -753,6 +755,7 @@ export const selectExchangePanelModel = createSelector(selectGame, (game) => {
         game.settings,
         effect.from,
       );
+      const targetResource = effect.to.trim().toLowerCase();
       return {
         key: `${effect.developmentId}:${effect.from}->${effect.to}`,
         from: effect.from,
@@ -762,6 +765,8 @@ export const selectExchangePanelModel = createSelector(selectGame, (game) => {
         developmentName: effect.developmentName,
         sourceAmount,
         canApply: isActionAllowed && sourceAmount > 0,
+        relevantInBuild: targetResource !== 'coins',
+        relevantInDevelopment: targetResource !== 'workers',
       };
     },
   );
