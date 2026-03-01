@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
 import { ScoreBreakdownSummary } from '@/game/reporting';
+import { DataTable } from '@/components/tables/DataTable';
 
 type PlayerScoreCardProps = {
   playerName: string;
@@ -19,19 +20,23 @@ export function PlayerScoreCard({
   return (
     <article className="scoreboard-card">
       <p className="development-title">
-        {playerName} {isActive ? '• Active' : ''}
+        {playerName}
+        {isActive ? ' • Active' : ''}
       </p>
       {showBreakdown ? (
-        <>
-          <p className="scoreboard-row">Monuments: {breakdown.monuments}</p>
-          <p className="scoreboard-row">Developments: {breakdown.developments}</p>
-          <p className="scoreboard-row">Bonuses: {breakdown.bonuses}</p>
-          <p className="scoreboard-row">Penalties: -{breakdown.penalties}</p>
-        </>
+        <DataTable
+          headers={['Scoring', 'Value']}
+          rows={[
+            ['Monuments', breakdown.monuments],
+            ['Developments', breakdown.developments],
+            ['Bonuses', breakdown.bonuses],
+            ['Penalties', `-${breakdown.penalties}`],
+            [<strong key="total-label">Total</strong>, <strong key="total-value">{breakdown.total}</strong>],
+          ]}
+          caption={`${playerName} score breakdown`}
+          className="score-breakdown-table"
+        />
       ) : null}
-      <p className="scoreboard-row">
-        <strong>Total: {breakdown.total}</strong>
-      </p>
       {children}
     </article>
   );

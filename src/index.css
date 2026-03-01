@@ -292,6 +292,23 @@ body,
   background: #f6fbff;
 }
 
+.score-breakdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.35rem;
+}
+
+.score-breakdown-table th,
+.score-breakdown-table td {
+  text-align: left;
+  padding: 0.2rem 0.35rem;
+  border-bottom: 1px solid #dbeafe;
+}
+
+.score-breakdown-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
 .scoreboard-row {
   color: #374151;
   font-size: 0.92rem;
