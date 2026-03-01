@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { GamePhase, PlayerConfig } from '@/game';
 import { calculateDiceProduction } from '@/game/engine';
 import {
+  buildCity,
   buyDevelopment,
   keepDie,
   redo,
@@ -27,6 +28,7 @@ import {
   selectLatestAnnouncement,
   selectPhaseEvents,
   selectProductionPanelModel,
+  selectTurnOutcomeCallouts,
   selectTutorialModel,
   selectTurnEvents,
   selectTurnStatus,
@@ -83,6 +85,7 @@ describe('store selectors', () => {
     expect(selectProductionPanelModel(state).reason).toBe(
       'Start a game to resolve production.',
     );
+    expect(selectTurnOutcomeCallouts(state)).toEqual([]);
     expect(selectBuildPanelModel(state).reason).toBe(
       'Start a game to build cities or monuments.',
     );
@@ -239,6 +242,22 @@ describe('store selectors', () => {
     expect(buildPanel.monumentTargets.length).toBeGreaterThan(0);
     expect(buildPanel.cityCatalog.length).toBeGreaterThan(0);
     expect(buildPanel.monumentCatalog.length).toBeGreaterThan(0);
+
+    randomSpy.mockRestore();
+  });
+
+  it('produces event-driven callouts for production and construction outcomes', () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.55);
+    const store = createTestStore();
+    store.dispatch(startGame({ players: PLAYERS }));
+    store.dispatch(keepDie({ dieIndex: 0 }));
+    store.dispatch(keepDie({ dieIndex: 1 }));
+    store.dispatch(keepDie({ dieIndex: 2 }));
+    store.dispatch(buildCity({ cityIndex: 3 }));
+
+    const callouts = selectTurnOutcomeCallouts(store.getState());
+    expect(callouts.length).toBeGreaterThan(0);
+    expect(callouts.some((entry) => entry.category === 'construction')).toBe(true);
 
     randomSpy.mockRestore();
   });

@@ -137,6 +137,7 @@ function formatProductionEntry(entry: {
   return parts.join(' + ');
 }
 
+
 export const selectGame = createSelector(selectGameSlice, (slice) => slice.game);
 
 export const selectPlayerEndStateSummaries = createSelector(selectGame, (game) => {
@@ -558,6 +559,184 @@ export const selectDiceOutcomeModel = createSelector(selectGame, (game) => {
     points: { before: pointsBefore, after: pointsBefore },
   };
 });
+
+type TurnOutcomeCalloutTone = 'neutral' | 'positive' | 'negative';
+type TurnOutcomeCalloutCategory =
+  | 'production'
+  | 'penalty'
+  | 'immunity'
+  | 'construction'
+  | 'development';
+
+type TurnOutcomeCallout = {
+  id: string;
+  tone: TurnOutcomeCalloutTone;
+  category: TurnOutcomeCalloutCategory;
+  title: string;
+  detail: string;
+};
+
+export const selectTurnOutcomeCallouts = createSelector(
+  selectGame,
+  selectTurnEvents,
+  (game, events) => {
+    if (!game || events.length === 0) {
+      return [] as TurnOutcomeCallout[];
+    }
+
+    const activePlayer = game.state.players[game.state.activePlayerIndex];
+    const activePlayerId = activePlayer.id;
+    const activePlayerIndex = game.state.activePlayerIndex;
+    const resolveName = (playerId: string | null) =>
+      game.settings.players.find((entry) => entry.id === playerId)?.name ?? playerId ?? 'System';
+
+    return events.flatMap((event): TurnOutcomeCallout[] => {
+      if (event.type === 'production_resolved' && typeof event.payload.exchange !== 'string') {
+        return [
+          {
+            id: `${event.id}:production`,
+            tone: 'neutral',
+            category: 'production',
+            title: 'Production',
+            detail: `+${Number(event.payload.food ?? 0)} food, +${Number(
+              event.payload.workers ?? 0,
+            )} workers, +${Number(event.payload.coins ?? 0)} coins, +${Number(
+              event.payload.goods ?? 0,
+            )} goods, ${Number(event.payload.skulls ?? 0)} skulls.`,
+          },
+        ];
+      }
+
+      if (event.type === 'penalty_applied' && event.payload.kind === 'foodShortage') {
+        const shortage = Number(event.payload.amount ?? 0);
+        return [
+          {
+            id: `${event.id}:foodShortage`,
+            tone: 'negative',
+            category: 'penalty',
+            title: 'Food shortage',
+            detail: `-${shortage} VP (${shortage} unfed ${shortage === 1 ? 'city' : 'cities'}).`,
+          },
+        ];
+      }
+
+      if (event.type === 'penalty_applied' && event.payload.kind === 'disasterImmunity') {
+        const source =
+          typeof event.payload.source === 'string' && event.payload.source.length > 0
+            ? event.payload.source
+            : 'special effect';
+        return [
+          {
+            id: `${event.id}:immunity`,
+            tone: 'positive',
+            category: 'immunity',
+            title: 'Disaster prevented',
+            detail: `${resolveName(event.actorPlayerId)} ignored disaster penalty via ${source}.`,
+          },
+        ];
+      }
+
+      if (event.type === 'penalty_applied' && event.payload.kind === 'disaster') {
+        const targetIndices = Array.isArray(event.payload.targetPlayerIndices)
+          ? event.payload.targetPlayerIndices
+              .map((value) => Number(value))
+              .filter((value) => Number.isInteger(value))
+          : [];
+        if (!targetIndices.includes(activePlayerIndex)) {
+          return [];
+        }
+        const pointsDelta = Number(event.payload.pointsDelta ?? 0);
+        const pointsText = pointsDelta < 0 ? `${pointsDelta} VP` : '0 VP';
+        return [
+          {
+            id: `${event.id}:disaster`,
+            tone: pointsDelta < 0 ? 'negative' : 'neutral',
+            category: 'penalty',
+            title: typeof event.payload.disasterName === 'string'
+              ? event.payload.disasterName
+              : 'Disaster',
+            detail: pointsDelta < 0 ? pointsText : 'No VP loss.',
+          },
+        ];
+      }
+
+      if (
+        (event.type === 'construction_progressed' ||
+          event.type === 'construction_completed') &&
+        event.actorPlayerId === activePlayerId
+      ) {
+        if (event.payload.target === 'city') {
+          const cityIndex = Number(event.payload.cityIndex ?? -1);
+          const workersCommitted = Number(event.payload.workersCommitted ?? 0);
+          const workerCost = Number(event.payload.workerCost ?? 0);
+          const completed = event.type === 'construction_completed';
+          return [
+            {
+              id: `${event.id}:city`,
+              tone: completed ? 'positive' : 'neutral',
+              category: 'construction',
+              title: `City ${cityIndex + 1}`,
+              detail: completed
+                ? `Built (${workerCost}/${workerCost}). +1 die next turn.`
+                : `Progress ${workersCommitted}/${workerCost}.`,
+            },
+          ];
+        }
+
+        if (event.payload.target === 'monument') {
+          const monumentId =
+            typeof event.payload.monumentId === 'string' ? event.payload.monumentId : '';
+          const definition = game.settings.monumentDefinitions.find(
+            (monument) => monument.id === monumentId,
+          );
+          const progress = activePlayer.monuments[monumentId];
+          const completed = event.type === 'construction_completed';
+          const completionOrder = progress?.completedOrder ?? null;
+          const pointsAwarded =
+            definition && completed
+              ? completionOrder === 1
+                ? definition.firstPoints
+                : definition.laterPoints
+              : 0;
+          const completionType =
+            completionOrder === 1 ? 'First completion' : 'Later completion';
+          return [
+            {
+              id: `${event.id}:monument`,
+              tone: completed ? 'positive' : 'neutral',
+              category: 'construction',
+              title: definition?.requirements.name ?? monumentId,
+              detail: completed
+                ? `${completionType}: +${pointsAwarded} VP.`
+                : `Progress ${Number(event.payload.workersCommitted ?? 0)}/${Number(
+                    event.payload.workerCost ?? 0,
+                  )}.`,
+            },
+          ];
+        }
+      }
+
+      if (event.type === 'development_purchased' && event.actorPlayerId === activePlayerId) {
+        const developmentId =
+          typeof event.payload.developmentId === 'string' ? event.payload.developmentId : '';
+        const definition = game.settings.developmentDefinitions.find(
+          (development) => development.id === developmentId,
+        );
+        return [
+          {
+            id: `${event.id}:development`,
+            tone: 'positive',
+            category: 'development',
+            title: definition?.name ?? developmentId,
+            detail: `Purchased for ${definition?.cost ?? Number(event.payload.coinsSpent ?? 0)} coins.`,
+          },
+        ];
+      }
+
+      return [];
+    });
+  },
+);
 
 export const selectProductionPanelModel = createSelector(selectGame, (game) => {
   if (!game) {

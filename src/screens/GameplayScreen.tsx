@@ -14,6 +14,7 @@ import {
   selectLatestEvent,
   selectProductionPanelModel,
   selectTutorialViewModel,
+  selectTurnOutcomeCallouts,
 } from '@/store/selectors';
 
 type ConstructionSection = 'cities' | 'monuments' | 'developments';
@@ -36,6 +37,7 @@ type GameplayScreenProps = {
   exchangePanel: ReturnType<typeof selectExchangePanelModel>;
   disasterPanel: ReturnType<typeof selectDisasterPanelModel>;
   discardPanel: ReturnType<typeof selectDiscardPanelModel>;
+  turnOutcomeCallouts: ReturnType<typeof selectTurnOutcomeCallouts>;
   rerollEmoji: string;
   isDiceReferenceExpanded: boolean;
   cityCatalogSorted: ReturnType<typeof selectBuildPanelModel>['cityCatalog'];
@@ -93,6 +95,7 @@ export function GameplayScreen({
   exchangePanel,
   disasterPanel,
   discardPanel,
+  turnOutcomeCallouts,
   rerollEmoji,
   isDiceReferenceExpanded,
   cityCatalogSorted,
@@ -169,6 +172,15 @@ export function GameplayScreen({
     activePhasePanel
       ? new Set<PhasePanel>([activePhasePanel])
       : null;
+  const productionOutcomeCallouts = turnOutcomeCallouts.filter(
+    (callout) => callout.category === 'production' || callout.category === 'penalty',
+  );
+  const disasterImmunityCallouts = turnOutcomeCallouts.filter(
+    (callout) => callout.category === 'immunity',
+  );
+  const constructionCallouts = turnOutcomeCallouts.filter(
+    (callout) => callout.category === 'construction',
+  );
   const getMotionPanelClassName = (panel: PhasePanel): string => {
     const classNames = [getPanelClassName(activePhasePanel, panel)];
     if (pulsePanels?.has(panel)) {
@@ -208,6 +220,7 @@ export function GameplayScreen({
           dicePanel={dicePanel}
           diceOutcome={diceOutcome}
           productionPanel={productionPanel}
+          outcomeCallouts={productionOutcomeCallouts}
           isDiceReferenceExpanded={isDiceReferenceExpanded}
           onToggleDiceReference={onToggleDiceReference}
           getLockBadge={getLockBadge}
@@ -218,9 +231,22 @@ export function GameplayScreen({
         />
 
         <section className={getMotionPanelClassName('disaster')}>
-          <h2>Disaster Reference</h2>
-          <p>Disasters trigger by total skulls rolled this turn.</p>
-          <div className="disaster-list">
+            <h2>Disaster Reference</h2>
+            <p>Disasters trigger by total skulls rolled this turn.</p>
+            {disasterImmunityCallouts.length > 0 ? (
+              <div className="outcome-callouts">
+                {disasterImmunityCallouts.map((callout) => (
+                  <article
+                    key={callout.id}
+                    className="outcome-callout outcome-callout-positive"
+                  >
+                    <p className="development-title">{callout.title}</p>
+                    <p className="scoreboard-row">{callout.detail}</p>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+            <div className="disaster-list">
             {disasterPanel.disasters.map((disaster) => (
               <article
                 key={disaster.id}
@@ -248,6 +274,23 @@ export function GameplayScreen({
             </p>
             <p>Workers: {buildPanel.workersAvailable}</p>
             <p>Stored food: {buildPanel.storedFood}</p>
+            {constructionCallouts.length > 0 ? (
+              <div className="outcome-callouts">
+                {constructionCallouts.map((callout) => (
+                  <article
+                    key={callout.id}
+                    className={
+                      callout.tone === 'positive'
+                        ? 'outcome-callout outcome-callout-positive'
+                        : 'outcome-callout'
+                    }
+                  >
+                    <p className="development-title">{callout.title}</p>
+                    <p className="scoreboard-row">{callout.detail}</p>
+                  </article>
+                ))}
+              </div>
+            ) : null}
             <p>Stored goods:</p>
             <div className="goods-list">
               {buildPanel.goodsStoredSummary.map((entry) => (

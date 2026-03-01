@@ -78,6 +78,7 @@ import {
   selectLatestAnnouncement,
   selectProductionPanelModel,
   selectPlayerEndStateSummaries,
+  selectTurnOutcomeCallouts,
   selectTutorialViewModel,
   selectTurnStatus,
 } from '@/store/selectors';
@@ -169,6 +170,7 @@ function App() {
   const exchangePanel = useAppSelector(selectExchangePanelModel);
   const disasterPanel = useAppSelector(selectDisasterPanelModel);
   const discardPanel = useAppSelector(selectDiscardPanelModel);
+  const turnOutcomeCallouts = useAppSelector(selectTurnOutcomeCallouts);
   const endgameStatus = useAppSelector(selectEndgameStatus);
   const game = useAppSelector(selectGame);
   const canUndo = useAppSelector(selectCanUndo);
@@ -858,6 +860,7 @@ function App() {
             exchangePanel={exchangePanel}
             disasterPanel={disasterPanel}
             discardPanel={discardPanel}
+            turnOutcomeCallouts={turnOutcomeCallouts}
             rerollEmoji={rerollEmoji}
             isDiceReferenceExpanded={isDiceReferenceExpanded}
             cityCatalogSorted={cityCatalogSorted}

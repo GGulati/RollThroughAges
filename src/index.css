@@ -216,6 +216,29 @@ body,
   animation: outcomeShift var(--event-motion-ms) var(--event-motion-ease);
 }
 
+.outcome-callouts {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.outcome-callout {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  background: #f9fafb;
+}
+
+.outcome-callout-positive {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.outcome-callout-negative {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
 .outcome-penalty {
   color: #b91c1c;
   font-size: 0.92rem;

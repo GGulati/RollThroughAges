@@ -41,6 +41,13 @@ type ProductionPanelData = {
   reason: string | null;
 };
 
+type OutcomeCalloutData = {
+  id: string;
+  tone: 'neutral' | 'positive' | 'negative';
+  title: string;
+  detail: string;
+};
+
 type ProductionPanelProps = {
   className: string;
   rerollEmoji: string;
@@ -50,6 +57,7 @@ type ProductionPanelProps = {
   dicePanel: DicePanelData;
   diceOutcome: DiceOutcomeData;
   productionPanel: ProductionPanelData;
+  outcomeCallouts: OutcomeCalloutData[];
   isDiceReferenceExpanded: boolean;
   onToggleDiceReference: () => void;
   getLockBadge: (lockDecision: string) => string;
@@ -68,6 +76,7 @@ export function ProductionPanel({
   dicePanel,
   diceOutcome,
   productionPanel,
+  outcomeCallouts,
   isDiceReferenceExpanded,
   onToggleDiceReference,
   getLockBadge,
@@ -116,6 +125,25 @@ export function ProductionPanel({
           </p>
         ) : null}
       </article>
+      {outcomeCallouts.length > 0 ? (
+        <div className="outcome-callouts">
+          {outcomeCallouts.map((callout) => (
+            <article
+              key={callout.id}
+              className={
+                callout.tone === 'negative'
+                  ? 'outcome-callout outcome-callout-negative'
+                  : callout.tone === 'positive'
+                    ? 'outcome-callout outcome-callout-positive'
+                    : 'outcome-callout'
+              }
+            >
+              <p className="development-title">{callout.title}</p>
+              <p className="scoreboard-row">{callout.detail}</p>
+            </article>
+          ))}
+        </div>
+      ) : null}
       {!productionPanel.canResolveProduction && productionPanel.reason ? (
         <p className="hint-text">{productionPanel.reason}</p>
       ) : null}
