@@ -185,6 +185,19 @@ export const selectLatestEvent = createSelector(selectEventBatches, (batches) =>
   return latestBatch.appliedEvents[latestBatch.appliedEvents.length - 1] ?? null;
 });
 
+export const selectLatestDiceRollEvent = createSelector(selectEventBatches, (batches) => {
+  for (let batchIndex = batches.length - 1; batchIndex >= 0; batchIndex -= 1) {
+    const events = batches[batchIndex]?.appliedEvents ?? [];
+    for (let eventIndex = events.length - 1; eventIndex >= 0; eventIndex -= 1) {
+      const event = events[eventIndex];
+      if (event?.type === 'dice_roll_resolved') {
+        return event;
+      }
+    }
+  }
+  return null;
+});
+
 export const selectLatestAnnouncement = createSelector(
   selectLatestEvent,
   selectGame,

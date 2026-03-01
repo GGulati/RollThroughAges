@@ -55,6 +55,8 @@ type ProductionPanelProps = {
   className: string;
   rerollEmoji: string;
   motionEventType: string | null;
+  motionEventId: string | null;
+  diceMotionEventId: string | null;
   rerolledDieIndices: number[];
   lockChangedDieIndices: number[];
   dicePanel: DicePanelData;
@@ -74,6 +76,8 @@ export function ProductionPanel({
   className,
   rerollEmoji,
   motionEventType,
+  motionEventId,
+  diceMotionEventId,
   rerolledDieIndices,
   lockChangedDieIndices,
   dicePanel,
@@ -90,8 +94,7 @@ export function ProductionPanel({
 }: ProductionPanelProps) {
   const shouldPulseOutcome =
     motionEventType === 'production_resolved' || motionEventType === 'penalty_applied';
-  const shouldPulseDice =
-    motionEventType === 'dice_roll_resolved' && rerolledDieIndices.length > 0;
+  const shouldPulseDice = diceMotionEventId != null && rerolledDieIndices.length > 0;
 
   return (
     <section className={className}>
@@ -155,19 +158,25 @@ export function ProductionPanel({
         <p className="hint-text">{productionPanel.reason}</p>
       ) : null}
       <div className="dice-grid dice-grid-3d">
-        {dicePanel.diceCards.map((die) => (
-          <article
-            key={die.index}
+        {dicePanel.diceCards.map((die) => {
+          const isLockPulse =
+            motionEventType === 'die_lock_changed' &&
+            lockChangedDieIndices.includes(die.index);
+          const isRerollPulse =
+            shouldPulseDice && rerolledDieIndices.includes(die.index);
+          const pulseKey = isRerollPulse
+            ? diceMotionEventId ?? 'dice-pulse'
+            : isLockPulse
+              ? motionEventId ?? 'lock-pulse'
+              : 'stable';
+          return (
+            <article
+              key={`${die.index}-${pulseKey}`}
             className={[
               'die-card',
               'die-card-3d',
-              motionEventType === 'die_lock_changed' &&
-              lockChangedDieIndices.includes(die.index)
-                ? 'is-lock-shift'
-                : '',
-              shouldPulseDice && rerolledDieIndices.includes(die.index)
-                ? 'is-reroll-settle-3d'
-                : '',
+              isLockPulse ? 'is-lock-shift' : '',
+              isRerollPulse ? 'is-reroll-settle-3d' : '',
             ]
               .filter(Boolean)
               .join(' ')}
@@ -218,8 +227,9 @@ export function ProductionPanel({
                 {die.lockDecision === 'kept' ? 'Unlock 🔓' : 'Lock 🔒'}
               </button>
             </div>
-          </article>
-        ))}
+            </article>
+          );
+        })}
       </div>
       <div className="collapsible-header">
         <p className="choice-label">All Die Faces</p>

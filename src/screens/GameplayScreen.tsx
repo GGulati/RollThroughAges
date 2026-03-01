@@ -12,6 +12,7 @@ import {
   selectDisasterPanelModel,
   selectDiscardPanelModel,
   selectExchangePanelModel,
+  selectLatestDiceRollEvent,
   selectLatestEvent,
   selectProductionPanelModel,
   selectTutorialViewModel,
@@ -30,6 +31,7 @@ type GameplayScreenProps = {
   canRedo: boolean;
   latestAnnouncement: string | null;
   latestEvent: ReturnType<typeof selectLatestEvent>;
+  latestDiceRollEvent: ReturnType<typeof selectLatestDiceRollEvent>;
   dicePanel: ReturnType<typeof selectDicePanelModel>;
   diceOutcome: ReturnType<typeof selectDiceOutcomeModel>;
   productionPanel: ReturnType<typeof selectProductionPanelModel>;
@@ -88,6 +90,7 @@ export function GameplayScreen({
   canRedo,
   latestAnnouncement,
   latestEvent,
+  latestDiceRollEvent,
   dicePanel,
   diceOutcome,
   productionPanel,
@@ -141,21 +144,20 @@ export function GameplayScreen({
   );
   const eventPulseMs = Math.max(220, Math.min(900, Math.round(botStepDelayMs * 0.7)));
   const isEventPulsing = useEventPulse(latestEvent?.id ?? null, eventPulseMs);
+  const isDiceEventPulsing = useEventPulse(latestDiceRollEvent?.id ?? null, eventPulseMs);
   const rerolledDieIndices =
-    latestEvent &&
-    isEventPulsing &&
-    latestEvent.type === 'dice_roll_resolved' &&
-    Array.isArray(latestEvent.payload.rerolledDieIndices)
-      ? latestEvent.payload.rerolledDieIndices
+    latestDiceRollEvent &&
+    isDiceEventPulsing &&
+    Array.isArray(latestDiceRollEvent.payload.rerolledDieIndices)
+      ? latestDiceRollEvent.payload.rerolledDieIndices
           .map((value) => Number(value))
           .filter((value) => Number.isInteger(value) && value >= 0)
       : [];
   const selectedDieIndices =
-    latestEvent &&
-    isEventPulsing &&
-    latestEvent.type === 'dice_roll_resolved' &&
-    Number.isInteger(Number(latestEvent.payload.dieIndex))
-      ? [Number(latestEvent.payload.dieIndex)]
+    latestDiceRollEvent &&
+    isDiceEventPulsing &&
+    Number.isInteger(Number(latestDiceRollEvent.payload.dieIndex))
+      ? [Number(latestDiceRollEvent.payload.dieIndex)]
       : [];
   const pulsedDieIndices =
     rerolledDieIndices.length > 0 ? rerolledDieIndices : selectedDieIndices;
@@ -216,6 +218,8 @@ export function GameplayScreen({
           className={getMotionPanelClassName('production')}
           rerollEmoji={rerollEmoji}
           motionEventType={isEventPulsing ? latestEvent?.type ?? null : null}
+          motionEventId={isEventPulsing ? latestEvent?.id ?? null : null}
+          diceMotionEventId={isDiceEventPulsing ? latestDiceRollEvent?.id ?? null : null}
           rerolledDieIndices={pulsedDieIndices}
           lockChangedDieIndices={lockChangedDieIndices}
           dicePanel={dicePanel}

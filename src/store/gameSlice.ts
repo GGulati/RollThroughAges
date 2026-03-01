@@ -221,6 +221,10 @@ function countUnlockedDice(snapshot: GameStateSnapshot): number {
   return snapshot.turn.dice.filter((die) => die.lockDecision === 'unlocked').length;
 }
 
+function getAllDieIndices(snapshot: GameStateSnapshot): number[] {
+  return snapshot.turn.dice.map((_, index) => index);
+}
+
 function formatTurnLocation(snapshot: GameStateSnapshot, game: GameState): string {
   return `R${snapshot.round} ${getPlayerName(game, snapshot.turn.activePlayerId)} (${snapshot.phase})`;
 }
@@ -450,10 +454,21 @@ const gameSlice = createSlice({
           .join(', ')}.`,
       ];
       resetEventState(state);
+      const autoRollEvent = createDomainEvent(state, state.game, 'dice_roll_resolved', {
+        rollsUsed: state.game?.state.turn.rollsUsed ?? 0,
+        pendingChoices: state.game?.state.turn.pendingChoices ?? 0,
+        rerolledDieIndices: state.game ? getAllDieIndices(state.game.state) : [],
+        isAutoTurnStartRoll: true,
+      });
       const phaseEvent = createDomainEvent(state, state.game, 'phase_transition', {
         toPhase: state.game?.state.phase ?? null,
       });
-      recordCommandBatch(state, 'startGame', [phaseEvent], [phaseEvent]);
+      recordCommandBatch(
+        state,
+        'startGame',
+        [autoRollEvent, phaseEvent],
+        [autoRollEvent, phaseEvent],
+      );
     },
     startTutorialGame: (state) => {
       const seededGame = autoAdvanceForcedPhases(createGame(TUTORIAL_PLAYERS));
@@ -484,10 +499,21 @@ const gameSlice = createSlice({
         '[System] Tutorial game started.',
       ];
       resetEventState(state);
+      const autoRollEvent = createDomainEvent(state, state.game, 'dice_roll_resolved', {
+        rollsUsed: state.game?.state.turn.rollsUsed ?? 0,
+        pendingChoices: state.game?.state.turn.pendingChoices ?? 0,
+        rerolledDieIndices: state.game ? getAllDieIndices(state.game.state) : [],
+        isAutoTurnStartRoll: true,
+      });
       const phaseEvent = createDomainEvent(state, state.game, 'phase_transition', {
         toPhase: state.game?.state.phase ?? null,
       });
-      recordCommandBatch(state, 'startTutorialGame', [phaseEvent], [phaseEvent]);
+      recordCommandBatch(
+        state,
+        'startTutorialGame',
+        [autoRollEvent, phaseEvent],
+        [autoRollEvent, phaseEvent],
+      );
     },
     advanceTutorialStep: (state) => {
       if (!state.tutorial.active) {
@@ -747,12 +773,19 @@ const gameSlice = createSlice({
         previousPlayerId: beforeSnapshot.turn.activePlayerId,
         nextPlayerId: state.game?.state.turn.activePlayerId ?? null,
       });
+      const autoRollEvent = createDomainEvent(state, state.game, 'dice_roll_resolved', {
+        rollsUsed: state.game?.state.turn.rollsUsed ?? 0,
+        pendingChoices: state.game?.state.turn.pendingChoices ?? 0,
+        rerolledDieIndices: state.game ? getAllDieIndices(state.game.state) : [],
+        isAutoTurnStartRoll: true,
+      });
       const phaseTransition = createDomainEvent(state, state.game, 'phase_transition', {
         fromPhase: beforeSnapshot.phase,
         toPhase: state.game?.state.phase ?? null,
       });
-      recordCommandBatch(state, 'endTurn', [turnCompleted, phaseTransition], [
+      recordCommandBatch(state, 'endTurn', [turnCompleted, autoRollEvent, phaseTransition], [
         turnCompleted,
+        autoRollEvent,
         phaseTransition,
       ]);
       syncTutorialFromLatestBatch(state, 'endTurn');
