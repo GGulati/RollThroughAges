@@ -199,9 +199,9 @@ export function SetupScreen({
             value={botSpeed}
             onChange={(event) => onBotSpeedChange(event.target.value as BotSpeedOption)}
           >
-            <option value="normal">Normal (1s)</option>
-            <option value="fast">Fast (0.5s)</option>
-            <option value="veryFast">Very Fast (0.25s)</option>
+            <option value="normal">Normal (0.5s)</option>
+            <option value="fast">Fast (0.25s)</option>
+            <option value="veryFast">Very Fast (0.1s)</option>
           </select>
         </label>
         <article className="development-card">
