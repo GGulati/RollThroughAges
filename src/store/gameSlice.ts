@@ -406,6 +406,12 @@ const gameSlice = createSlice({
       if (blockIfTutorialActionDisallowed(state, 'continue')) {
         return;
       }
+      if (state.tutorial.currentStepIndex >= TUTORIAL_STEPS.length - 1) {
+        state.tutorial.active = false;
+        state.lastError = null;
+        appendLog(state, 'Tutorial completed.');
+        return;
+      }
       advanceTutorialIfCompleted(state, 'continue');
       state.lastError = null;
     },
