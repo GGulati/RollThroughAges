@@ -1,4 +1,5 @@
 import { DomainEvent, GameState } from '@/game';
+import { formatResourceLabel } from '@/utils/gameUiFormatters';
 
 function toSafeString(value: unknown, fallback: string): string {
   if (typeof value === 'string') {
@@ -45,7 +46,7 @@ export function formatEventForLog(event: DomainEvent, game: GameState): string |
       return `Production resolved: food +${Number(event.payload.food ?? 0)}, coins +${Number(event.payload.coins ?? 0)}, workers +${Number(event.payload.workers ?? 0)}, goods +${Number(event.payload.goods ?? 0)}, skulls ${Number(event.payload.skulls ?? 0)}.`;
     case 'penalty_applied':
       if (event.payload.kind === 'foodShortage') {
-        return `Food shortage: -${Number(event.payload.amount ?? 0)} VP.`;
+        return `Food shortage: -${Number(event.payload.amount ?? 0)} ${formatResourceLabel('VP')}.`;
       }
       if (event.payload.kind === 'disasterImmunity') {
         const sourceText = event.payload.source

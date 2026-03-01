@@ -38,6 +38,10 @@ import {
 } from '@/game/engine';
 import { resolveTutorialInstruction } from '@/tutorial/engine';
 import { formatEventForAnnouncement } from '@/ui/eventFormatters';
+import {
+  formatResourceLabel,
+  formatResourceTextWithEmojis,
+} from '@/utils/gameUiFormatters';
 import { DomainEvent, TutorialStepDefinition, TUTORIAL_STEPS } from './gameState';
 import { RootState } from './store';
 
@@ -115,7 +119,7 @@ function formatSpecialEffectText(effect: SpecialEffect | undefined): string | nu
     case 'exchange':
       return `Special: Exchange ${effect.from} to ${effect.to} at ${effect.rate}:1.`;
     case 'bonusPointsPer':
-      return `Special: +${effect.points} VP per ${effect.entity}.`;
+      return `Special: +${effect.points} ${formatResourceLabel('VP')} per ${effect.entity}.`;
     default:
       return null;
   }
@@ -129,11 +133,11 @@ function formatProductionEntry(entry: {
   skulls: number;
 }): string {
   const parts: string[] = [];
-  if (entry.goods > 0) parts.push(`${entry.goods} Goods`);
-  if (entry.food > 0) parts.push(`${entry.food} Food`);
-  if (entry.workers > 0) parts.push(`${entry.workers} Workers`);
-  if (entry.coins > 0) parts.push(`${entry.coins} Coins`);
-  if (entry.skulls > 0) parts.push(`${entry.skulls} Skull`);
+  if (entry.goods > 0) parts.push(`${entry.goods} ${formatResourceLabel('Goods')}`);
+  if (entry.food > 0) parts.push(`${entry.food} ${formatResourceLabel('Food')}`);
+  if (entry.workers > 0) parts.push(`${entry.workers} ${formatResourceLabel('Workers')}`);
+  if (entry.coins > 0) parts.push(`${entry.coins} ${formatResourceLabel('Coins')}`);
+  if (entry.skulls > 0) parts.push(`${entry.skulls} ${formatResourceLabel('Skulls')}`);
   return parts.join(' + ');
 }
 
@@ -368,7 +372,7 @@ export const selectDicePanelModel = createSelector(selectGame, (game) => {
 
     return {
       index,
-      label: face.label,
+      label: formatResourceTextWithEmojis(face.label),
       lockDecision: die.lockDecision,
       optionCount,
       selectedOption,
@@ -385,7 +389,7 @@ export const selectDicePanelModel = createSelector(selectGame, (game) => {
     };
   });
   const referenceFaces = game.settings.diceFaces.map((face) => ({
-    label: face.label,
+    label: formatResourceTextWithEmojis(face.label),
   }));
 
   return {
@@ -598,11 +602,11 @@ export const selectTurnOutcomeCallouts = createSelector(
             tone: 'neutral',
             category: 'production',
             title: 'Production',
-            detail: `+${Number(event.payload.food ?? 0)} food, +${Number(
+            detail: `+${Number(event.payload.food ?? 0)} ${formatResourceLabel('Food')}, +${Number(
               event.payload.workers ?? 0,
-            )} workers, +${Number(event.payload.coins ?? 0)} coins, +${Number(
+            )} ${formatResourceLabel('Workers')}, +${Number(event.payload.coins ?? 0)} ${formatResourceLabel('Coins')}, +${Number(
               event.payload.goods ?? 0,
-            )} goods, ${Number(event.payload.skulls ?? 0)} skulls.`,
+            )} ${formatResourceLabel('Goods')}, ${Number(event.payload.skulls ?? 0)} ${formatResourceLabel('Skulls')}.`,
           },
         ];
       }
@@ -614,8 +618,8 @@ export const selectTurnOutcomeCallouts = createSelector(
             id: `${event.id}:foodShortage`,
             tone: 'negative',
             category: 'penalty',
-            title: 'Food shortage',
-            detail: `-${shortage} VP (${shortage} unfed ${shortage === 1 ? 'city' : 'cities'}).`,
+            title: `${formatResourceLabel('Food')} shortage`,
+            detail: `-${shortage} ${formatResourceLabel('VP')} (${shortage} unfed ${shortage === 1 ? 'city' : 'cities'}).`,
           },
         ];
       }
@@ -646,7 +650,10 @@ export const selectTurnOutcomeCallouts = createSelector(
           return [];
         }
         const pointsDelta = Number(event.payload.pointsDelta ?? 0);
-        const pointsText = pointsDelta < 0 ? `${pointsDelta} VP` : '0 VP';
+        const pointsText =
+          pointsDelta < 0
+            ? `${pointsDelta} ${formatResourceLabel('VP')}`
+            : `0 ${formatResourceLabel('VP')}`;
         return [
           {
             id: `${event.id}:disaster`,
@@ -655,7 +662,7 @@ export const selectTurnOutcomeCallouts = createSelector(
             title: typeof event.payload.disasterName === 'string'
               ? event.payload.disasterName
               : 'Disaster',
-            detail: pointsDelta < 0 ? pointsText : 'No VP loss.',
+            detail: pointsDelta < 0 ? pointsText : `No ${formatResourceLabel('VP')} loss.`,
           },
         ];
       }
@@ -707,7 +714,7 @@ export const selectTurnOutcomeCallouts = createSelector(
               category: 'construction',
               title: definition?.requirements.name ?? monumentId,
               detail: completed
-                ? `${completionType}: +${pointsAwarded} VP.`
+                ? `${completionType}: +${pointsAwarded} ${formatResourceLabel('VP')}.`
                 : `Progress ${Number(event.payload.workersCommitted ?? 0)}/${Number(
                     event.payload.workerCost ?? 0,
                   )}.`,
@@ -728,7 +735,7 @@ export const selectTurnOutcomeCallouts = createSelector(
             tone: 'positive',
             category: 'development',
             title: definition?.name ?? developmentId,
-            detail: `Purchased for ${definition?.cost ?? Number(event.payload.coinsSpent ?? 0)} coins.`,
+            detail: `Purchased for ${definition?.cost ?? Number(event.payload.coinsSpent ?? 0)} ${formatResourceLabel('Coins')}.`,
           },
         ];
       }
@@ -900,7 +907,7 @@ export const selectBuildPanelModel = createSelector(selectGame, (game) => {
       workerCost: monument.requirements.workerCost,
       workersCommitted,
       completed: Boolean(progress?.completed),
-      pointsText: `${monument.firstPoints}/${monument.laterPoints} VP`,
+      pointsText: `${monument.firstPoints}/${monument.laterPoints} ${formatResourceLabel('VP')}`,
       specialEffectText: formatSpecialEffectText(monument.specialEffect),
       canBuild:
         canBuild && monumentTargets.some((target) => target.monumentId === monument.id),

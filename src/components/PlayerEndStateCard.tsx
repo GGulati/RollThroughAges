@@ -1,4 +1,5 @@
 import { PlayerEndStateSummary } from '@/game/reporting';
+import { formatResourceLabel } from '@/utils/gameUiFormatters';
 import { PlayerScoreCard } from './PlayerScoreCard';
 
 type PlayerEndStateCardProps = {
@@ -19,7 +20,7 @@ export function PlayerEndStateCard({
             <li
               key={`${itemKeyPrefix}-development-${entry.playerId}-${development.id}`}
             >
-              {development.name}: {development.points} VP ({development.effectDescription})
+              {development.name}: {development.points} {formatResourceLabel('VP')} ({development.effectDescription})
             </li>
           ))}
         </ul>
@@ -31,7 +32,7 @@ export function PlayerEndStateCard({
         <ul className="inline-note">
           {entry.monuments.map((monument) => (
             <li key={`${itemKeyPrefix}-monument-${entry.playerId}-${monument.id}`}>
-              {monument.name}: {monument.points} VP (
+              {monument.name}: {monument.points} {formatResourceLabel('VP')} (
               {monument.firstToComplete ? 'first' : 'later'})
             </li>
           ))}
@@ -44,14 +45,16 @@ export function PlayerEndStateCard({
         Built: {entry.cities.built}/{entry.cities.total}
       </p>
       <p className="choice-label">Resources</p>
-      <p className="scoreboard-row">Food: {entry.resources.food}</p>
+      <p className="scoreboard-row">{formatResourceLabel('Food')}: {entry.resources.food}</p>
       <p className="scoreboard-row">
-        Stored goods value: {entry.resources.totalGoodsValue} coins
+        {formatResourceLabel('Goods')} value: {entry.resources.totalGoodsValue}{' '}
+        {formatResourceLabel('Coins')}
       </p>
       <ul className="inline-note">
         {entry.resources.goods.map((goods) => (
           <li key={`${itemKeyPrefix}-goods-${entry.playerId}-${goods.name}`}>
-            {goods.name}: {goods.quantity} (value {goods.value} coins)
+            {formatResourceLabel(goods.name)}: {goods.quantity} (value {goods.value}{' '}
+            {formatResourceLabel('Coins')})
           </li>
         ))}
       </ul>

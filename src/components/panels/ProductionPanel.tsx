@@ -1,3 +1,5 @@
+import { formatResourceLabel } from '@/utils/gameUiFormatters';
+
 type DiceCard = {
   index: number;
   label: string;
@@ -107,21 +109,23 @@ export function ProductionPanel({
         className={shouldPulseOutcome ? 'outcome-card is-outcome-shift' : 'outcome-card'}
       >
         <p className="development-title">Total ({diceOutcome.summary ?? 'Projected'})</p>
-        <p className="scoreboard-row">🍖 Food: +{diceOutcome.food.produced}</p>
-        <p className="scoreboard-row">🪙 Coins: +{diceOutcome.coinsProduced}</p>
-        <p className="scoreboard-row">👷 Workers: +{diceOutcome.workersProduced}</p>
-        <p className="scoreboard-row">📦 Goods: +{diceOutcome.goodsProduced}</p>
-        <p className="scoreboard-row">☠️ Skulls: {diceOutcome.skulls}</p>
+        <p className="scoreboard-row">{formatResourceLabel('Food')}: +{diceOutcome.food.produced}</p>
+        <p className="scoreboard-row">{formatResourceLabel('Coins')}: +{diceOutcome.coinsProduced}</p>
+        <p className="scoreboard-row">{formatResourceLabel('Workers')}: +{diceOutcome.workersProduced}</p>
+        <p className="scoreboard-row">{formatResourceLabel('Goods')}: +{diceOutcome.goodsProduced}</p>
+        <p className="scoreboard-row">{formatResourceLabel('Skulls')}: {diceOutcome.skulls}</p>
         {diceOutcome.penalties.foodPenalty > 0 ? (
           <p className="outcome-penalty">
-            ⚠️ Food shortage: -{diceOutcome.penalties.foodPenalty} VP (
+            ⚠️ {formatResourceLabel('Food')} shortage: -{diceOutcome.penalties.foodPenalty}{' '}
+            {formatResourceLabel('VP')} (
             {diceOutcome.food.shortage} unfed
             {diceOutcome.food.shortage === 1 ? ' city' : ' cities'})
           </p>
         ) : null}
         {diceOutcome.penalties.disasterPenalty > 0 ? (
           <p className="outcome-penalty">
-            ⚠️ Disaster penalty: -{diceOutcome.penalties.disasterPenalty} VP
+            ⚠️ Disaster penalty: -{diceOutcome.penalties.disasterPenalty}{' '}
+            {formatResourceLabel('VP')}
           </p>
         ) : null}
       </article>

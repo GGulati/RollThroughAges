@@ -2,6 +2,7 @@ import { ActionLogPanel } from '@/components/ActionLogPanel';
 import { ProductionPanel } from '@/components/panels/ProductionPanel';
 import { useEventPulse } from '@/hooks/useEventPulse';
 import { TurnStatusData, TurnStatusPanel } from '@/components/panels/TurnStatusPanel';
+import { formatResourceLabel } from '@/utils/gameUiFormatters';
 import { PhasePanel } from '@/viewModels/gameViewModel';
 import {
   selectBuildPanelModel,
@@ -272,8 +273,8 @@ export function GameplayScreen({
                 ? 'Build targets available.'
                 : buildPanel.reason ?? 'Build flow ready.'}
             </p>
-            <p>Workers: {buildPanel.workersAvailable}</p>
-            <p>Stored food: {buildPanel.storedFood}</p>
+            <p>{formatResourceLabel('Workers')}: {buildPanel.workersAvailable}</p>
+            <p>{formatResourceLabel('Food')}: {buildPanel.storedFood}</p>
             {constructionCallouts.length > 0 ? (
               <div className="outcome-callouts">
                 {constructionCallouts.map((callout) => (
@@ -291,11 +292,11 @@ export function GameplayScreen({
                 ))}
               </div>
             ) : null}
-            <p>Stored goods:</p>
+            <p>{formatResourceLabel('Goods')} stored:</p>
             <div className="goods-list">
               {buildPanel.goodsStoredSummary.map((entry) => (
                 <p key={entry.goodsType} className="goods-row">
-                  {entry.goodsType}: {entry.quantity} /{' '}
+                  {formatResourceLabel(entry.goodsType)}: {entry.quantity} /{' '}
                   {entry.limit === Infinity ? '∞' : entry.limit}
                 </p>
               ))}
@@ -308,12 +309,13 @@ export function GameplayScreen({
                   {buildExchanges.map((exchange) => (
                     <article key={`build-${exchange.key}`} className="development-card">
                       <p className="development-title">
-                        {exchange.developmentName}: {exchange.from}
+                        {exchange.developmentName}: {formatResourceLabel(exchange.from)}
                         {' -> '}
-                        {exchange.to}
+                        {formatResourceLabel(exchange.to)}
                       </p>
                       <p className="development-effect">
-                        Rate: 1 {exchange.from} = {exchange.rate} {exchange.to}
+                        Rate: 1 {formatResourceLabel(exchange.from)} = {exchange.rate}{' '}
+                        {formatResourceLabel(exchange.to)}
                       </p>
                       <p className="inline-note">Available: {exchange.sourceAmount}</p>
                       <button
@@ -321,7 +323,7 @@ export function GameplayScreen({
                         onClick={() => onApplyExchange(exchange.from, exchange.to, 1)}
                         disabled={!exchange.canApply}
                       >
-                        Exchange 1 {exchange.from}
+                        Exchange 1 {formatResourceLabel(exchange.from)}
                       </button>
                     </article>
                   ))}
@@ -450,14 +452,19 @@ export function GameplayScreen({
               </button>
             </div>
             <p>{developmentPanel.reason ?? 'Choose a development to purchase.'}</p>
-            <p>Coins available: {effectiveCoinsAvailable}</p>
+            <p>{formatResourceLabel('Coins')} available: {effectiveCoinsAvailable}</p>
             <p className="inline-note">
-              Base coins: {developmentPanel.coinsAvailable}
-              {selectedGoodsCoins > 0 ? ` + goods value ${selectedGoodsCoins}` : ''}
+              Base {formatResourceLabel('Coins')}: {developmentPanel.coinsAvailable}
+              {selectedGoodsCoins > 0 ? ` + ${formatResourceLabel('Goods')} value ${selectedGoodsCoins}` : ''}
             </p>
-            <p>Total purchasing power: {developmentPanel.totalPurchasingPower}</p>
-            <p className="choice-label">Goods To Spend</p>
-            <p>Selected: {selectedGoodsToSpend.length > 0 ? selectedGoodsToSpend.join(', ') : 'none'}</p>
+            <p>Total purchasing power: {developmentPanel.totalPurchasingPower} {formatResourceLabel('Coins')}</p>
+            <p className="choice-label">{formatResourceLabel('Goods')} To Spend</p>
+            <p>
+              Selected:{' '}
+              {selectedGoodsToSpend.length > 0
+                ? selectedGoodsToSpend.map((goodsType) => formatResourceLabel(goodsType)).join(', ')
+                : 'none'}
+            </p>
             <div className="panel-actions">
               {developmentPanel.goodsSpendOptions.map((option) => (
                 <button
@@ -467,7 +474,7 @@ export function GameplayScreen({
                   disabled={option.quantity <= 0 || !developmentPanel.isActionAllowed}
                 >
                   {selectedGoodsLookup.has(option.goodsType) ? '✅ ' : ''}
-                  {option.goodsType} ({option.quantity})
+                  {formatResourceLabel(option.goodsType)} ({option.quantity})
                 </button>
               ))}
             </div>
@@ -479,12 +486,13 @@ export function GameplayScreen({
                   {developmentExchanges.map((exchange) => (
                     <article key={exchange.key} className="development-card">
                       <p className="development-title">
-                        {exchange.developmentName}: {exchange.from}
+                        {exchange.developmentName}: {formatResourceLabel(exchange.from)}
                         {' -> '}
-                        {exchange.to}
+                        {formatResourceLabel(exchange.to)}
                       </p>
                       <p className="development-effect">
-                        Rate: 1 {exchange.from} = {exchange.rate} {exchange.to}
+                        Rate: 1 {formatResourceLabel(exchange.from)} = {exchange.rate}{' '}
+                        {formatResourceLabel(exchange.to)}
                       </p>
                       <p className="inline-note">Available: {exchange.sourceAmount}</p>
                       <button
@@ -492,7 +500,7 @@ export function GameplayScreen({
                         onClick={() => onApplyExchange(exchange.from, exchange.to, 1)}
                         disabled={!exchange.canApply}
                       >
-                        Exchange 1 {exchange.from}
+                        Exchange 1 {formatResourceLabel(exchange.from)}
                       </button>
                     </article>
                   ))}
@@ -516,7 +524,7 @@ export function GameplayScreen({
                   return (
                     <article key={development.id} className="development-card">
                       <p className="development-title">
-                        {development.name} ({development.cost}🪙, +{development.points} VP)
+                        {development.name} ({development.cost}🪙, +{development.points} {formatResourceLabel('VP')})
                         {development.purchased ? ' • Purchased' : ''}
                       </p>
                       <p className="development-effect">{development.effectDescription}</p>
@@ -542,7 +550,7 @@ export function GameplayScreen({
                   .map((development) => (
                     <article key={`development-collapsed-${development.id}`} className="development-card">
                       <p className="development-title">
-                        {development.name} ({development.cost}🪙, +{development.points} VP) • Purchased
+                        {development.name} ({development.cost}🪙, +{development.points} {formatResourceLabel('VP')}) • Purchased
                       </p>
                       <p className="development-effect">{development.effectDescription}</p>
                     </article>
@@ -561,7 +569,7 @@ export function GameplayScreen({
                 {discardPanel.goodsOptions.map((option) => (
                   <article key={`discard-${option.goodsType}`} className="development-card">
                     <p className="development-title">
-                      {option.goodsType} (owned: {option.quantity})
+                      {formatResourceLabel(option.goodsType)} (owned: {option.quantity})
                     </p>
                     <label className="choice-label" htmlFor={`keep-${option.goodsType}`}>
                       Keep quantity

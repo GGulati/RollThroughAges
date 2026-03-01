@@ -1,6 +1,7 @@
 import { ActionLogPanel } from '@/components/ActionLogPanel';
 import { PlayerEndStateCard } from '@/components/PlayerEndStateCard';
 import { PlayerEndStateSummary } from '@/game/reporting';
+import { formatResourceLabel } from '@/utils/gameUiFormatters';
 
 type GameOverScreenProps = {
   winners: PlayerEndStateSummary[];
@@ -25,8 +26,8 @@ export function GameOverScreen({
         <h2>Game Over</h2>
         <p>
           {winners.length > 1
-            ? `Tie at ${topScore} VP: ${winners.map((winner) => winner.playerName).join(', ')}`
-            : `Winner: ${winners[0]?.playerName ?? 'Unknown'} (${topScore} VP)`}
+            ? `Tie at ${topScore} ${formatResourceLabel('VP')}: ${winners.map((winner) => winner.playerName).join(', ')}`
+            : `Winner: ${winners[0]?.playerName ?? 'Unknown'} (${topScore} ${formatResourceLabel('VP')})`}
         </p>
         {reasons.length > 0 ? (
           <div>

@@ -830,7 +830,7 @@ export function SetupScreen({
                   <thead>
                     <tr>
                       <th scope="col">Bot</th>
-                      <th scope="col">Avg VP</th>
+                      <th scope="col">Avg 🏆</th>
                       <th scope="col">Win Share</th>
                       <th scope="col">Top Finish</th>
                       <th scope="col">Appearances</th>

@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import { ScoreBreakdownSummary } from '@/game/reporting';
 import { DataTable } from '@/components/tables/DataTable';
+import { formatResourceLabel } from '@/utils/gameUiFormatters';
 
 type PlayerScoreCardProps = {
   playerName: string;
@@ -31,7 +32,12 @@ export function PlayerScoreCard({
             ['Developments', breakdown.developments],
             ['Bonuses', breakdown.bonuses],
             ['Penalties', `-${breakdown.penalties}`],
-            [<strong key="total-label">Total</strong>, <strong key="total-value">{breakdown.total}</strong>],
+            [
+              <strong key="total-label">Total</strong>,
+              <strong key="total-value">
+                {breakdown.total} {formatResourceLabel('VP')}
+              </strong>,
+            ],
           ]}
           caption={`${playerName} score breakdown`}
           className="score-breakdown-table"
