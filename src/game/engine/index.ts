@@ -8,3 +8,5 @@ export * from './scoreEngine';
 export * from './reportingEngine';
 export * from './gameEngine';
 export * from './phaseTransitionEngine';
+export * from './eventPipeline';
+export * from './productionCommandEngine';

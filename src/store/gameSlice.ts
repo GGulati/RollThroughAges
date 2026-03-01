@@ -13,7 +13,7 @@ import {
   autoAdvanceForcedPhases,
   getPostDevelopmentCompletionPhase,
   getNextPostDevelopmentPhase,
-  resolveProductionPhase,
+  resolveProductionWithEvents,
   areAllDiceLocked,
   countPendingChoices,
   createGame,
@@ -1125,18 +1125,13 @@ const gameSlice = createSlice({
       const beforeSnapshot = beforeGame.state;
       const beforePlayers = beforeSnapshot.players;
       const activePlayerIndex = beforeSnapshot.activePlayerIndex;
-      const nextGame = applyMutationWithHistory(state.game, (game) =>
-        autoAdvanceForcedPhases(resolveProductionPhase(game)),
-      );
-
-      if (!nextGame) {
-        setError(
-          state,
-          'PRODUCTION_NOT_READY',
-          'Unable to resolve production at this time.',
-        );
-        return;
-      }
+      const commandResult = resolveProductionWithEvents(state.game);
+      const historyState = pushHistory(state.game);
+      const nextGame: GameState = {
+        ...commandResult.nextState,
+        history: historyState.history,
+        future: historyState.future,
+      };
 
       state.game = nextGame;
       state.lastError = null;
@@ -1146,28 +1141,29 @@ const gameSlice = createSlice({
           nextGame.state.turn.turnProduction,
         )}, food shortage ${nextGame.state.turn.foodShortage}) -> phase ${nextGame.state.phase}.`,
       );
-      const productionEvent = createDomainEvent(state, nextGame, 'production_resolved', {
-        foodShortage: nextGame.state.turn.foodShortage,
-        skulls: nextGame.state.turn.turnProduction.skulls,
-        workers: nextGame.state.turn.turnProduction.workers,
-        coins: nextGame.state.turn.turnProduction.coins,
-      });
-      const productionAppliedEvents =
-        beforeSnapshot.phase !== nextGame.state.phase
-          ? [
-              productionEvent,
-              createDomainEvent(state, nextGame, 'phase_transition', {
-                fromPhase: beforeSnapshot.phase,
-                toPhase: nextGame.state.phase,
-              }),
-            ]
-          : [productionEvent];
-      recordCommandBatch(
-        state,
-        'resolveProduction',
-        [productionEvent],
-        productionAppliedEvents,
+      const mappedResolutionEvents = commandResult.resolutionEvents.map((event) =>
+        createDomainEvent(state, nextGame, event.type, event.payload, {
+          actorPlayerId: event.actorPlayerId,
+          round: event.round,
+          phase: event.phase,
+        }),
       );
+      const mappedAppliedEvents = commandResult.appliedEvents.map((event) =>
+        createDomainEvent(state, nextGame, event.type, event.payload, {
+          actorPlayerId: event.actorPlayerId,
+          round: event.round,
+          phase: event.phase,
+        }),
+      );
+      if (beforeSnapshot.phase !== nextGame.state.phase) {
+        mappedAppliedEvents.push(
+          createDomainEvent(state, nextGame, 'phase_transition', {
+            fromPhase: beforeSnapshot.phase,
+            toPhase: nextGame.state.phase,
+          }),
+        );
+      }
+      recordCommandBatch(state, 'resolveProduction', mappedResolutionEvents, mappedAppliedEvents);
 
       if (nextGame.state.turn.foodShortage > 0) {
         appendLog(

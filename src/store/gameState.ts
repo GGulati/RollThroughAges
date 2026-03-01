@@ -1,5 +1,8 @@
 import { GameState, PlayerConfig } from '@/game';
+import type { DomainEvent, DomainEventType } from '@/game/events';
 import { GamePhase } from '@/game/game';
+
+export type { DomainEvent, DomainEventType } from '@/game/events';
 
 export interface RandomSource {
   next(): number;
@@ -40,30 +43,6 @@ export interface GameSliceState {
     active: boolean;
     currentStepIndex: number;
   };
-}
-
-export type DomainEventType =
-  | 'phase_transition'
-  | 'dice_roll_started'
-  | 'dice_roll_resolved'
-  | 'die_lock_changed'
-  | 'production_resolved'
-  | 'penalty_applied'
-  | 'construction_progressed'
-  | 'construction_completed'
-  | 'development_purchased'
-  | 'discard_resolved'
-  | 'turn_completed'
-  | 'game_completed';
-
-export interface DomainEvent {
-  id: string;
-  type: DomainEventType;
-  actorPlayerId: string | null;
-  round: number | null;
-  phase: GamePhase | null;
-  payload: Record<string, unknown>;
-  parentEventId?: string;
 }
 
 export interface CommandEventBatch {
