@@ -7,6 +7,7 @@ This repo includes:
 - A playable UI (`src/App.tsx` + components)
 - Bot players (heuristic + lookahead)
 - Headless automation scripts for bot evaluation/tournaments/beam search
+- Guided tutorial mode (single-game, step-by-step)
 
 ## Live Demo
 
