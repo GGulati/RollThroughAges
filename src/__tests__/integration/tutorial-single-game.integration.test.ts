@@ -6,6 +6,7 @@ import {
   keepDie,
   rollDice,
   selectProduction,
+  startGame,
   startTutorialGame,
 } from '@/store/gameSlice';
 import { createAppStore } from '@/store/store';
@@ -105,5 +106,31 @@ describe('tutorial single-game integration', () => {
     expect(getSlice().tutorial.active).toBe(false);
     expect(getSlice().game).not.toBeNull();
     expect(getSlice().lastError).toBeNull();
+  });
+
+  it('keeps standard game mode independent from tutorial mode', () => {
+    const store = createAppStore();
+    store.dispatch(startTutorialGame());
+    store.dispatch(advanceTutorialStep());
+    expect(store.getState().game.tutorial.active).toBe(true);
+
+    store.dispatch(
+      startGame({
+        players: [
+          { id: 'p1', name: 'Player 1', controller: 'human' },
+          { id: 'p2', name: 'Player 2', controller: 'human' },
+        ],
+      }),
+    );
+
+    const slice = store.getState().game;
+    expect(slice.tutorial.active).toBe(false);
+    expect(slice.tutorial.currentStepIndex).toBe(0);
+    expect(slice.game).not.toBeNull();
+    expect(slice.game?.settings.players.map((player) => player.id)).toEqual([
+      'p1',
+      'p2',
+    ]);
+    expect(slice.game?.state.turn.activePlayerId).toBe('p1');
   });
 });

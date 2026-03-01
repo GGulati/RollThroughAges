@@ -40,6 +40,7 @@ import {
   getTopScore,
   getWinners,
 } from '@/viewModels/gameViewModel';
+import type { PhasePanel } from '@/viewModels/gameViewModel';
 import './index.css';
 import {
   buildCity,
@@ -302,10 +303,12 @@ function App() {
     enabled: turnStatus.isGameActive && !endgameStatus.isGameOver,
     stepDelayMs: botStepDelayMs,
   });
-  const activePhasePanel = useMemo(
-    () => getActivePhasePanel(displayedPhase),
-    [displayedPhase],
-  );
+  const activePhasePanel = useMemo(() => {
+    if (tutorial.isActive && tutorial.highlightTarget) {
+      return tutorial.highlightTarget as PhasePanel;
+    }
+    return getActivePhasePanel(displayedPhase);
+  }, [displayedPhase, tutorial.highlightTarget, tutorial.isActive]);
 
   const dispatchBotAction = useCallback(
     (action: BotAction) => {

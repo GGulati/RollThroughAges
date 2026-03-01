@@ -7,6 +7,7 @@ import {
   redo,
   rollDice,
   startGame,
+  startTutorialGame,
   undo,
 } from '@/store/gameSlice';
 import { createAppStore } from '@/store/store';
@@ -57,6 +58,7 @@ describe('store selectors', () => {
       currentStepIndex: 0,
       totalSteps: 20,
       step: null,
+      highlightTarget: null,
       canContinue: false,
       allowedActions: [],
     });
@@ -136,6 +138,16 @@ describe('store selectors', () => {
     expect(typeof diceOutcome.points.after).toBe('number');
     expect(selectCanUndo(state)).toBe(false);
     expect(selectCanRedo(state)).toBe(false);
+  });
+
+  it('exposes tutorial step highlight target metadata', () => {
+    const store = createTestStore();
+    store.dispatch(startTutorialGame());
+
+    const tutorialModel = selectTutorialModel(store.getState());
+    expect(tutorialModel.isActive).toBe(true);
+    expect(tutorialModel.step?.id).toBe('intro');
+    expect(tutorialModel.highlightTarget).toBe('production');
   });
 
   it('tracks undo/redo selector state across mutations', () => {

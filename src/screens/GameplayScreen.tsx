@@ -162,7 +162,7 @@ export function GameplayScreen({
           onKeepDie={onKeepDie}
         />
 
-        <section className="app-panel">
+        <section className={getPanelClassName(activePhasePanel, 'disaster')}>
           <h2>Disaster Reference</h2>
           <p>Disasters trigger by total skulls rolled this turn.</p>
           <div className="disaster-list">

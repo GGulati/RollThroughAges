@@ -63,6 +63,13 @@ export interface TutorialStepDefinition {
   title: string;
   instruction: string;
   hint?: string;
+  highlightTarget?:
+    | 'turnStatus'
+    | 'production'
+    | 'disaster'
+    | 'build'
+    | 'development'
+    | 'discard';
   allowedActions: TutorialActionKey[];
   completionActions?: TutorialActionKey[];
   instructionResolver?: (game: GameState | null) => string;
@@ -74,6 +81,7 @@ export const TUTORIAL_STEPS: TutorialStepDefinition[] = [
     title: 'Welcome',
     instruction: 'This tutorial will walk through one full game turn.',
     hint: 'Use the highlighted panel and follow the instruction text.',
+    highlightTarget: 'production',
     allowedActions: ['continue'],
     completionActions: ['continue'],
   },
@@ -81,6 +89,7 @@ export const TUTORIAL_STEPS: TutorialStepDefinition[] = [
     id: 'roll',
     title: 'Roll Dice',
     instruction: 'Click Reroll Dice in the Production panel.',
+    highlightTarget: 'production',
     allowedActions: ['rollDice'],
     completionActions: ['rollDice'],
   },
@@ -88,6 +97,7 @@ export const TUTORIAL_STEPS: TutorialStepDefinition[] = [
     id: 'lock',
     title: 'Lock Dice',
     instruction: 'Lock one non-skull die.',
+    highlightTarget: 'production',
     allowedActions: ['keepDie'],
     completionActions: ['keepDie'],
     instructionResolver: (game) => {
@@ -104,6 +114,7 @@ export const TUTORIAL_STEPS: TutorialStepDefinition[] = [
     id: 'reroll',
     title: 'Reroll',
     instruction: 'Click Reroll Dice. Skull dice stay locked and do not reroll.',
+    highlightTarget: 'production',
     allowedActions: ['rollDice'],
     completionActions: ['rollDice'],
     instructionResolver: (game) => {
@@ -118,6 +129,7 @@ export const TUTORIAL_STEPS: TutorialStepDefinition[] = [
     id: 'choice',
     title: 'Choose Faces',
     instruction: 'Select the production option that gives workers.',
+    highlightTarget: 'production',
     allowedActions: ['selectProduction'],
     completionActions: ['selectProduction'],
     instructionResolver: (game) => {
@@ -144,6 +156,7 @@ export const TUTORIAL_STEPS: TutorialStepDefinition[] = [
     id: 'production',
     title: 'Production',
     instruction: 'Review total production before moving on.',
+    highlightTarget: 'production',
     allowedActions: ['continue'],
     completionActions: ['continue'],
   },
@@ -151,6 +164,7 @@ export const TUTORIAL_STEPS: TutorialStepDefinition[] = [
     id: 'feeding',
     title: 'Feeding',
     instruction: 'Food feeds cities automatically.',
+    highlightTarget: 'production',
     allowedActions: ['continue'],
     completionActions: ['continue'],
   },
@@ -159,6 +173,7 @@ export const TUTORIAL_STEPS: TutorialStepDefinition[] = [
     title: 'Starvation',
     instruction: 'Unfed cities cause VP loss.',
     hint: 'Food shortage is -1 VP per unfed city.',
+    highlightTarget: 'production',
     allowedActions: ['continue'],
     completionActions: ['continue'],
   },
@@ -166,6 +181,7 @@ export const TUTORIAL_STEPS: TutorialStepDefinition[] = [
     id: 'disasters',
     title: 'Disasters',
     instruction: 'Skulls trigger one disaster based on total skull count.',
+    highlightTarget: 'disaster',
     allowedActions: ['continue'],
     completionActions: ['continue'],
   },
@@ -173,6 +189,7 @@ export const TUTORIAL_STEPS: TutorialStepDefinition[] = [
     id: 'build',
     title: 'Build',
     instruction: 'Build either one city or one monument.',
+    highlightTarget: 'build',
     allowedActions: ['buildCity', 'buildMonument'],
     completionActions: ['buildCity', 'buildMonument'],
     instructionResolver: () =>
@@ -182,6 +199,7 @@ export const TUTORIAL_STEPS: TutorialStepDefinition[] = [
     id: 'monument-race',
     title: 'Monuments',
     instruction: 'Monuments score differently for first versus later completion.',
+    highlightTarget: 'build',
     allowedActions: ['continue'],
     completionActions: ['continue'],
   },
@@ -189,6 +207,7 @@ export const TUTORIAL_STEPS: TutorialStepDefinition[] = [
     id: 'development',
     title: 'Development',
     instruction: 'Development happens after build when you can afford an option.',
+    highlightTarget: 'development',
     allowedActions: ['continue'],
     completionActions: ['continue'],
   },
@@ -196,6 +215,7 @@ export const TUTORIAL_STEPS: TutorialStepDefinition[] = [
     id: 'spending',
     title: 'Spending',
     instruction: 'Development costs can be paid with coins plus selected goods.',
+    highlightTarget: 'development',
     allowedActions: ['continue'],
     completionActions: ['continue'],
   },
@@ -203,6 +223,7 @@ export const TUTORIAL_STEPS: TutorialStepDefinition[] = [
     id: 'exchange',
     title: 'Exchanges',
     instruction: 'Some developments add exchange effects usable during relevant phases.',
+    highlightTarget: 'development',
     allowedActions: ['continue'],
     completionActions: ['continue'],
   },
@@ -210,6 +231,7 @@ export const TUTORIAL_STEPS: TutorialStepDefinition[] = [
     id: 'discard',
     title: 'Discard',
     instruction: 'Discard only happens when goods exceed track limits.',
+    highlightTarget: 'discard',
     allowedActions: ['continue'],
     completionActions: ['continue'],
   },
@@ -217,6 +239,7 @@ export const TUTORIAL_STEPS: TutorialStepDefinition[] = [
     id: 'end-turn',
     title: 'End Turn',
     instruction: 'End turn only when all required phases are complete.',
+    highlightTarget: 'turnStatus',
     allowedActions: ['endTurn'],
     completionActions: ['endTurn'],
     instructionResolver: () => 'Click "End Turn" in Game Status.',
@@ -225,6 +248,7 @@ export const TUTORIAL_STEPS: TutorialStepDefinition[] = [
     id: 'handoff',
     title: 'Turn Handoff',
     instruction: 'Play passes to the next player each turn.',
+    highlightTarget: 'turnStatus',
     allowedActions: ['continue'],
     completionActions: ['continue'],
   },
@@ -232,6 +256,7 @@ export const TUTORIAL_STEPS: TutorialStepDefinition[] = [
     id: 'endgame-trigger',
     title: 'Endgame Trigger',
     instruction: 'Certain milestones trigger the final round.',
+    highlightTarget: 'turnStatus',
     allowedActions: ['continue'],
     completionActions: ['continue'],
   },
@@ -239,14 +264,16 @@ export const TUTORIAL_STEPS: TutorialStepDefinition[] = [
     id: 'equal-turns',
     title: 'Equal Turns',
     instruction: 'All players get equal turns before final scoring.',
+    highlightTarget: 'turnStatus',
     allowedActions: ['continue'],
     completionActions: ['continue'],
   },
   {
     id: 'complete',
     title: 'Tutorial Complete',
-    instruction: 'You are ready to play. Continue this game or exit tutorial.',
+    instruction: 'You are ready to play. Continue this game.',
     hint: 'Full rules: https://www.yucata.de/en/Rules/RollAges',
+    highlightTarget: 'turnStatus',
     allowedActions: ['continue'],
     completionActions: ['continue'],
   },

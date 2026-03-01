@@ -179,6 +179,7 @@ export const selectTutorialModel = createSelector(selectGameSlice, (slice) => {
     currentStepIndex: slice.tutorial.currentStepIndex,
     totalSteps: TUTORIAL_STEPS.length,
     step,
+    highlightTarget: step?.highlightTarget ?? null,
     canContinue: Boolean(step?.allowedActions.includes('continue')),
     allowedActions: step?.allowedActions ?? [],
   };

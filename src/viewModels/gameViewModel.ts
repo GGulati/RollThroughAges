@@ -1,7 +1,13 @@
 import { GamePhase } from '@/game';
 import { PlayerEndStateSummary } from '@/game/reporting';
 
-export type PhasePanel = 'turnStatus' | 'production' | 'build' | 'development' | 'discard';
+export type PhasePanel =
+  | 'turnStatus'
+  | 'production'
+  | 'disaster'
+  | 'build'
+  | 'development'
+  | 'discard';
 
 export function getTopScore(playerEndStateSummaries: PlayerEndStateSummary[]): number {
   return playerEndStateSummaries.reduce(

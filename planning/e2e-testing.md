@@ -70,6 +70,25 @@ For each stage gate and major UI slice:
 - capture snapshot + console log
 - keep `npm test -- --run`, `npm run lint:strict`, and `npm run typecheck` green
 
+## Tutorial Smoke Scenario (Stage 4)
+1. Start app and open Playwright CLI browser session.
+2. Click `Start Tutorial`.
+3. Complete guided steps:
+   - `Continue` (step 1)
+   - `Reroll Dice` (step 2)
+   - `Lock` one non-skull die (step 3)
+   - `Reroll Dice` (step 4)
+   - choose worker production option (step 5)
+   - `Continue` through informational steps
+   - `Build City` or `Build Monument` (step 10)
+   - `End Turn` (step 16)
+   - `Continue` until `Step 20/20`.
+4. Verify final dismiss behavior:
+   - click `Continue` on `Step 20/20`
+   - tutorial overlay/card disappears
+   - game remains active.
+5. Capture desktop/mobile screenshots, snapshot, and console logs.
+
 ## Stage 5 Bot Mode Smoke Scenario
 1. Start app and open Playwright CLI browser session.
 2. In New Game setup:
