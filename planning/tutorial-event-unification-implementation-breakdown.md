@@ -11,24 +11,26 @@ This removes reducer-level tutorial entanglement and enables predictable composi
 - New UX features (highlighting, animation, risk feedback) increase the chance of divergence unless tutorial uses the same event contract.
 
 ## Target Architecture
-1. Reducers emit typed `GameEvent` records for meaningful transitions.
+1. Engine commands return eventful results: `EngineResult = { nextState, resolutionEvents, appliedEvents }`.
 2. Tutorial progression is owned by a dedicated `tutorialEngine` module.
 3. Step completion uses event predicates first, state predicates as fallback.
-4. Action log and announcements are derived from shared event formatters.
-5. UI highlighting and motion consume tutorial state + event stream without reducer special cases.
+4. Action log, announcements, and motion consume shared event formatters.
+5. Store/reducers persist engine outputs; they do not re-implement rule semantics.
 
 ## Core Domain Contracts
 
-### `GameEvent`
+### `DomainEvent`
 - `id`
 - `type`
 - `actorPlayerId`
 - `round`
 - `phase`
 - `payload` (typed by `type`)
+- `parentEventId?` (for derived events)
 
 Recommended event types:
 - `phase_transition`
+- `dice_roll_started`
 - `dice_roll_resolved`
 - `die_lock_changed`
 - `production_resolved`
@@ -39,6 +41,12 @@ Recommended event types:
 - `discard_resolved`
 - `turn_completed`
 - `game_completed`
+
+### Event Streams
+- `resolutionEvents`: intermediate trace (proposed, modified, negated, rewritten).
+- `appliedEvents`: finalized canonical outcomes used for state folding and external consumers.
+
+UX can consume both streams for satisfying "would happen -> prevented by X" sequences while state remains driven by finalized events.
 
 ### `TutorialStepDefinition` (revised)
 - `id`
@@ -56,12 +64,12 @@ Recommended event types:
 
 ### TUE.1 Event Foundation
 **Goal**
-Introduce typed event emission from core reducer transitions.
+Introduce typed event contracts and persistence of event streams.
 
 **Tasks**
-- Add `GameEvent` types to store/domain layer.
-- Add per-turn event queue and bounded event history in store state.
-- Emit events for core transitions in existing reducers.
+- Add `DomainEvent` types to engine/store domain.
+- Add `resolutionEvents` and `appliedEvents` queues/history in store state.
+- Persist per-command event batches in store.
 - Add selectors for latest event, turn events, and phase-filtered events.
 
 **Files**
@@ -70,7 +78,7 @@ Introduce typed event emission from core reducer transitions.
 - `src/store/selectors.ts`
 
 **Acceptance**
-- Core actions emit structured events with actor/round/phase context.
+- Event streams are typed, queryable, and bounded.
 - No behavior/rule changes.
 
 ### TUE.2 Tutorial Engine Extraction
@@ -80,9 +88,9 @@ Move tutorial gating/progression logic out of action handlers.
 **Tasks**
 - Add `src/tutorial/engine.ts` for:
   - `isTutorialActionAllowed(...)`
-  - `advanceTutorialFromEvents(...)`
+  - `advanceTutorialFromEvents(appliedEvents, resolutionEvents, gameState)`
   - `resolveTutorialInstruction(...)`
-- Replace action-local tutorial checks with centralized calls.
+- Replace action-local tutorial checks with centralized engine calls.
 - Keep existing tutorial content behavior parity.
 
 **Files**
@@ -112,7 +120,35 @@ Switch step completion to declarative event/state predicates.
 - Tutorial completion logic is data-driven and auditable in one place.
 - Final-step dismissal behavior remains explicit and tested.
 
-### TUE.4 Unified Log + A11y Formatting
+### TUE.4 Engine Event Resolution Pipeline (Generic)
+**Goal**
+Move from ad hoc event emission to a deterministic pipeline that supports modifiers/interactions without loops.
+
+**Tasks**
+- Implement generic command pipeline stages:
+  1. `emit` (base events)
+  2. `transform` (effect processors rewrite/annotate/suppress/augment events)
+  3. `finalize` (derive canonical applied events)
+  4. `fold` (apply canonical events to state)
+- Effect processors must be pure and deterministic.
+- Processors operate over canonical event taxonomy from core UX plan, not per-feature special cases.
+- Add cycle/loop protections:
+  - `appliedEffectKeys` per event
+  - stable processor ordering
+  - `maxTransformPasses`
+  - `maxDerivedEventsPerCommand`
+  - deterministic diagnostic event on cap breach
+
+**Files**
+- `src/game/engine/*`
+- `src/game/*` shared event types
+- `src/store/gameSlice.ts` (consume `EngineResult`, persist streams)
+
+**Acceptance**
+- Engine resolves interactions (immunity/rewrite/mitigation/etc.) via event transforms.
+- No infinite loops; deterministic safeguards enforced.
+
+### TUE.5 Unified Log + A11y Formatting
 **Goal**
 Use shared event formatters for action log and accessibility announcements.
 
@@ -131,7 +167,7 @@ Use shared event formatters for action log and accessibility announcements.
 **Acceptance**
 - Log and announcement messages are event-derived and consistent.
 
-### TUE.5 Validation Gate
+### TUE.6 Validation Gate
 **Goal**
 Prove end-to-end stability across tutorial + normal mode.
 
@@ -161,7 +197,8 @@ This ensures game-feel improvements use canonical game truth.
 
 ## Testing Strategy
 - Unit: tutorial engine action gating and progression predicates.
-- Reducer: event emission sequence and payload correctness.
+- Engine: pipeline stage sequencing, transform determinism, loop caps.
+- Reducer/store: event persistence and selectors.
 - Integration: full tutorial run + mode separation.
 - Playwright: tutorial flow, final dismiss, desktop/mobile artifacts, console capture.
 
@@ -173,6 +210,6 @@ This ensures game-feel improvements use canonical game truth.
 
 ## Exit Criteria
 - Tutorial logic is centralized and event-driven.
-- Reducers are free of duplicated tutorial progression branches.
-- Log/a11y/motion can rely on shared events.
+- Store/reducers are free of duplicated tutorial progression and rule semantics.
+- Log/a11y/motion can rely on shared event streams.
 - Tutorial and standard gameplay remain fully composable and test-stable.
