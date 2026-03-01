@@ -149,6 +149,9 @@ describe('store selectors', () => {
     expect(typeof diceOutcome.food.need).toBe('number');
     expect(typeof diceOutcome.points.before).toBe('number');
     expect(typeof diceOutcome.points.after).toBe('number');
+    const buildPanel = selectBuildPanelModel(state);
+    expect(buildPanel.goodsStoredSummary.length).toBeGreaterThan(0);
+    expect(typeof buildPanel.goodsStoredSummary[0].limit).toBe('number');
     expect(selectCanUndo(state)).toBe(false);
     expect(selectCanRedo(state)).toBe(false);
   });

@@ -295,7 +295,8 @@ export function GameplayScreen({
             <div className="goods-list">
               {buildPanel.goodsStoredSummary.map((entry) => (
                 <p key={entry.goodsType} className="goods-row">
-                  {entry.goodsType}: {entry.quantity}
+                  {entry.goodsType}: {entry.quantity} /{' '}
+                  {entry.limit === Infinity ? '∞' : entry.limit}
                 </p>
               ))}
             </div>
@@ -555,12 +556,6 @@ export function GameplayScreen({
           <section className={getMotionPanelClassName('discard')}>
             <h2>Discard</h2>
             <p>{discardPanel.reason ?? 'Choose goods to keep and apply discard.'}</p>
-            <p>
-              Goods limit:{' '}
-              {discardPanel.goodsLimit === Infinity ? 'No limit' : 'Per-type track limits'}
-            </p>
-            <p>Total goods: {discardPanel.totalGoods}</p>
-            <p>Overflow: {discardPanel.overflow}</p>
             {discardPanel.isActionAllowed ? (
               <div className="development-list">
                 {discardPanel.goodsOptions.map((option) => (

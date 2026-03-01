@@ -778,7 +778,11 @@ export const selectBuildPanelModel = createSelector(selectGame, (game) => {
       reason: 'Start a game to build cities or monuments.',
       workersAvailable: 0,
       storedFood: 0,
-      goodsStoredSummary: [] as Array<{ goodsType: string; quantity: number }>,
+      goodsStoredSummary: [] as Array<{
+        goodsType: string;
+        quantity: number;
+        limit: number;
+      }>,
       canBuild: false,
       cityTargets: [] as Array<{
         cityIndex: number;
@@ -816,9 +820,11 @@ export const selectBuildPanelModel = createSelector(selectGame, (game) => {
   const workersAvailable = game.state.turn.turnProduction.workers;
   const activePlayer = game.state.players[game.state.activePlayerIndex];
   const storedFood = activePlayer.food;
+  const goodsLimit = getGoodsLimit(activePlayer, game.settings);
   const goodsStoredSummary = game.settings.goodsTypes.map((goodsType) => ({
     goodsType: goodsType.name,
     quantity: activePlayer.goods.get(goodsType) ?? 0,
+    limit: goodsLimit === Infinity ? Infinity : goodsType.values.length,
   }));
   const buildOptions =
     game.state.phase === GamePhase.Build
