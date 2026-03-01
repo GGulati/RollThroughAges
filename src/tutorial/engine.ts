@@ -56,7 +56,7 @@ export function isTutorialActionAllowed(
 export function advanceTutorialFromEvents(
   tutorial: TutorialProgressState,
   appliedEvents: DomainEvent[],
-  _resolutionEvents: DomainEvent[],
+  resolutionEvents: DomainEvent[],
   game: GameState | null,
   commandType: GameCommandType,
 ): TutorialProgressState {
@@ -70,7 +70,22 @@ export function advanceTutorialFromEvents(
   }
 
   const step = getCurrentTutorialStep(tutorial);
-  if (!step || !step.completionActions?.includes(completedAction)) {
+  if (!step || !step.allowedActions.includes(completedAction)) {
+    return tutorial;
+  }
+
+  const completion = step.completion;
+  const eventTypes = completion.eventTypes ?? [];
+  const eventSatisfied =
+    eventTypes.length === 0
+      ? true
+      : [...appliedEvents, ...resolutionEvents].some((event) =>
+          eventTypes.includes(event.type),
+        );
+  const stateSatisfied = completion.statePredicate
+    ? completion.statePredicate(game)
+    : true;
+  if (!eventSatisfied || !stateSatisfied) {
     return tutorial;
   }
 
@@ -79,17 +94,6 @@ export function advanceTutorialFromEvents(
       ...tutorial,
       active: false,
     };
-  }
-
-  const hasPhaseTransition = appliedEvents.some((event) => event.type === 'phase_transition');
-  const shouldAdvanceOnContinue = completedAction === 'continue';
-  const shouldAdvance =
-    shouldAdvanceOnContinue ||
-    hasPhaseTransition ||
-    Boolean(game);
-
-  if (!shouldAdvance) {
-    return tutorial;
   }
 
   return {
@@ -108,4 +112,3 @@ export function resolveTutorialInstruction(
   }
   return step.instructionResolver?.(game) ?? step.instruction;
 }
-
