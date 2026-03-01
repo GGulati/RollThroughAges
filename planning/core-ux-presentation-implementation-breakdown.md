@@ -21,6 +21,13 @@ This plan builds on existing engine/store flows by introducing a first-class eve
 - No networked multiplayer or persistence work
 - No animation-only logic that bypasses reducer/engine truth
 
+## Game Feel Pillars
+- **Tension**: rerolls should expose risk clearly before commitment.
+- **Payoff**: strong outcomes should visibly land (production/build/development).
+- **Consequences**: starvation/disasters must be immediate and understandable.
+- **Momentum**: phase flow should feel continuous with minimal dead states.
+- **Table Presence**: other players' progress should create strategic pressure.
+
 ## Architecture Principles
 - **Single semantic source**: reducer/engine transitions emit canonical events.
 - **Renderer is downstream only**: UI consumes events and state; it never infers hidden rules.
@@ -106,6 +113,10 @@ Improve panel hierarchy and scanability while preserving phase correctness.
   - Production + Disaster reference
   - Build/Development side-by-side where practical
   - Action Log adjacent to discard/testing outcomes
+- Ensure opponent pressure is visible in status region:
+  - end-condition proximity
+  - developments/monuments progress
+  - salient threat indicators
 - Define reusable card/table patterns for:
   - player score breakdown
   - developments/cities/monuments
@@ -132,6 +143,7 @@ Introduce meaningful, consistent motion driven by domain events.
 - Define animation tokens/durations tied to bot speed and interaction pacing.
 - Add transition patterns for:
   - dice roll resolve
+  - pre-roll risk-to-outcome shift
   - lock/unlock
   - penalty/emphasis
   - completion milestones
@@ -150,7 +162,31 @@ Introduce meaningful, consistent motion driven by domain events.
 - Motion improves comprehension of state changes.
 - No rule/state regressions from animation orchestration.
 
-### CUX.5 Optional 3D Dice Presentation
+### CUX.5 Outcome Readability + Decision Drama
+**Goal**
+Increase perceived game quality by clarifying risk, payoff, and consequences.
+
+**Tasks**
+- Add pre-roll risk strip in Production (skulls/food pressure/likely value).
+- Add compact turn outcome delta cards after production resolution.
+- Add explicit disaster immunity/ignore callouts when effects are nullified.
+- Add construction payoff callouts for progress/completion/first-vs-later scoring.
+- Keep all outputs event-driven and deterministic.
+
+**Files**
+- `src/store/selectors.ts`
+- `src/components/panels/*`
+- `src/index.css`
+
+**Tests**
+- Selector tests for risk/delta models.
+- Integration assertions for penalty/completion outcome messaging.
+
+**Acceptance**
+- Players can infer why turn value changed without reading raw logs.
+- High-impact outcomes have immediate visual confirmation.
+
+### CUX.6 Optional 3D Dice Presentation
 **Goal**
 Offer enhanced dice visuals while preserving deterministic state and fallback paths.
 
@@ -172,7 +208,7 @@ Offer enhanced dice visuals while preserving deterministic state and fallback pa
 - 3D mode is optional and does not alter gameplay logic.
 - 2D fallback remains correct and fully supported.
 
-### CUX.6 Stage Gate (Core UX)
+### CUX.7 Stage Gate (Core UX)
 **Goal**
 Prove end-to-end composition: event emission -> rendering/log/a11y -> playable flow.
 
@@ -214,8 +250,9 @@ Prove end-to-end composition: event emission -> rendering/log/a11y -> playable f
 2. `core-ux/events-log-a11y`
 3. `core-ux/layout-redesign`
 4. `core-ux/motion-system`
-5. `core-ux/optional-3d-dice`
-6. `core-ux/stage-gate-e2e`
+5. `core-ux/outcome-readability`
+6. `core-ux/optional-3d-dice`
+7. `core-ux/stage-gate-e2e`
 
 ## Quality Gate Per Slice
 - `npm test -- --run`
