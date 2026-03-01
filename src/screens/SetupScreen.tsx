@@ -135,6 +135,13 @@ export function SetupScreen({
   return (
     <>
       <section className="app-panel setup-panel">
+        <h2>Tutorial</h2>
+        <p>Start a guided game to learn the rules.</p>
+        <button className="start-game-button" type="button" onClick={onStartTutorialGame}>
+          Start Tutorial
+        </button>
+      </section>
+      <section className="app-panel setup-panel">
         <h2>Start New Game</h2>
         <label className="player-count-control" htmlFor="player-count-select">
           <span>Players</span>
@@ -181,13 +188,6 @@ export function SetupScreen({
         ) : null}
         <button className="start-game-button" type="button" onClick={onStartGame}>
           Start Game
-        </button>
-      </section>
-      <section className="app-panel setup-panel">
-        <h2>Tutorial</h2>
-        <p>Start a guided game to learn the rules.</p>
-        <button className="start-game-button" type="button" onClick={onStartTutorialGame}>
-          Start Tutorial
         </button>
       </section>
       <section className="app-panel setup-panel">
